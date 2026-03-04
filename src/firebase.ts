@@ -2,13 +2,17 @@ import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  apiKey: "AIzaSyBpS6iyfjHtGFZ1QPvSvdxqTmhOpebF1Zs",
+  authDomain: "sabadwani-app.firebaseapp.com",
+  projectId: "sabadwani-app",
+  storageBucket: "sabadwani-app.firebasestorage.app",
+  messagingSenderId: "269129763640",
+  appId: "1:269129763640:web:37c970f0ee87e7a932cfcd",
+  measurementId: "G-NB2SXB8WGN"
 };
 
+// Initialize Firebase
 const app = initializeApp(firebaseConfig);
+
+// Initialize Database (यही सबसे ज़रूरी लाइन है)
 export const db = getFirestore(app);
