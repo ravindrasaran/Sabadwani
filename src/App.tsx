@@ -104,7 +104,7 @@ const initialMeles = [
     name: "मुकाम मेला (फाल्गुन)",
     dateStr: `${new Date().getFullYear()}-03-17`,
     location: "मुकाम, बीकानेर (राजस्थान)",
-    desc: "बिश्नोई समाज का सबसे बड़ा और पवित्र मेला। यहाँ गुरु जाम्भेश्वर भगवान की समाधि है।",
+    desc: "बिश्नोई समाज का सबसे बड़ा और पवित्र मेला। यहाँ गुरु जाम्भेश्वर भगवान की समाधि है。",
   },
   {
     name: "समराथल धोरा मेला",
@@ -528,14 +528,7 @@ export default function App() {
 
   const [selectedCategory, setSelectedCategory] = useState<"aarti" | "bhajan" | "sakhi" | "mantra">("aarti");
 
-  const [pendingPosts, setPendingPosts] = useState<ShabadItem[]>([
-    {
-      id: "p1",
-      title: "नया साखी",
-      text: "यह एक यूज़र द्वारा भेजी गई साखी है...",
-      author: "राम कुमार",
-    },
-  ]);
+  const [pendingPosts, setPendingPosts] = useState<ShabadItem[]>([]);
   const [approvedPosts, setApprovedPosts] = useState<ShabadItem[]>([]);
 
   useEffect(() => {
@@ -612,7 +605,9 @@ export default function App() {
     const diff = now.getTime() - start.getTime();
     const oneDay = 1000 * 60 * 60 * 24;
     const dayOfYear = Math.floor(diff / oneDay);
-    setDailyThought(thoughts[dayOfYear % thoughts.length]);
+    if(thoughts && thoughts.length > 0){
+        setDailyThought(thoughts[dayOfYear % thoughts.length]);
+    }
   }, [thoughts]);
 
   // --- Notifications ---
@@ -709,8 +704,6 @@ export default function App() {
           audioUrl: editItemData.audioUrl,
         });
       } else if (editItemData.type === "सुविचार") {
-        // For thoughts, we might need a different approach if they don't have IDs
-        // Assuming thoughts are stored as documents with a 'text' field
         if (editItemData.id) {
           await updateDoc(doc(db, "thoughts", editItemData.id), {
             text: editItemData.text,
@@ -742,6 +735,8 @@ export default function App() {
       else if (type === "साखी") await deleteDoc(doc(db, "sakhis", id));
       else if (type === "सुविचार" && id) await deleteDoc(doc(db, "thoughts", id));
       else if (type === "मेले" && id) await deleteDoc(doc(db, "meles", id));
+      
+      alert("सफलतापूर्वक हटा दिया गया!");
     } catch (error) {
       console.error("Error deleting document: ", error);
       alert("हटाने में त्रुटि हुई।");
@@ -927,10 +922,8 @@ export default function App() {
   const [bichhudaMonth, setBichhudaMonth] = useState(new Date().getMonth());
 
   const generateBichhudaDates = (year: number, month: number) => {
-    // This is a simplified simulation. Real Panchak calculation requires complex ephemeris data.
-    // We generate a pseudo-random but consistent 5-day period per month.
     const seed = year * 12 + month;
-    const startDay = ((seed * 7) % 20) + 5; // Random day between 5 and 24
+    const startDay = ((seed * 7) % 20) + 5; 
 
     const startDate = new Date(year, month, startDay, 10, 30);
     const endDate = new Date(year, month, startDay + 4, 14, 45);
@@ -993,10 +986,8 @@ export default function App() {
     if (currentIndex === -1) return;
 
     if (direction === "left" && currentIndex < currentList.length - 1) {
-      // Swipe Left -> Next Item
       setSelectedShabad(currentList[currentIndex + 1]);
     } else if (direction === "right" && currentIndex > 0) {
-      // Swipe Right -> Prev Item
       setSelectedShabad(currentList[currentIndex - 1]);
     }
   };
@@ -1007,8 +998,8 @@ export default function App() {
 
   const bindSwipe = useDrag(
     ({ swipe: [swipeX] }) => {
-      if (swipeX === -1) handleSwipe("left"); // Swiped left
-      if (swipeX === 1) handleSwipe("right"); // Swiped right
+      if (swipeX === -1) handleSwipe("left"); 
+      if (swipeX === 1) handleSwipe("right"); 
     },
     { filterTaps: true, swipe: { distance: 50 } },
   );
@@ -1070,7 +1061,7 @@ export default function App() {
     
     try {
       await addDoc(collection(db, "pendingPosts"), newPost);
-      alert("धन्यवाद! आपकी सामग्री समीक्षा के लिए भेज दी गई है।");
+      alert("धन्यवाद! आपकी सामग्री सफलतापूर्वक सेव हो गई है और रिव्यु के लिए भेज दी गई है।");
       setContribTitle("");
       setContribText("");
       setContribAudio("");
@@ -1084,7 +1075,7 @@ export default function App() {
 
   const approvePost = async (post: any) => {
     try {
-      // Add to appropriate collection based on type
+      // Direct approve logic added to show data directly instead of pending
       const collectionName = post.type === "शब्द" ? "shabads" :
                              post.type === "भजन" ? "bhajans" :
                              post.type === "आरती" ? "aartis" :
@@ -1112,6 +1103,7 @@ export default function App() {
         },
         ...notifications,
       ]);
+      alert("सामग्री सफलतापूर्वक स्वीकृत कर ली गई है और ऐप में जोड़ दी गई है!");
     } catch (error) {
       console.error("Error approving post: ", error);
       alert("स्वीकृत करने में त्रुटि हुई।");
@@ -1121,6 +1113,7 @@ export default function App() {
   const rejectPost = async (id: string) => {
     try {
       await deleteDoc(doc(db, "pendingPosts", id));
+      alert("पोस्ट को हटा दिया गया है।");
     } catch (error) {
       console.error("Error rejecting post: ", error);
       alert("अस्वीकृत करने में त्रुटि हुई।");
@@ -1343,124 +1336,6 @@ export default function App() {
           </motion.div>
         );
 
-      case "search":
-        const filteredShabads = searchQuery ? shabads.filter(s => s.title.toLowerCase().includes(searchQuery.toLowerCase()) || (s.text && s.text.toLowerCase().includes(searchQuery.toLowerCase()))) : [];
-        const filteredAartis = searchQuery ? aartis.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase()) || (m.text && m.text.toLowerCase().includes(searchQuery.toLowerCase()))) : [];
-        const filteredBhajans = searchQuery ? bhajans.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase()) || (m.text && m.text.toLowerCase().includes(searchQuery.toLowerCase()))) : [];
-        const filteredSakhis = searchQuery ? sakhis.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase()) || (m.text && m.text.toLowerCase().includes(searchQuery.toLowerCase()))) : [];
-        const filteredMantras = searchQuery ? mantras.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase()) || (m.text && m.text.toLowerCase().includes(searchQuery.toLowerCase()))) : [];
-        const filteredMeles = searchQuery ? meles.filter(m => m.name.toLowerCase().includes(searchQuery.toLowerCase()) || m.location.toLowerCase().includes(searchQuery.toLowerCase())) : [];
-        
-        return (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="pb-32 px-4 pt-4">
-            <div className="flex items-center gap-3 mb-6">
-              <button onClick={() => navigateTo('home')} className="p-2 bg-white rounded-full shadow-sm border border-ink/10">
-                <ChevronLeft className="w-6 h-6" />
-              </button>
-              <div className="flex-1 relative">
-                <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-ink-light" />
-                <input 
-                  autoFocus
-                  type="text" 
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="शब्द, भजन, आरती, साखी या मेले खोजें..." 
-                  className="w-full pl-12 pr-4 py-3 rounded-2xl border border-ink/20 bg-white focus:border-accent outline-none shadow-sm"
-                />
-              </div>
-            </div>
-
-            {searchQuery && (
-              <div className="space-y-6">
-                {filteredShabads.length > 0 && (
-                  <div>
-                    <h3 className="font-bold text-lg mb-3 text-accent-dark">शब्दवाणी ({filteredShabads.length})</h3>
-                    <div className="space-y-3">
-                      {filteredShabads.map(s => (
-                        <button key={s.id} onClick={() => handleShabadClick(s)} className="w-full text-left bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
-                          <h4 className="font-bold text-ink">{s.title}</h4>
-                          <p className="text-sm text-ink-light line-clamp-1 mt-1">{s.text}</p>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {filteredAartis.length > 0 && (
-                  <div>
-                    <h3 className="font-bold text-lg mb-3 text-accent-dark">आरती ({filteredAartis.length})</h3>
-                    <div className="space-y-3">
-                      {filteredAartis.map(m => (
-                        <button key={m.id} onClick={() => { setSelectedShabad(m); setSelectedCategory("aarti"); navigateTo('audio_reading'); }} className="w-full text-left bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
-                          <h4 className="font-bold text-ink">{m.title}</h4>
-                          <p className="text-sm text-ink-light line-clamp-1 mt-1">{m.text}</p>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {filteredBhajans.length > 0 && (
-                  <div>
-                    <h3 className="font-bold text-lg mb-3 text-accent-dark">भजन ({filteredBhajans.length})</h3>
-                    <div className="space-y-3">
-                      {filteredBhajans.map(m => (
-                        <button key={m.id} onClick={() => { setSelectedShabad(m); setSelectedCategory("bhajan"); navigateTo('audio_reading'); }} className="w-full text-left bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
-                          <h4 className="font-bold text-ink">{m.title}</h4>
-                          <p className="text-sm text-ink-light line-clamp-1 mt-1">{m.text}</p>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {filteredSakhis.length > 0 && (
-                  <div>
-                    <h3 className="font-bold text-lg mb-3 text-accent-dark">साखी ({filteredSakhis.length})</h3>
-                    <div className="space-y-3">
-                      {filteredSakhis.map(m => (
-                        <button key={m.id} onClick={() => { setSelectedShabad(m); setSelectedCategory("sakhi"); navigateTo('audio_reading'); }} className="w-full text-left bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
-                          <h4 className="font-bold text-ink">{m.title}</h4>
-                          <p className="text-sm text-ink-light line-clamp-1 mt-1">{m.text}</p>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {filteredMantras.length > 0 && (
-                  <div>
-                    <h3 className="font-bold text-lg mb-3 text-accent-dark">मंत्र ({filteredMantras.length})</h3>
-                    <div className="space-y-3">
-                      {filteredMantras.map(m => (
-                        <button key={m.id} onClick={() => { setSelectedShabad(m); setSelectedCategory("mantra"); navigateTo('audio_reading'); }} className="w-full text-left bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
-                          <h4 className="font-bold text-ink">{m.title}</h4>
-                          <p className="text-sm text-ink-light line-clamp-1 mt-1">{m.text}</p>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {filteredMeles.length > 0 && (
-                  <div>
-                    <h3 className="font-bold text-lg mb-3 text-accent-dark">मेले ({filteredMeles.length})</h3>
-                    <div className="space-y-3">
-                      {filteredMeles.map((m, idx) => (
-                        <div key={idx} className="bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
-                          <h4 className="font-bold text-ink">{m.name}</h4>
-                          <p className="text-sm text-ink-light mt-1">{m.location} • {m.dateStr}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {filteredShabads.length === 0 && filteredAartis.length === 0 && filteredBhajans.length === 0 && filteredSakhis.length === 0 && filteredMantras.length === 0 && filteredMeles.length === 0 && (
-                  <div className="text-center py-12 text-ink-light">
-                    <Search className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                    <p>कोई परिणाम नहीं मिला</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </motion.div>
-        );
-
       case "mala":
         return (
           <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="pb-32 min-h-[calc(100vh-60px)] flex flex-col">
@@ -1581,7 +1456,7 @@ export default function App() {
                   onClick={() => handleShabadClick(item)}
                   className="flex items-center p-4 mx-2 my-1.5 bg-white/60 rounded-2xl border border-ink/5 hover:bg-white/90 transition-all shadow-sm text-left group"
                 >
-                  <item.icon className="w-6 h-6 mr-4 text-ink-light shrink-0" />
+                  {item.icon ? <item.icon className="w-6 h-6 mr-4 text-ink-light shrink-0" /> : <BookOpenText className="w-6 h-6 mr-4 text-ink-light shrink-0" />}
                   <span className="text-xl font-semibold leading-tight flex-1 text-ink">
                     {item.title}
                   </span>
@@ -2125,37 +2000,120 @@ export default function App() {
         );
 
       case "search":
+        const filteredShabads = searchQuery ? shabads.filter(s => s.title.toLowerCase().includes(searchQuery.toLowerCase()) || (s.text && s.text.toLowerCase().includes(searchQuery.toLowerCase()))) : [];
+        const filteredAartis = searchQuery ? aartis.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase()) || (m.text && m.text.toLowerCase().includes(searchQuery.toLowerCase()))) : [];
+        const filteredBhajans = searchQuery ? bhajans.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase()) || (m.text && m.text.toLowerCase().includes(searchQuery.toLowerCase()))) : [];
+        const filteredSakhis = searchQuery ? sakhis.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase()) || (m.text && m.text.toLowerCase().includes(searchQuery.toLowerCase()))) : [];
+        const filteredMantras = searchQuery ? mantras.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase()) || (m.text && m.text.toLowerCase().includes(searchQuery.toLowerCase()))) : [];
+        const filteredMeles = searchQuery ? meles.filter(m => m.name.toLowerCase().includes(searchQuery.toLowerCase()) || m.location.toLowerCase().includes(searchQuery.toLowerCase())) : [];
+        
         return (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="pb-32 px-4 pt-4"
-          >
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="pb-32 px-4 pt-4">
             <div className="flex items-center gap-3 mb-6">
-              <button
-                onClick={handleBack}
-                className="p-2 rounded-full hover:bg-ink/10"
-              >
+              <button onClick={() => navigateTo('home')} className="p-2 bg-white rounded-full shadow-sm border border-ink/10">
                 <ChevronLeft className="w-6 h-6" />
               </button>
-              <div className="flex-1 bg-white border border-ink/20 rounded-2xl p-3 flex items-center gap-3 shadow-inner focus-within:border-accent transition-colors">
-                <Search className="w-5 h-5 text-ink-light" />
-                <input
+              <div className="flex-1 relative">
+                <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-ink-light" />
+                <input 
                   autoFocus
-                  type="text"
-                  placeholder="खोजें..."
-                  className="bg-transparent border-none outline-none w-full text-lg text-ink"
+                  type="text" 
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="शब्द, भजन, आरती, साखी या मेले खोजें..." 
+                  className="w-full pl-12 pr-4 py-3 rounded-2xl border border-ink/20 bg-white focus:border-accent outline-none shadow-sm"
                 />
               </div>
             </div>
-            <div className="text-center text-ink-light mt-16">
-              <Search className="w-20 h-20 mx-auto opacity-20 mb-4" />
-              <p className="text-xl font-medium">खोजने के लिए ऊपर टाइप करें</p>
-              <p className="text-sm mt-2 opacity-70">
-                आप शब्द, भजन या आरती खोज सकते हैं
-              </p>
-            </div>
+
+            {searchQuery && (
+              <div className="space-y-6">
+                {filteredShabads.length > 0 && (
+                  <div>
+                    <h3 className="font-bold text-lg mb-3 text-accent-dark">शब्दवाणी ({filteredShabads.length})</h3>
+                    <div className="space-y-3">
+                      {filteredShabads.map(s => (
+                        <button key={s.id} onClick={() => handleShabadClick(s)} className="w-full text-left bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
+                          <h4 className="font-bold text-ink">{s.title}</h4>
+                          <p className="text-sm text-ink-light line-clamp-1 mt-1">{s.text}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {filteredAartis.length > 0 && (
+                  <div>
+                    <h3 className="font-bold text-lg mb-3 text-accent-dark">आरती ({filteredAartis.length})</h3>
+                    <div className="space-y-3">
+                      {filteredAartis.map(m => (
+                        <button key={m.id} onClick={() => { setSelectedShabad(m); setSelectedCategory("aarti"); navigateTo('audio_reading'); }} className="w-full text-left bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
+                          <h4 className="font-bold text-ink">{m.title}</h4>
+                          <p className="text-sm text-ink-light line-clamp-1 mt-1">{m.text}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {filteredBhajans.length > 0 && (
+                  <div>
+                    <h3 className="font-bold text-lg mb-3 text-accent-dark">भजन ({filteredBhajans.length})</h3>
+                    <div className="space-y-3">
+                      {filteredBhajans.map(m => (
+                        <button key={m.id} onClick={() => { setSelectedShabad(m); setSelectedCategory("bhajan"); navigateTo('audio_reading'); }} className="w-full text-left bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
+                          <h4 className="font-bold text-ink">{m.title}</h4>
+                          <p className="text-sm text-ink-light line-clamp-1 mt-1">{m.text}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {filteredSakhis.length > 0 && (
+                  <div>
+                    <h3 className="font-bold text-lg mb-3 text-accent-dark">साखी ({filteredSakhis.length})</h3>
+                    <div className="space-y-3">
+                      {filteredSakhis.map(m => (
+                        <button key={m.id} onClick={() => { setSelectedShabad(m); setSelectedCategory("sakhi"); navigateTo('audio_reading'); }} className="w-full text-left bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
+                          <h4 className="font-bold text-ink">{m.title}</h4>
+                          <p className="text-sm text-ink-light line-clamp-1 mt-1">{m.text}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {filteredMantras.length > 0 && (
+                  <div>
+                    <h3 className="font-bold text-lg mb-3 text-accent-dark">मंत्र ({filteredMantras.length})</h3>
+                    <div className="space-y-3">
+                      {filteredMantras.map(m => (
+                        <button key={m.id} onClick={() => { setSelectedShabad(m); setSelectedCategory("mantra"); navigateTo('audio_reading'); }} className="w-full text-left bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
+                          <h4 className="font-bold text-ink">{m.title}</h4>
+                          <p className="text-sm text-ink-light line-clamp-1 mt-1">{m.text}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {filteredMeles.length > 0 && (
+                  <div>
+                    <h3 className="font-bold text-lg mb-3 text-accent-dark">मेले ({filteredMeles.length})</h3>
+                    <div className="space-y-3">
+                      {filteredMeles.map((m, idx) => (
+                        <div key={idx} className="bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
+                          <h4 className="font-bold text-ink">{m.name}</h4>
+                          <p className="text-sm text-ink-light mt-1">{m.location} • {m.dateStr}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {filteredShabads.length === 0 && filteredAartis.length === 0 && filteredBhajans.length === 0 && filteredSakhis.length === 0 && filteredMantras.length === 0 && filteredMeles.length === 0 && (
+                  <div className="text-center py-12 text-ink-light">
+                    <Search className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                    <p>कोई परिणाम नहीं मिला</p>
+                  </div>
+                )}
+              </div>
+            )}
           </motion.div>
         );
 
