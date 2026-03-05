@@ -25,6 +25,8 @@ import {
   Bell,
   Quote,
   Users,
+  Flag,      // <-- यह नया जोड़ा है (धर्म ध्वजा के लिए)
+  Flame,     // <-- यह नया जोड़ा है (ज्योति/हवन के लिए)
   CheckCircle,
   XCircle,
   Edit3,
@@ -39,7 +41,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useDrag } from "@use-gesture/react";
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from "firebase/firestore";
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, onSnapshot, setDoc } from "firebase/firestore";
 import { db } from "./firebase";
 
 // --- Types & Data ---
@@ -72,7 +74,7 @@ type ShabadItem = {
   audioUrl?: string;
   text?: string;
   author?: string;
-  order?: number;
+  sequence?: number;
 };
 
 type AppSettings = {
@@ -90,13 +92,63 @@ type Notification = {
   read: boolean;
 };
 
+type BadhaiItem = {
+  id: string;
+  name: string;
+  text: string;
+  photoUrl: string;
+  isActive?: boolean;
+};
+
+const niyamList = [
+  "तीस दिन सूतक रखना (जन्म के बाद 30 दिन तक सूतक मानना)।",
+  "ऋतुवंती स्त्री को पांच दिन अलग रखना।",
+  "प्रातःकाल उठकर स्नान करना।",
+  "शील, संतोष और शुचिता (पवित्रता) रखना।",
+  "प्रातः और संध्या के समय ईश्वर की वंदना करना।",
+  "संध्या के समय आरती करना और ईश्वर के गुण गाना।",
+  "प्रतिदिन प्रातःकाल हवन करना।",
+  "पानी, ईंधन और दूध को छानकर/देखकर काम में लेना।",
+  "वाणी को छानकर (सोच-समझकर) बोलना।",
+  "क्षमा धारण करना।",
+  "दया भाव रखना।",
+  "चोरी नहीं करना।",
+  "निंदा नहीं करना।",
+  "झूठ नहीं बोलना।",
+  "वाद-विवाद नहीं करना।",
+  "अमावस्या का व्रत रखना।",
+  "विष्णु (ईश्वर) का नाम जपना।",
+  "जीवों पर दया करना (अहिंसा)।",
+  "हरे वृक्ष नहीं काटना।",
+  "काम, क्रोध, मोह, लोभ, अहंकार को वश में करना।",
+  "स्वयं के हाथों से बना (या शुद्ध) भोजन करना।",
+  "पशुओं को बधिया नहीं करना (थाट अमर रखना)।",
+  "बैल को बधिया नहीं करना।",
+  "अमल (अफीम) नहीं खाना।",
+  "तम्बाकू का सेवन नहीं करना।",
+  "भांग नहीं पीना।",
+  "मद्य (शराब) नहीं पीना।",
+  "मांस नहीं खाना।",
+  "नीले वस्त्र नहीं पहनना।"
+];
+
 // --- Amavasya Auto-Calculation Logic ---
 const KNOWN_AMAVASYA = new Date(Date.UTC(2024, 0, 11, 11, 27, 0)).getTime();
 const KNOWN_MONTH_INDEX = 0; // पौष
 const SYNODIC_MONTH = 29.530588853 * 24 * 60 * 60 * 1000;
 const HINDU_MONTHS = [
-  "पौष", "माघ", "फाल्गुन", "चैत्र", "वैशाख", "ज्येष्ठ", 
-  "आषाढ़", "श्रावण", "भाद्रपद", "आश्विन", "कार्तिक", "मार्गशीर्ष"
+  "पौष",
+  "माघ",
+  "फाल्गुन",
+  "चैत्र",
+  "वैशाख",
+  "ज्येष्ठ",
+  "आषाढ़",
+  "श्रावण",
+  "भाद्रपद",
+  "आश्विन",
+  "कार्तिक",
+  "मार्गशीर्ष",
 ];
 
 function generateAmavasyaForYear(year: number) {
@@ -108,30 +160,45 @@ function generateAmavasyaForYear(year: number) {
   let monthsOffset = Math.floor(diff / SYNODIC_MONTH);
   let currentAmavasya = KNOWN_AMAVASYA + monthsOffset * SYNODIC_MONTH;
 
-  while (currentAmavasya < yearStart) { currentAmavasya += SYNODIC_MONTH; }
-  while (currentAmavasya - SYNODIC_MONTH >= yearStart) { currentAmavasya -= SYNODIC_MONTH; }
+  while (currentAmavasya < yearStart) {
+    currentAmavasya += SYNODIC_MONTH;
+  }
+  while (currentAmavasya - SYNODIC_MONTH >= yearStart) {
+    currentAmavasya -= SYNODIC_MONTH;
+  }
 
   const formatter = new Intl.DateTimeFormat("hi-IN", {
-    day: "2-digit", month: "long", hour: "2-digit", minute: "2-digit", hour12: true,
+    day: "2-digit",
+    month: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
   });
-  const monthFormatter = new Intl.DateTimeFormat("hi-IN", { month: "long", year: "numeric" });
+  const monthFormatter = new Intl.DateTimeFormat("hi-IN", {
+    month: "long",
+    year: "numeric",
+  });
 
   while (currentAmavasya <= yearEnd) {
     const peak = new Date(currentAmavasya);
     const start = new Date(currentAmavasya - 14 * 60 * 60 * 1000);
     const end = new Date(currentAmavasya + 10 * 60 * 60 * 1000);
 
-    let exactOffset = Math.round((currentAmavasya - KNOWN_AMAVASYA) / SYNODIC_MONTH);
+    let exactOffset = Math.round(
+      (currentAmavasya - KNOWN_AMAVASYA) / SYNODIC_MONTH,
+    );
     let monthIndex = (KNOWN_MONTH_INDEX + exactOffset) % 12;
     if (monthIndex < 0) monthIndex += 12;
+    let hindiMonth = HINDU_MONTHS[monthIndex];
 
     dates.push({
       gregorianMonth: monthFormatter.format(peak),
-      hindiMonth: HINDU_MONTHS[monthIndex],
+      hindiMonth: hindiMonth,
       sub: `विक्रम सम्वत ${year + 57}`,
       start: formatter.format(start),
       end: formatter.format(end),
     });
+
     currentAmavasya += SYNODIC_MONTH;
   }
   return dates;
@@ -353,14 +420,13 @@ export default function App() {
   const [selectedShabad, setSelectedShabad] = useState<ShabadItem | null>(null);
   const [fontSize, setFontSize] = useState(18);
   const [isBookmarked, setIsBookmarked] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
 
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [amavasyaList, setAmavasyaList] = useState(() =>
     generateAmavasyaForYear(selectedYear),
   );
 
-  // --- State is now completely Empty (Data comes from Firebase directly) ---
+  // --- Content State ---
   const [shabads, setShabads] = useState<ShabadItem[]>([]);
   const [aartis, setAartis] = useState<ShabadItem[]>([]);
   const [bhajans, setBhajans] = useState<ShabadItem[]>([]);
@@ -368,70 +434,95 @@ export default function App() {
   const [mantras, setMantras] = useState<ShabadItem[]>([]);
   const [thoughts, setThoughts] = useState<string[]>([]);
   const [meles, setMeles] = useState<any[]>([]);
-  const [niyams, setNiyams] = useState<string[]>([]);
+
+  // Badhai State
+  const [badhais, setBadhais] = useState<BadhaiItem[]>([]);
+  const [showBadhai, setShowBadhai] = useState(false);
+  const [isBannerHovered, setIsBannerHovered] = useState(false);
+  const activeBadhais = badhais.filter(b => b.isActive !== false);
+  const [flashAlert, setFlashAlert] = useState<{mela: string | null, amavasya: string | null} | null>(null);
 
   const [selectedCategory, setSelectedCategory] = useState<"aarti" | "bhajan" | "sakhi" | "mantra">("aarti");
 
-  const [pendingPosts, setPendingPosts] = useState<ShabadItem[]>([]);
+  const [pendingPosts, setPendingPosts] = useState<ShabadItem[]>([
+    {
+      id: "p1",
+      title: "नया साखी",
+      text: "यह एक यूज़र द्वारा भेजी गई साखी है...",
+      author: "राम कुमार",
+    },
+  ]);
   const [approvedPosts, setApprovedPosts] = useState<ShabadItem[]>([]);
 
   useEffect(() => {
-    // Ordered Fetch Logic from Firebase
+    if (!db) return;
+
+    const sortItems = (items: ShabadItem[]) => {
+      return items.sort((a, b) => {
+        if (a.sequence !== undefined && b.sequence !== undefined) {
+          return a.sequence - b.sequence;
+        }
+        if (a.sequence !== undefined) return -1;
+        if (b.sequence !== undefined) return 1;
+        
+        const numA = parseInt(a.title.match(/\d+/)?.[0] || "999999");
+        const numB = parseInt(b.title.match(/\d+/)?.[0] || "999999");
+        if (numA !== numB) return numA - numB;
+        return a.title.localeCompare(b.title);
+      });
+    };
+
     const unsubShabads = onSnapshot(collection(db, "shabads"), (snapshot) => {
       if (!snapshot.empty) {
-        let fetched = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as ShabadItem));
-        fetched.sort((a, b) => (a.order || 0) - (b.order || 0));
-        setShabads(fetched);
-      } else { setShabads([]); }
+        const fetched = snapshot.docs.map((doc) => {
+          const data = doc.data();
+          let title = data.title || "";
+          title = title.replace(/^\|\|\s*/, "").replace(/\s*\|\|$/, "");
+          return { id: doc.id, ...data, title } as ShabadItem;
+        });
+        setShabads(sortItems(fetched));
+      }
     });
     const unsubAartis = onSnapshot(collection(db, "aartis"), (snapshot) => {
       if (!snapshot.empty) {
-        let fetched = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as ShabadItem));
-        fetched.sort((a, b) => (a.order || 0) - (b.order || 0));
-        setAartis(fetched);
-      } else { setAartis([]); }
+        const fetched = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as ShabadItem));
+        setAartis(sortItems(fetched));
+      }
     });
     const unsubBhajans = onSnapshot(collection(db, "bhajans"), (snapshot) => {
       if (!snapshot.empty) {
-        let fetched = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as ShabadItem));
-        fetched.sort((a, b) => (a.order || 0) - (b.order || 0));
-        setBhajans(fetched);
-      } else { setBhajans([]); }
+        const fetched = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as ShabadItem));
+        setBhajans(sortItems(fetched));
+      }
     });
     const unsubSakhis = onSnapshot(collection(db, "sakhis"), (snapshot) => {
       if (!snapshot.empty) {
-        let fetched = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as ShabadItem));
-        fetched.sort((a, b) => (a.order || 0) - (b.order || 0));
-        setSakhis(fetched);
-      } else { setSakhis([]); }
+        const fetched = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as ShabadItem));
+        setSakhis(sortItems(fetched));
+      }
     });
     const unsubMantras = onSnapshot(collection(db, "mantras"), (snapshot) => {
       if (!snapshot.empty) {
-        let fetched = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as ShabadItem));
-        fetched.sort((a, b) => (a.order || 0) - (b.order || 0));
-        setMantras(fetched);
-      } else { setMantras([]); }
+        const fetched = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as ShabadItem));
+        setMantras(sortItems(fetched));
+      }
     });
     const unsubThoughts = onSnapshot(collection(db, "thoughts"), (snapshot) => {
       if (!snapshot.empty) {
-        let fetched = snapshot.docs.map(doc => doc.data());
-        fetched.sort((a, b) => (a.order || 0) - (b.order || 0));
-        setThoughts(fetched.map(f => f.text));
-      } else { setThoughts([]); }
+        setThoughts(snapshot.docs.map((doc) => doc.data().text as string));
+      }
     });
-    const unsubNiyams = onSnapshot(collection(db, "niyams"), (snapshot) => {
+    const unsubBadhais = onSnapshot(collection(db, "badhais"), (snapshot) => {
       if (!snapshot.empty) {
-        let fetched = snapshot.docs.map(doc => doc.data());
-        fetched.sort((a, b) => (a.order || 0) - (b.order || 0));
-        setNiyams(fetched.map(f => f.text));
-      } else { setNiyams([]); }
+        setBadhais(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as BadhaiItem)));
+      } else {
+        setBadhais([]);
+      }
     });
     const unsubMeles = onSnapshot(collection(db, "meles"), (snapshot) => {
       if (!snapshot.empty) {
-        let fetched = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as any));
-        fetched.sort((a, b) => (a.order || 0) - (b.order || 0));
-        setMeles(fetched);
-      } else { setMeles([]); }
+        setMeles(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as any)));
+      }
     });
     const unsubPending = onSnapshot(collection(db, "pendingPosts"), (snapshot) => {
       if (!snapshot.empty) {
@@ -447,41 +538,145 @@ export default function App() {
         setApprovedPosts([]);
       }
     });
+    const unsubSettings = onSnapshot(doc(db, "settings", "general"), (doc) => {
+      if (doc.exists()) {
+        setSettings((prev) => ({ ...prev, ...doc.data() }));
+      }
+    });
 
     return () => {
-      unsubShabads(); unsubAartis(); unsubBhajans(); unsubSakhis();
-      unsubMantras(); unsubThoughts(); unsubNiyams(); unsubMeles();
-      unsubPending(); unsubApproved();
+      unsubShabads();
+      unsubAartis();
+      unsubBhajans();
+      unsubSakhis();
+      unsubMantras();
+      unsubThoughts();
+      unsubMeles();
+      unsubPending();
+      unsubApproved();
+      unsubSettings();
+      unsubBadhais();
     };
   }, []);
 
-  const [dailyThought, setDailyThought] = useState("सुविचार लोड हो रहा है...");
+  // --- Daily Thought ---
+  const [dailyThought, setDailyThought] = useState(thoughts[0]);
 
   useEffect(() => {
     const now = new Date();
     const start = new Date(now.getFullYear(), 0, 0);
     const diff = now.getTime() - start.getTime();
-    const dayOfYear = Math.floor(diff / (1000 * 60 * 60 * 24));
-    if(thoughts && thoughts.length > 0){
-        setDailyThought(thoughts[dayOfYear % thoughts.length]);
+    const oneDay = 1000 * 60 * 60 * 24;
+    const dayOfYear = Math.floor(diff / oneDay);
+    if (thoughts && thoughts.length > 0) {
+      setDailyThought(thoughts[dayOfYear % thoughts.length]);
+    } else {
+      setDailyThought("शुभ दिन!");
     }
   }, [thoughts]);
 
+  // --- Banner Rotation Timer ---
+  useEffect(() => {
+    if (activeBadhais.length > 0 && !isBannerHovered) {
+      const interval = setInterval(() => {
+        setShowBadhai((prev) => !prev);
+      }, 7000);
+      return () => clearInterval(interval);
+    } else if (activeBadhais.length === 0) {
+      setShowBadhai(false);
+    }
+  }, [activeBadhais.length, isBannerHovered]);
+// नया: Flash Alert Logic (अमावस्या और मेले के लिए)
+  useEffect(() => {
+    const todayStr = new Date().toDateString();
+    const lastSeen = sessionStorage.getItem("flashAlertSeen");
+    // if (lastSeen === todayStr) return; // (टेस्टिंग के लिए अभी बंद है)
+
+    let melaMsg = null;
+    let amavasyaMsg = null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // 1. मेले चेक करें
+    if (meles && meles.length > 0) {
+      const upcomingMela = meles.find(m => {
+        const mDate = new Date(m.dateStr);
+        mDate.setHours(0, 0, 0, 0);
+        const diffDays = Math.ceil((mDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        return diffDays >= 0 && diffDays <= 3; // आज से 3 दिन के अंदर
+      });
+      if (upcomingMela) {
+        const mDate = new Date(upcomingMela.dateStr);
+        mDate.setHours(0, 0, 0, 0);
+        const diffDays = Math.ceil((mDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        let dayText = diffDays === 0 ? "आज" : diffDays === 1 ? "कल" : `${diffDays} दिन बाद`;
+        melaMsg = `"${upcomingMela.name}" ${dayText} है।\nस्थान: ${upcomingMela.location}`;
+      }
+    }
+
+    // 2. अमावस्या चेक करें और समय निकालें
+    const KNOWN_AMAVASYA = new Date(Date.UTC(2024, 0, 11, 11, 27, 0)).getTime();
+    const SYNODIC_MONTH = 29.530588853 * 24 * 60 * 60 * 1000;
+    const passedMonths = Math.floor((today.getTime() - KNOWN_AMAVASYA) / SYNODIC_MONTH);
+    let nextAmavasyaTime = KNOWN_AMAVASYA + (passedMonths + 1) * SYNODIC_MONTH;
+    
+    let diffDays = Math.ceil((nextAmavasyaTime - today.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays >= 29) diffDays = 0;
+
+    if (diffDays >= 0 && diffDays <= 30) { // (टेस्टिंग के लिए 30 दिन रखा है)
+      let dayText = diffDays === 0 ? "आज" : diffDays === 1 ? "कल" : `${diffDays} दिन बाद`;
+      
+      // लगने और उतरने का समय निकालना
+      const start = new Date(nextAmavasyaTime - 14 * 60 * 60 * 1000);
+      const end = new Date(nextAmavasyaTime + 10 * 60 * 60 * 1000);
+      
+      const formatter = new Intl.DateTimeFormat("hi-IN", {
+        day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: true
+      });
+      
+      amavasyaMsg = `${dayText} अमावस्या है।\nप्रारम्भ: ${formatter.format(start)} • समाप्त: ${formatter.format(end)}`;
+    }
+
+    if (melaMsg || amavasyaMsg) {
+      setFlashAlert({ mela: melaMsg, amavasya: amavasyaMsg });
+      const timer = setTimeout(() => {
+        setFlashAlert(null);
+        sessionStorage.setItem("flashAlertSeen", todayStr);
+      }, 15000);
+      return () => clearTimeout(timer);
+    }
+  }, [meles]);
+
+  const closeFlashAlert = () => {
+    setFlashAlert(null);
+    sessionStorage.setItem("flashAlertSeen", new Date().toDateString());
+  };
+
   // --- Notifications ---
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>([
-    {
-      id: "n1",
-      title: "नया अपडेट",
-      message: "अमावस्या दर्शन में नए फीचर्स जोड़े गए हैं।",
-      date: "आज",
-      read: false,
-    },
-  ]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  const markAllRead = () => {
-    setNotifications(notifications.map((n) => ({ ...n, read: true })));
+  useEffect(() => {
+    if (!db) return;
+    const unsubNotifications = onSnapshot(collection(db, "notifications"), (snapshot) => {
+      if (!snapshot.empty) {
+        setNotifications(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as Notification)));
+      } else {
+        setNotifications([]);
+      }
+    });
+    return () => unsubNotifications();
+  }, []);
+
+  const markAllRead = async () => {
+    if (!db) return;
+    try {
+      const batch = notifications.filter(n => !n.read).map(n => updateDoc(doc(db, "notifications", n.id), { read: true }));
+      await Promise.all(batch);
+    } catch (error) {
+      console.error("Error marking notifications as read:", error);
+    }
   };
 
   // --- Admin State ---
@@ -489,10 +684,8 @@ export default function App() {
   const [adminPasswordInput, setAdminPasswordInput] = useState("");
 
   const [settings, setSettings] = useState<AppSettings>({
-    logoUrl:
-      "https://api.dicebear.com/7.x/shapes/svg?seed=shabadwani&backgroundColor=e68a00",
-    qrCodeUrl:
-      "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=upi://pay?pa=shabadwani@upi&pn=Shabadwani",
+    logoUrl: "https://api.dicebear.com/7.x/shapes/svg?seed=shabadwani&backgroundColor=e68a00",
+    qrCodeUrl: "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=upi://pay?pa=shabadwani@upi&pn=Shabadwani",
     adText: "प्रीमियम पूजा सामग्री और साहित्य खरीदें - 20% छूट",
     upiId: "shabadwani@upi",
   });
@@ -500,6 +693,7 @@ export default function App() {
   // --- Form State for Contribution ---
   const [contribTitle, setContribTitle] = useState("");
   const [contribType, setContribType] = useState("शब्द");
+  const [contribSequence, setContribSequence] = useState<number | "">("");
   const [contribAudio, setContribAudio] = useState("");
   const [contribText, setContribText] = useState("");
   const [contribAuthor, setContribAuthor] = useState("");
@@ -510,6 +704,91 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [malaCount, setMalaCount] = useState(0);
   const [malaLaps, setMalaLaps] = useState(0);
+
+  // --- Admin Add Function ---
+  const handleAdminSubmitData = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!db) {
+      alert("Firebase is not configured.");
+      return;
+    }
+    try {
+      const orderVal = Date.now();
+      
+      if (contribType === "बधाई संदेश") {
+        await addDoc(collection(db, "badhais"), { 
+          name: contribTitle, 
+          text: contribText, 
+          photoUrl: contribAudio, 
+          isActive: true,
+          order: orderVal 
+        });
+        alert("नया बधाई संदेश सफलतापूर्वक जोड़ा गया!");
+      } else if (contribType === "मेले") {
+        const newMela = {
+          name: contribTitle,
+          dateStr: contribDate,
+          location: contribLocation,
+          desc: contribText,
+          order: orderVal
+        };
+        await addDoc(collection(db, "meles"), newMela);
+        alert("नया मेला सफलतापूर्वक जोड़ा गया!");
+      } else {
+        const newContent: any = {
+          title: contribTitle,
+          text: contribText,
+          audioUrl: contribAudio,
+          author: "Admin",
+          order: orderVal
+        };
+        if (contribSequence !== "") {
+          newContent.sequence = Number(contribSequence);
+        }
+
+        if (contribType === "शब्द") {
+          await addDoc(collection(db, "shabads"), newContent);
+          alert("नया शब्द सफलतापूर्वक जोड़ा गया!");
+        } else if (contribType === "भजन") {
+          await addDoc(collection(db, "bhajans"), newContent);
+          alert("नया भजन सफलतापूर्वक जोड़ा गया!");
+        } else if (contribType === "आरती") {
+          await addDoc(collection(db, "aartis"), newContent);
+          alert("नई आरती सफलतापूर्वक जोड़ी गई!");
+        } else if (contribType === "मंत्र") {
+          await addDoc(collection(db, "mantras"), newContent);
+          alert("नया मंत्र सफलतापूर्वक जोड़ा गया!");
+        } else if (contribType === "साखी") {
+          await addDoc(collection(db, "sakhis"), newContent);
+          alert("नई साखी सफलतापूर्वक जोड़ी गई!");
+        } else if (contribType === "सुविचार") {
+          await addDoc(collection(db, "thoughts"), { text: contribText, order: orderVal });
+          alert("नया सुविचार सफलतापूर्वक जोड़ा गया!");
+        }
+      }
+
+      // Send Notification automatically except for Badhai
+      if (contribType !== "बधाई संदेश") {
+        await addDoc(collection(db, "notifications"), {
+          title: `नया ${contribType} जोड़ा गया`,
+          message: `नया ${contribType} "${contribTitle || 'सामग्री'}" ऐप में जोड़ दिया गया है।`,
+          date: "अभी",
+          read: false,
+        });
+      }
+
+      setContribTitle("");
+      setContribText("");
+      setContribAudio("");
+      setContribSequence("");
+      setContribType("शब्द");
+      setContribDate("");
+      setContribLocation("");
+    } catch (error) {
+      console.error("Error adding document: ", error);
+      alert("सामग्री जोड़ने में त्रुटि हुई।");
+    }
+  };
 
   // --- Admin Edit State ---
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -522,16 +801,65 @@ export default function App() {
 
   const handleEditSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSaving(true);
+    if (!db) {
+      alert("Firebase is not configured.");
+      return;
+    }
     try {
-      const docRef = doc(db, editItemData.type === "शब्द" ? "shabads" : editItemData.type === "मंत्र" ? "mantras" : editItemData.type === "आरती" ? "aartis" : editItemData.type === "भजन" ? "bhajans" : editItemData.type === "साखी" ? "sakhis" : editItemData.type === "सुविचार" ? "thoughts" : editItemData.type === "नियम" ? "niyams" : "meles", editItemData.id);
-      
-      if (editItemData.type === "मेले") {
-        await updateDoc(docRef, { name: editItemData.name, dateStr: editItemData.dateStr, location: editItemData.location, desc: editItemData.desc });
-      } else if (editItemData.type === "सुविचार" || editItemData.type === "नियम") {
-        await updateDoc(docRef, { text: editItemData.text });
-      } else {
-        await updateDoc(docRef, { title: editItemData.title, text: editItemData.text, audioUrl: editItemData.audioUrl });
+      if (editItemData.type === "शब्द") {
+        await updateDoc(doc(db, "shabads", editItemData.id), {
+          title: editItemData.title,
+          text: editItemData.text,
+          audioUrl: editItemData.audioUrl,
+          sequence: editItemData.sequence !== undefined ? Number(editItemData.sequence) : null,
+        });
+      } else if (editItemData.type === "मंत्र") {
+        await updateDoc(doc(db, "mantras", editItemData.id), {
+          title: editItemData.title,
+          text: editItemData.text,
+          audioUrl: editItemData.audioUrl,
+          sequence: editItemData.sequence !== undefined ? Number(editItemData.sequence) : null,
+        });
+      } else if (editItemData.type === "आरती") {
+        await updateDoc(doc(db, "aartis", editItemData.id), {
+          title: editItemData.title,
+          text: editItemData.text,
+          audioUrl: editItemData.audioUrl,
+          sequence: editItemData.sequence !== undefined ? Number(editItemData.sequence) : null,
+        });
+      } else if (editItemData.type === "भजन") {
+        await updateDoc(doc(db, "bhajans", editItemData.id), {
+          title: editItemData.title,
+          text: editItemData.text,
+          audioUrl: editItemData.audioUrl,
+          sequence: editItemData.sequence !== undefined ? Number(editItemData.sequence) : null,
+        });
+      } else if (editItemData.type === "साखी") {
+        await updateDoc(doc(db, "sakhis", editItemData.id), {
+          title: editItemData.title,
+          text: editItemData.text,
+          audioUrl: editItemData.audioUrl,
+          sequence: editItemData.sequence !== undefined ? Number(editItemData.sequence) : null,
+        });
+      } else if (editItemData.type === "सुविचार") {
+        if (editItemData.id) {
+          await updateDoc(doc(db, "thoughts", editItemData.id), {
+            text: editItemData.text,
+          });
+        }
+      } else if (editItemData.type === "मेले") {
+        await updateDoc(doc(db, "meles", editItemData.id), {
+          name: editItemData.name,
+          dateStr: editItemData.dateStr,
+          location: editItemData.location,
+          desc: editItemData.desc,
+        });
+      } else if (editItemData.type === "बधाई संदेश") {
+        await updateDoc(doc(db, "badhais", editItemData.id), {
+          name: editItemData.name,
+          photoUrl: editItemData.photoUrl,
+          text: editItemData.text,
+        });
       }
       setEditModalOpen(false);
       alert("बदलाव सफलतापूर्वक सेव किए गए!");
@@ -539,15 +867,23 @@ export default function App() {
       console.error("Error updating document: ", error);
       alert("अपडेट करने में त्रुटि हुई।");
     }
-    setIsSaving(false);
   };
 
-  const handleDelete = async (type: string, id: string) => {
+  const handleDelete = async (type: string, id: string, index?: number) => {
     if (!window.confirm("क्या आप वाकई इसे हटाना चाहते हैं?")) return;
+    if (!db) {
+      alert("Firebase is not configured.");
+      return;
+    }
     try {
-      const coll = type === "शब्द" ? "shabads" : type === "मंत्र" ? "mantras" : type === "आरती" ? "aartis" : type === "भजन" ? "bhajans" : type === "साखी" ? "sakhis" : type === "सुविचार" ? "thoughts" : type === "नियम" ? "niyams" : "meles";
-      await deleteDoc(doc(db, coll, id));
-      alert("सफलतापूर्वक हटा दिया गया!");
+      if (type === "शब्द") await deleteDoc(doc(db, "shabads", id));
+      else if (type === "मंत्र") await deleteDoc(doc(db, "mantras", id));
+      else if (type === "आरती") await deleteDoc(doc(db, "aartis", id));
+      else if (type === "भजन") await deleteDoc(doc(db, "bhajans", id));
+      else if (type === "साखी") await deleteDoc(doc(db, "sakhis", id));
+      else if (type === "सुविचार" && id) await deleteDoc(doc(db, "thoughts", id));
+      else if (type === "मेले" && id) await deleteDoc(doc(db, "meles", id));
+      else if (type === "बधाई संदेश" && id) await deleteDoc(doc(db, "badhais", id));
     } catch (error) {
       console.error("Error deleting document: ", error);
       alert("हटाने में त्रुटि हुई।");
@@ -808,8 +1144,8 @@ export default function App() {
 
   const bindSwipe = useDrag(
     ({ swipe: [swipeX] }) => {
-      if (swipeX === -1) handleSwipe("left"); // Swiped left
-      if (swipeX === 1) handleSwipe("right"); // Swiped right
+      if (swipeX === -1) handleSwipe("left");
+      if (swipeX === 1) handleSwipe("right");
     },
     { filterTaps: true, swipe: { distance: 50 } },
   );
@@ -846,7 +1182,7 @@ export default function App() {
           title: selectedShabad?.title || "शब्दवाणी",
           text:
             "शब्दवाणी ऐप से यह पाठ पढ़ें:\n\n" +
-            (selectedShabad?.text || "डेटा लोड हो रहा है...").substring(0, 100) +
+            (selectedShabad?.text || "").substring(0, 100) +
             "...",
           url: window.location.href,
         });
@@ -860,6 +1196,10 @@ export default function App() {
 
   const handleContributeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!db) {
+      alert("Firebase is not configured. Please set the API keys.");
+      return;
+    }
     const newPost = {
       title: contribTitle,
       text: contribText,
@@ -883,7 +1223,22 @@ export default function App() {
     }
   };
 
+  const handleSaveSettings = async () => {
+    if (!db) return;
+    try {
+      await setDoc(doc(db, "settings", "general"), settings);
+      alert("Settings saved successfully!");
+    } catch (error) {
+      console.error("Error saving settings:", error);
+      alert("Failed to save settings.");
+    }
+  };
+
   const approvePost = async (post: any) => {
+    if (!db) {
+      alert("Firebase is not configured.");
+      return;
+    }
     try {
       const collectionName = post.type === "शब्द" ? "shabads" :
                              post.type === "भजन" ? "bhajans" :
@@ -896,21 +1251,16 @@ export default function App() {
         text: post.text,
         audioUrl: post.audioUrl,
         author: post.author,
-        order: Date.now() 
       });
       
       await deleteDoc(doc(db, "pendingPosts", post.id));
 
-      setNotifications([
-        {
-          id: Date.now().toString(),
-          title: "नया योगदान स्वीकृत",
-          message: `"${post.title}" को ऐप में जोड़ दिया गया है।`,
-          date: "अभी",
-          read: false,
-        },
-        ...notifications,
-      ]);
+      await addDoc(collection(db, "notifications"), {
+        title: "नया योगदान स्वीकृत",
+        message: `"${post.title}" को ऐप में जोड़ दिया गया है।`,
+        date: "अभी",
+        read: false,
+      });
     } catch (error) {
       console.error("Error approving post: ", error);
       alert("स्वीकृत करने में त्रुटि हुई।");
@@ -918,6 +1268,10 @@ export default function App() {
   };
 
   const rejectPost = async (id: string) => {
+    if (!db) {
+      alert("Firebase is not configured.");
+      return;
+    }
     try {
       await deleteDoc(doc(db, "pendingPosts", id));
     } catch (error) {
@@ -925,27 +1279,6 @@ export default function App() {
       alert("अस्वीकृत करने में त्रुटि हुई।");
     }
   };
-
-  const handleAdminSubmitData = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSaving(true);
-    try {
-      const orderVal = Date.now(); 
-      if (contribType === "मेले") {
-        await addDoc(collection(db, "meles"), { name: contribTitle, dateStr: contribDate, location: contribLocation, desc: contribText, order: orderVal });
-      } else {
-        const newContent = { title: contribTitle, text: contribText, audioUrl: contribAudio, author: "Admin", order: orderVal };
-        const coll = contribType === "शब्द" ? "shabads" : contribType === "भजन" ? "bhajans" : contribType === "आरती" ? "aartis" : contribType === "मंत्र" ? "mantras" : contribType === "साखी" ? "sakhis" : contribType === "नियम" ? "niyams" : "thoughts";
-        await addDoc(collection(db, coll), (contribType === "सुविचार" || contribType === "नियम") ? { text: contribText, order: orderVal } : newContent);
-      }
-      alert("नया डेटा सफलतापूर्वक सेव हो गया है! ✅");
-      setContribTitle(""); setContribText(""); setContribAudio(""); setContribType("शब्द"); setContribDate(""); setContribLocation("");
-    } catch (error) {
-      alert("सामग्री जोड़ने में त्रुटि हुई ❌");
-    }
-    setIsSaving(false);
-  };
-
 
   const renderScreen = () => {
     switch (currentScreen) {
@@ -957,25 +1290,103 @@ export default function App() {
             exit={{ opacity: 0, x: 20 }}
             className="pb-32"
           >
-            {/* Thought of the Day Card */}
-            <div className="mx-4 my-4 p-6 bg-gradient-to-br from-accent to-accent-dark rounded-[2rem] text-white shadow-[0_8px_30px_rgba(230,138,0,0.2)] relative overflow-hidden">
-              <div className="absolute -right-4 -top-4 opacity-10">
-                <Sun className="w-32 h-32" />
-              </div>
-              <div className="relative z-10">
-                <div className="flex items-center gap-2 mb-3 opacity-90">
-                  <Quote className="w-5 h-5" />
-                  <h3 className="text-sm font-bold tracking-wider uppercase">
-                    आज का सुविचार
-                  </h3>
-                </div>
-                <p className="text-xl font-medium leading-snug mb-3">
-                  "{dailyThought}"
-                </p>
-                <p className="text-sm opacity-80 text-right font-semibold">
-                  - गुरु जाम्भेश्वर
-                </p>
-              </div>
+            {/* Premium Rotating Banner: Alert -> Badhai -> Thought */}
+            <div 
+              className="mx-4 my-4 h-[140px] relative cursor-pointer"
+              onMouseEnter={() => setIsBannerHovered(true)}
+              onMouseLeave={() => setIsBannerHovered(false)}
+              onTouchStart={() => setIsBannerHovered(true)}
+              onTouchEnd={() => setIsBannerHovered(false)}
+            >
+              <AnimatePresence mode="wait">
+                {flashAlert ? (
+                  <motion.div
+                    key="flashAlert"
+                    initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.5 }}
+                    className="absolute inset-0 p-4 bg-gradient-to-br from-accent to-accent-dark rounded-[2rem] text-white shadow-[0_8px_30px_rgba(230,138,0,0.2)] flex flex-col justify-center overflow-hidden border border-white/10"
+                  >
+                    <div className="absolute -right-4 -top-4 opacity-10">
+                      <CalendarDays className="w-32 h-32" />
+                    </div>
+                    
+                    <div className="relative z-10 flex flex-col justify-center items-center text-center h-full w-full">
+                      <h3 className="font-heading text-[15px] sm:text-[17px] tracking-wide mb-2 drop-shadow-sm text-yellow-100 leading-tight w-full">
+                        || आगामी सूचना ||
+                      </h3>
+                      
+                      <div className="flex flex-col gap-2 w-full items-center justify-center">
+                        {flashAlert.mela && (
+                          <p className="text-[11px] sm:text-[12px] font-medium leading-snug opacity-95 whitespace-pre-wrap text-center">
+                            <Flame className="w-4 h-4 inline-block mr-1 text-yellow-400 -mt-1 fill-current" />
+                            {flashAlert.mela}
+                          </p>
+                        )}
+                        
+                        {/* अगर दोनों हैं, तो बीच में यह हल्की सी लाइन (Separator) दिखेगी */}
+                        {flashAlert.mela && flashAlert.amavasya && (
+                          <div className="w-3/4 h-px bg-white/30 rounded-full"></div>
+                        )}
+                        
+                        {flashAlert.amavasya && (
+                          <p className="text-[11px] sm:text-[12px] font-medium leading-snug opacity-95 whitespace-pre-wrap">
+                            🌙 {flashAlert.amavasya}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Timer Line (15 seconds progress) */}
+                    <motion.div 
+                      initial={{ width: "100%" }} 
+                      animate={{ width: "0%" }} 
+                      transition={{ duration: 15, ease: "linear" }}
+                      className="absolute bottom-0 left-0 h-1.5 bg-gradient-to-r from-yellow-200 to-yellow-500 rounded-b-[2rem]"
+                    />
+                  </motion.div>
+                ) : showBadhai && activeBadhais.length > 0 ? (
+                  <motion.div
+                    key="badhai"
+                    initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.5 }}
+                    className="absolute inset-0 p-4 bg-gradient-to-br from-accent to-accent-dark rounded-[2rem] text-white shadow-[0_8px_30px_rgba(230,138,0,0.2)] flex items-center overflow-hidden"
+                  >
+                    <div className="absolute -right-4 -top-4 opacity-10"><Users className="w-32 h-32" /></div>
+                    
+                    <div className="relative z-10 flex gap-3 w-full h-full items-center">
+                      <div className="shrink-0 w-[42%] h-full flex items-center justify-center">
+                        <img src={activeBadhais[0].photoUrl || "https://api.dicebear.com/7.x/initials/svg?seed=B"} alt="Profile" className="w-full h-full object-cover rounded-xl border border-white/20 shadow-sm bg-white/10" />
+                      </div>
+                      
+                      <div className="flex-1 flex flex-col justify-center items-center text-center h-full py-1">
+                        <h3 className="font-heading text-sm sm:text-base tracking-wide mb-0 drop-shadow-sm text-yellow-100 leading-relaxed w-full">
+                          || बधाई एवं शुभकामनाएं ||
+                        </h3>
+                        <p className="text-[10px] sm:text-[11px] font-medium leading-relaxed mt-auto pt-1 mb-1.5 line-clamp-3 w-full opacity-95">
+                          {activeBadhais[0].text}
+                        </p>
+                        <p className="text-[10px] sm:text-xs font-bold opacity-100 mt-auto mb-0 w-full">
+                          - {activeBadhais[0].name}
+                        </p>
+                      </div>
+                    </div>
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="thought"
+                    initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.5 }}
+                    className="absolute inset-0 p-6 bg-gradient-to-br from-accent to-accent-dark rounded-[2rem] text-white shadow-[0_8px_30px_rgba(230,138,0,0.2)] flex flex-col justify-center overflow-hidden"
+                  >
+                    <div className="absolute -right-4 -top-4 opacity-10"><Sun className="w-32 h-32" /></div>
+                    <div className="relative z-10 flex flex-col justify-center h-full">
+                      <div className="flex items-center gap-2 mb-3 opacity-90">
+                        <Quote className="w-5 h-5" />
+                        <h3 className="text-sm font-bold tracking-wider uppercase">आज का सुविचार</h3>
+                      </div>
+                      <p className="text-xl font-medium leading-snug mb-3 line-clamp-2">"{dailyThought}"</p>
+                      <p className="text-sm opacity-80 text-right font-semibold mt-auto">- गुरु जाम्भेश्वर</p>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             {/* Premium Grid Layout for Main Categories */}
@@ -1163,6 +1574,124 @@ export default function App() {
           </motion.div>
         );
 
+      case "search":
+        const filteredShabads = searchQuery ? shabads.filter(s => s.title.toLowerCase().includes(searchQuery.toLowerCase()) || (s.text && s.text.toLowerCase().includes(searchQuery.toLowerCase()))) : [];
+        const filteredAartis = searchQuery ? aartis.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase()) || (m.text && m.text.toLowerCase().includes(searchQuery.toLowerCase()))) : [];
+        const filteredBhajans = searchQuery ? bhajans.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase()) || (m.text && m.text.toLowerCase().includes(searchQuery.toLowerCase()))) : [];
+        const filteredSakhis = searchQuery ? sakhis.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase()) || (m.text && m.text.toLowerCase().includes(searchQuery.toLowerCase()))) : [];
+        const filteredMantras = searchQuery ? mantras.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase()) || (m.text && m.text.toLowerCase().includes(searchQuery.toLowerCase()))) : [];
+        const filteredMeles = searchQuery ? meles.filter(m => m.name.toLowerCase().includes(searchQuery.toLowerCase()) || m.location.toLowerCase().includes(searchQuery.toLowerCase())) : [];
+        
+        return (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="pb-32 px-4 pt-4">
+            <div className="flex items-center gap-3 mb-6">
+              <button onClick={() => navigateTo('home')} className="p-2 bg-white rounded-full shadow-sm border border-ink/10">
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+              <div className="flex-1 relative">
+                <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-ink-light" />
+                <input 
+                  autoFocus
+                  type="text" 
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="शब्द, भजन, आरती, साखी या मेले खोजें..." 
+                  className="w-full pl-12 pr-4 py-3 rounded-2xl border border-ink/20 bg-white focus:border-accent outline-none shadow-sm"
+                />
+              </div>
+            </div>
+
+            {searchQuery && (
+              <div className="space-y-6">
+                {filteredShabads.length > 0 && (
+                  <div>
+                    <h3 className="font-bold text-lg mb-3 text-accent-dark">शब्दवाणी ({filteredShabads.length})</h3>
+                    <div className="space-y-3">
+                      {filteredShabads.map(s => (
+                        <button key={s.id} onClick={() => handleShabadClick(s)} className="w-full text-left bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
+                          <h4 className="font-bold text-ink">{s.title}</h4>
+                          <p className="text-sm text-ink-light line-clamp-1 mt-1">{s.text}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {filteredAartis.length > 0 && (
+                  <div>
+                    <h3 className="font-bold text-lg mb-3 text-accent-dark">आरती ({filteredAartis.length})</h3>
+                    <div className="space-y-3">
+                      {filteredAartis.map(m => (
+                        <button key={m.id} onClick={() => { setSelectedShabad(m); setSelectedCategory("aarti"); navigateTo('audio_reading'); }} className="w-full text-left bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
+                          <h4 className="font-bold text-ink">{m.title}</h4>
+                          <p className="text-sm text-ink-light line-clamp-1 mt-1">{m.text}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {filteredBhajans.length > 0 && (
+                  <div>
+                    <h3 className="font-bold text-lg mb-3 text-accent-dark">भजन ({filteredBhajans.length})</h3>
+                    <div className="space-y-3">
+                      {filteredBhajans.map(m => (
+                        <button key={m.id} onClick={() => { setSelectedShabad(m); setSelectedCategory("bhajan"); navigateTo('audio_reading'); }} className="w-full text-left bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
+                          <h4 className="font-bold text-ink">{m.title}</h4>
+                          <p className="text-sm text-ink-light line-clamp-1 mt-1">{m.text}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {filteredSakhis.length > 0 && (
+                  <div>
+                    <h3 className="font-bold text-lg mb-3 text-accent-dark">साखी ({filteredSakhis.length})</h3>
+                    <div className="space-y-3">
+                      {filteredSakhis.map(m => (
+                        <button key={m.id} onClick={() => { setSelectedShabad(m); setSelectedCategory("sakhi"); navigateTo('audio_reading'); }} className="w-full text-left bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
+                          <h4 className="font-bold text-ink">{m.title}</h4>
+                          <p className="text-sm text-ink-light line-clamp-1 mt-1">{m.text}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {filteredMantras.length > 0 && (
+                  <div>
+                    <h3 className="font-bold text-lg mb-3 text-accent-dark">मंत्र ({filteredMantras.length})</h3>
+                    <div className="space-y-3">
+                      {filteredMantras.map(m => (
+                        <button key={m.id} onClick={() => { setSelectedShabad(m); setSelectedCategory("mantra"); navigateTo('audio_reading'); }} className="w-full text-left bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
+                          <h4 className="font-bold text-ink">{m.title}</h4>
+                          <p className="text-sm text-ink-light line-clamp-1 mt-1">{m.text}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {filteredMeles.length > 0 && (
+                  <div>
+                    <h3 className="font-bold text-lg mb-3 text-accent-dark">मेले ({filteredMeles.length})</h3>
+                    <div className="space-y-3">
+                      {filteredMeles.map((m, idx) => (
+                        <div key={idx} className="bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
+                          <h4 className="font-bold text-ink">{m.name}</h4>
+                          <p className="text-sm text-ink-light mt-1">{m.location} • {m.dateStr}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {filteredShabads.length === 0 && filteredAartis.length === 0 && filteredBhajans.length === 0 && filteredSakhis.length === 0 && filteredMantras.length === 0 && filteredMeles.length === 0 && (
+                  <div className="text-center py-12 text-ink-light">
+                    <Search className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                    <p>कोई परिणाम नहीं मिला</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </motion.div>
+        );
+
       case "mala":
         return (
           <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="pb-32 min-h-[calc(100vh-60px)] flex flex-col">
@@ -1183,7 +1712,6 @@ export default function App() {
               </div>
               
               <div className="relative flex items-center justify-center">
-                {/* Decorative background rings */}
                 <div className="absolute flex items-center justify-center pointer-events-none opacity-5">
                   <div className="w-64 h-64 rounded-full border-[20px] border-ink"></div>
                   <div className="absolute w-80 h-80 rounded-full border-[2px] border-ink border-dashed"></div>
@@ -1244,14 +1772,14 @@ export default function App() {
               </div>
 
               <div className="space-y-3">
-                {niyams.length > 0 ? niyams.map((niyam, idx) => (
+                {niyamList.map((niyam, idx) => (
                   <div key={idx} className="flex items-start gap-4 bg-white p-4 rounded-2xl shadow-sm border border-ink/5 hover:border-accent/30 transition-colors">
                     <div className="w-8 h-8 shrink-0 rounded-full bg-accent/10 text-accent font-bold flex items-center justify-center text-sm">
                       {idx + 1}
                     </div>
                     <p className="text-ink font-medium pt-1 leading-relaxed">{niyam}</p>
                   </div>
-                )) : <div className="text-center text-ink-light py-10"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" /> डेटा लोड हो रहा है...</div>}
+                ))}
               </div>
             </div>
           </motion.div>
@@ -1277,19 +1805,23 @@ export default function App() {
               </h1>
             </div>
             <div className="flex flex-col p-2 mt-2">
-              {shabads.length > 0 ? shabads.map((item) => (
+              {shabads.map((item) => (
                 <button
                   key={item.id}
                   onClick={() => handleShabadClick(item)}
                   className="flex items-center p-4 mx-2 my-1.5 bg-white/60 rounded-2xl border border-ink/5 hover:bg-white/90 transition-all shadow-sm text-left group"
                 >
-                  <BookOpenText className="w-6 h-6 mr-4 text-ink-light shrink-0" />
+                  {item.icon ? (
+                    <item.icon className="w-6 h-6 mr-4 text-ink-light shrink-0" />
+                  ) : (
+                    <BookOpenText className="w-6 h-6 mr-4 text-ink-light shrink-0" />
+                  )}
                   <span className="text-xl font-semibold leading-tight flex-1 text-ink">
                     {item.title}
                   </span>
                   <ChevronRight className="w-5 h-5 text-ink-light/40 group-hover:text-ink-light transition-colors" />
                 </button>
-              )) : <div className="text-center text-ink-light py-10"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" /> डेटा लोड हो रहा है...</div>}
+              ))}
             </div>
           </motion.div>
         );
@@ -1321,7 +1853,7 @@ export default function App() {
               </h1>
             </div>
             <div className="flex flex-col p-2 mt-2">
-              {categoryData.list.length > 0 ? categoryData.list.map((item) => (
+              {categoryData.list.map((item) => (
                 <button
                   key={item.id}
                   onClick={() => {
@@ -1338,7 +1870,7 @@ export default function App() {
                   </span>
                   <ChevronRight className="w-5 h-5 text-ink-light/40 group-hover:text-ink-light transition-colors" />
                 </button>
-              )) : <div className="text-center text-ink-light py-10"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" /> डेटा लोड हो रहा है...</div>}
+              ))}
             </div>
           </motion.div>
         );
@@ -1366,7 +1898,7 @@ export default function App() {
               {approvedPosts.length === 0 ? (
                 <div className="text-center text-ink-light mt-10">
                   <Users className="w-16 h-16 mx-auto opacity-20 mb-4" />
-                  <p className="text-xl">अभी तक कोई योगदान नहीं है।</p>
+                  <p className="text-xl">अभी तक कोई योगदान नहीं है。</p>
                   <button
                     onClick={() => navigateTo("contribute")}
                     className="mt-4 text-accent font-bold underline"
@@ -1383,9 +1915,11 @@ export default function App() {
                     <h3 className="text-xl font-bold text-ink mb-2">
                       {item.title}
                     </h3>
-                    <p className="text-sm text-ink-light mb-4 flex items-center gap-2">
-                      <Users className="w-4 h-4" /> {item.author}
-                    </p>
+                    {item.author && item.author.toLowerCase() !== "admin" && (
+                      <p className="text-sm text-ink-light mb-4 flex items-center gap-2">
+                        <Users className="w-4 h-4" /> {item.author}
+                      </p>
+                    )}
                     <p className="text-ink whitespace-pre-wrap line-clamp-3 mb-4">
                       {item.text}
                     </p>
@@ -1477,9 +2011,11 @@ export default function App() {
                 <div className="w-full max-w-md bg-gradient-to-r from-accent to-accent-dark text-white text-center py-3 px-4 rounded-2xl shadow-md mb-6 border border-ink/20 relative overflow-hidden">
                   <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-20"></div>
                   <h2 className="text-2xl font-semibold relative z-10">
-                    {selectedShabad?.title}
+                    {selectedShabad?.title && !selectedShabad.title.includes("मन्त्र") && !selectedShabad.title.includes("गोत्रचार")
+                      ? `|| ${selectedShabad.title} ||`
+                      : selectedShabad?.title}
                   </h2>
-                  {selectedShabad?.author && (
+                  {selectedShabad?.author && selectedShabad.author.toLowerCase() !== "admin" && (
                     <p className="text-xs opacity-80 mt-1 relative z-10">
                       द्वारा: {selectedShabad.author}
                     </p>
@@ -1490,7 +2026,7 @@ export default function App() {
                   className="text-center leading-relaxed max-w-2xl whitespace-pre-wrap mt-2 bg-white/60 p-6 sm:p-8 rounded-3xl shadow-sm border border-ink/10 text-ink select-none"
                   style={{ fontSize: `${fontSize}px` }}
                 >
-                  {selectedShabad?.text || "डेटा लोड हो रहा है..."}
+                  {selectedShabad?.text || ""}
                 </div>
 
                 {/* Swipe Indicators */}
@@ -1826,124 +2362,6 @@ export default function App() {
           </motion.div>
         );
 
-      case "search":
-        const filteredShabads = searchQuery ? shabads.filter(s => s.title.toLowerCase().includes(searchQuery.toLowerCase()) || (s.text && s.text.toLowerCase().includes(searchQuery.toLowerCase()))) : [];
-        const filteredAartis = searchQuery ? aartis.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase()) || (m.text && m.text.toLowerCase().includes(searchQuery.toLowerCase()))) : [];
-        const filteredBhajans = searchQuery ? bhajans.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase()) || (m.text && m.text.toLowerCase().includes(searchQuery.toLowerCase()))) : [];
-        const filteredSakhis = searchQuery ? sakhis.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase()) || (m.text && m.text.toLowerCase().includes(searchQuery.toLowerCase()))) : [];
-        const filteredMantras = searchQuery ? mantras.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase()) || (m.text && m.text.toLowerCase().includes(searchQuery.toLowerCase()))) : [];
-        const filteredMeles = searchQuery ? meles.filter(m => m.name.toLowerCase().includes(searchQuery.toLowerCase()) || m.location.toLowerCase().includes(searchQuery.toLowerCase())) : [];
-        
-        return (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="pb-32 px-4 pt-4">
-            <div className="flex items-center gap-3 mb-6">
-              <button onClick={() => navigateTo('home')} className="p-2 bg-white rounded-full shadow-sm border border-ink/10">
-                <ChevronLeft className="w-6 h-6" />
-              </button>
-              <div className="flex-1 relative">
-                <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-ink-light" />
-                <input 
-                  autoFocus
-                  type="text" 
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="शब्द, भजन, आरती, साखी या मेले खोजें..." 
-                  className="w-full pl-12 pr-4 py-3 rounded-2xl border border-ink/20 bg-white focus:border-accent outline-none shadow-sm"
-                />
-              </div>
-            </div>
-
-            {searchQuery && (
-              <div className="space-y-6">
-                {filteredShabads.length > 0 && (
-                  <div>
-                    <h3 className="font-bold text-lg mb-3 text-accent-dark">शब्दवाणी ({filteredShabads.length})</h3>
-                    <div className="space-y-3">
-                      {filteredShabads.map(s => (
-                        <button key={s.id} onClick={() => handleShabadClick(s)} className="w-full text-left bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
-                          <h4 className="font-bold text-ink">{s.title}</h4>
-                          <p className="text-sm text-ink-light line-clamp-1 mt-1">{s.text}</p>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {filteredAartis.length > 0 && (
-                  <div>
-                    <h3 className="font-bold text-lg mb-3 text-accent-dark">आरती ({filteredAartis.length})</h3>
-                    <div className="space-y-3">
-                      {filteredAartis.map(m => (
-                        <button key={m.id} onClick={() => { setSelectedShabad(m); setSelectedCategory("aarti"); navigateTo('audio_reading'); }} className="w-full text-left bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
-                          <h4 className="font-bold text-ink">{m.title}</h4>
-                          <p className="text-sm text-ink-light line-clamp-1 mt-1">{m.text}</p>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {filteredBhajans.length > 0 && (
-                  <div>
-                    <h3 className="font-bold text-lg mb-3 text-accent-dark">भजन ({filteredBhajans.length})</h3>
-                    <div className="space-y-3">
-                      {filteredBhajans.map(m => (
-                        <button key={m.id} onClick={() => { setSelectedShabad(m); setSelectedCategory("bhajan"); navigateTo('audio_reading'); }} className="w-full text-left bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
-                          <h4 className="font-bold text-ink">{m.title}</h4>
-                          <p className="text-sm text-ink-light line-clamp-1 mt-1">{m.text}</p>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {filteredSakhis.length > 0 && (
-                  <div>
-                    <h3 className="font-bold text-lg mb-3 text-accent-dark">साखी ({filteredSakhis.length})</h3>
-                    <div className="space-y-3">
-                      {filteredSakhis.map(m => (
-                        <button key={m.id} onClick={() => { setSelectedShabad(m); setSelectedCategory("sakhi"); navigateTo('audio_reading'); }} className="w-full text-left bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
-                          <h4 className="font-bold text-ink">{m.title}</h4>
-                          <p className="text-sm text-ink-light line-clamp-1 mt-1">{m.text}</p>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {filteredMantras.length > 0 && (
-                  <div>
-                    <h3 className="font-bold text-lg mb-3 text-accent-dark">मंत्र ({filteredMantras.length})</h3>
-                    <div className="space-y-3">
-                      {filteredMantras.map(m => (
-                        <button key={m.id} onClick={() => { setSelectedShabad(m); setSelectedCategory("mantra"); navigateTo('audio_reading'); }} className="w-full text-left bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
-                          <h4 className="font-bold text-ink">{m.title}</h4>
-                          <p className="text-sm text-ink-light line-clamp-1 mt-1">{m.text}</p>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {filteredMeles.length > 0 && (
-                  <div>
-                    <h3 className="font-bold text-lg mb-3 text-accent-dark">मेले ({filteredMeles.length})</h3>
-                    <div className="space-y-3">
-                      {filteredMeles.map((m, idx) => (
-                        <div key={idx} className="bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
-                          <h4 className="font-bold text-ink">{m.name}</h4>
-                          <p className="text-sm text-ink-light mt-1">{m.location} • {m.dateStr}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {filteredShabads.length === 0 && filteredAartis.length === 0 && filteredBhajans.length === 0 && filteredSakhis.length === 0 && filteredMantras.length === 0 && filteredMeles.length === 0 && (
-                  <div className="text-center py-12 text-ink-light">
-                    <Search className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                    <p>कोई परिणाम नहीं मिला</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </motion.div>
-        );
-
       case "choghadiya":
         return (
           <motion.div
@@ -2059,8 +2477,9 @@ export default function App() {
                       </div>
                     </div>
                     <p className="text-xs text-ink-light mt-4 italic text-center">
-                      नोट: यह समय {choghadiyaLocation} के सटीक
-                      सूर्योदय/सूर्यास्त पर आधारित है।
+                      नोट: यह समय {choghadiyaLocation} के सटीक सूर्योदय/सूर्यास्त पर आधारित है।
+                      <br />
+                      गुरु जाम्भेश्वर भगवान ने 365 दिन के हर क्षण को ही अच्छा माना है, उन्होंने इस प्रकार के आडंबरों से बिश्नोई समाज को मुक्त रखा है फिर भी आज के समय की मांग के लिए यहां दिए गए हैं।
                     </p>
                   </div>
                 )}
@@ -2112,11 +2531,7 @@ export default function App() {
                   onChange={(e) => setBichhudaYear(Number(e.target.value))}
                   className="p-2 rounded-xl border border-ink/20 bg-white font-bold text-accent-dark text-sm"
                 >
-                  {[
-                    new Date().getFullYear() - 1,
-                    new Date().getFullYear(),
-                    new Date().getFullYear() + 1,
-                  ].map((y) => (
+                  {Array.from({ length: 101 }, (_, i) => new Date().getFullYear() - 50 + i).map((y) => (
                     <option key={y} value={y}>
                       {y}
                     </option>
@@ -2170,56 +2585,10 @@ export default function App() {
                     <li>दक्षिण दिशा की यात्रा करना</li>
                   </ul>
                 </div>
+                <p className="text-xs text-ink-light mt-4 italic text-center">
+                  नोट: गुरु जाम्भेश्वर भगवान ने 365 दिन के हर क्षण को ही अच्छा माना है, उन्होंने इस प्रकार के आडंबरों से बिश्नोई समाज को मुक्त रखा है फिर भी आज के समय की मांग के लिए यहां दिए गए हैं।
+                </p>
               </div>
-            </div>
-          </motion.div>
-        );
-
-      case "mele":
-        return (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="pb-32 px-4 pt-4"
-          >
-            <div className="flex items-center gap-3 mb-6 bg-gradient-to-r from-accent to-accent-dark text-white p-4 rounded-3xl shadow-lg">
-              <button
-                onClick={() => navigateTo("home")}
-                className="p-2 rounded-full hover:bg-white/20"
-              >
-                <ChevronLeft className="w-6 h-6" />
-              </button>
-              <h1 className="text-2xl font-bold flex-1 text-center">|| आगामी प्रमुख मेले ||</h1>
-              <Users className="w-8 h-8" />
-            </div>
-
-            <div className="space-y-4">
-              {processedMeles.map((mela, idx) => (
-                <div
-                  key={idx}
-                  className={`bg-white/90 p-5 rounded-3xl shadow-sm border ${mela.upcoming ? "border-accent/50 ring-1 ring-accent/20" : "border-ink/5"} relative overflow-hidden`}
-                >
-                  {mela.upcoming && (
-                    <div className="absolute top-0 right-0 bg-accent text-white text-xs font-bold px-3 py-1 rounded-bl-xl">
-                      आगामी (Upcoming)
-                    </div>
-                  )}
-                  <h3 className="font-bold text-xl text-accent-dark mb-1 pr-16">
-                    {mela.name}
-                  </h3>
-                  <p className="text-sm font-semibold text-ink mb-1 flex items-center gap-1">
-                    <CalendarDays className="w-4 h-4 text-accent" />{" "}
-                    {mela.dateFormatted}
-                  </p>
-                  <p className="text-sm text-ink-light mb-3 flex items-center gap-1">
-                    <Home className="w-4 h-4" /> {mela.location}
-                  </p>
-                  <p className="text-sm bg-paper p-3 rounded-xl leading-relaxed">
-                    {mela.desc}
-                  </p>
-                </div>
-              ))}
             </div>
           </motion.div>
         );
@@ -2300,39 +2669,51 @@ export default function App() {
             </div>
 
             <div className="space-y-8">
-
               {/* Add New Content Section */}
               <div className="bg-white/90 p-6 rounded-3xl shadow-sm border border-ink/10">
                 <h2 className="text-xl font-bold mb-4 flex items-center gap-2 border-b border-ink/10 pb-2">
-                  <PlusCircle className="w-5 h-5" /> नई सामग्री जोड़ें (Add
-                  Content)
+                  <PlusCircle className="w-5 h-5" /> नई सामग्री जोड़ें (Add Content)
                 </h2>
                 <form onSubmit={handleAdminSubmitData} className="space-y-4">
-                  <div>
-                    <label className="block font-bold text-sm mb-1">
-                      प्रकार (Type)
-                    </label>
-                    <select
-                      value={contribType}
-                      onChange={(e) => setContribType(e.target.value)}
-                      className="w-full p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none transition-colors"
-                    >
-                      <option>शब्द</option>
-                      <option>भजन</option>
-                      <option>आरती</option>
-                      <option>साखी</option>
-                      <option>मंत्र</option>
-                      <option>सुविचार</option>
-                      <option>नियम</option>
-                      <option>मेले</option>
-                    </select>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block font-bold text-sm mb-1">
+                        प्रकार (Type)
+                      </label>
+                      <select
+                        value={contribType}
+                        onChange={(e) => setContribType(e.target.value)}
+                        className="w-full p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none transition-colors"
+                      >
+                        <option>शब्द</option>
+                        <option>भजन</option>
+                        <option>आरती</option>
+                        <option>साखी</option>
+                        <option>मंत्र</option>
+                        <option>सुविचार</option>
+                        <option>मेले</option>
+                        <option>बधाई संदेश</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block font-bold text-sm mb-1">
+                        क्रम (Sequence)
+                      </label>
+                      <input
+                        type="number"
+                        value={contribSequence}
+                        onChange={(e) => setContribSequence(e.target.value ? Number(e.target.value) : "")}
+                        placeholder="Ex: 1, 2, 3..."
+                        className="w-full p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none transition-colors"
+                      />
+                    </div>
                   </div>
 
-                  {contribType !== "सुविचार" && contribType !== "नियम" && contribType !== "मेले" && (
+                  {contribType !== "सुविचार" && contribType !== "मेले" && (
                     <>
                       <div>
                         <label className="block font-bold text-sm mb-1">
-                          शीर्षक (Title)
+                          {contribType === "बधाई संदेश" ? "व्यक्ति का नाम (Name)" : "शीर्षक (Title)"}
                         </label>
                         <input
                           value={contribTitle}
@@ -2340,12 +2721,12 @@ export default function App() {
                           required
                           type="text"
                           className="w-full p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none transition-colors"
-                          placeholder="शीर्षक लिखें..."
+                          placeholder={contribType === "बधाई संदेश" ? "नाम..." : "शीर्षक लिखें..."}
                         />
                       </div>
                       <div>
                         <label className="block font-bold text-sm mb-1">
-                          ऑडियो लिंक (Audio URL - Optional)
+                          {contribType === "बधाई संदेश" ? "फोटो का लिंक (Photo URL)" : "ऑडियो लिंक (Audio URL - Optional)"}
                         </label>
                         <input
                           value={contribAudio}
@@ -2405,11 +2786,11 @@ export default function App() {
                     <label className="block font-bold text-sm mb-1">
                       {contribType === "सुविचार"
                         ? "सुविचार (Thought)"
-                        : contribType === "नियम"
-                        ? "नियम (Rule)"
                         : contribType === "मेले"
                           ? "विवरण (Description)"
-                          : "पाठ (Text / Lyrics)"}
+                          : contribType === "बधाई संदेश"
+                            ? "बधाई का संदेश (Text)"
+                            : "पाठ (Text / Lyrics)"}
                     </label>
                     <textarea
                       value={contribText}
@@ -2421,124 +2802,287 @@ export default function App() {
                   </div>
                   <button
                     type="submit"
-                    disabled={isSaving}
-                    className="w-full bg-gradient-to-r from-accent to-accent-dark text-white font-bold py-3.5 rounded-xl flex justify-center items-center gap-2 shadow-md hover:shadow-lg transition-all"
+                    className="w-full bg-gradient-to-r from-accent to-accent-dark text-white font-bold py-3.5 rounded-xl shadow-md hover:shadow-lg transition-all"
                   >
-                    {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
-                    {isSaving ? "सेव हो रहा है..." : "जोड़ें (Save)"}
+                    जोड़ें (Add)
                   </button>
                 </form>
               </div>
 
               {/* Manage Content Section */}
               <div className="bg-white/90 p-6 rounded-3xl shadow-sm border border-ink/10">
-                <h2 className="text-xl font-bold mb-4 flex items-center gap-2 border-b border-ink/10 pb-2"><Edit3 className="w-5 h-5" /> प्रबंधित करें (Manage)</h2>
+                <h2 className="text-xl font-bold mb-4 flex items-center gap-2 border-b border-ink/10 pb-2">
+                  <Edit3 className="w-5 h-5" /> सामग्री प्रबंधित करें (Manage Content)
+                </h2>
+
                 <div className="space-y-6">
+                  {/* Badhais */}
+                  <div>
+                    <h3 className="font-bold text-lg mb-2 text-accent-dark">
+                      बधाई संदेश ({badhais.length})
+                    </h3>
+                    <div className="max-h-40 overflow-y-auto space-y-2 pr-2">
+                      {badhais.map((b) => (
+                        <div
+                          key={b.id}
+                          className={`flex items-center justify-between bg-paper p-3 rounded-xl border border-ink/5 ${b.isActive === false ? 'opacity-50' : ''}`}
+                        >
+                          <span className="font-medium truncate flex-1 text-sm">
+                            {b.name} {b.isActive === false && "(छोड़ा गया/Paused)"}
+                          </span>
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={async () => await updateDoc(doc(db, "badhais", b.id), { isActive: b.isActive === false ? true : false })} 
+                              className="p-1.5 text-orange-500 hover:bg-orange-50 rounded-lg" 
+                              title="Pause/Resume"
+                            >
+                              {b.isActive === false ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
+                            </button>
+                            <button
+                              onClick={() => openEditModal("बधाई संदेश", b)}
+                              className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete("बधाई संदेश", b.id)}
+                              className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
                   {/* Shabads */}
-                  <div><h3 className="font-bold text-lg mb-2 text-accent-dark">शब्दवाणी ({shabads.length})</h3>
+                  <div>
+                    <h3 className="font-bold text-lg mb-2 text-accent-dark">
+                      शब्दवाणी
+                    </h3>
                     <div className="max-h-40 overflow-y-auto space-y-2 pr-2">
                       {shabads.map((s) => (
-                        <div key={s.id} className="flex items-center justify-between bg-paper p-3 rounded-xl border border-ink/5">
-                          <span className="font-medium truncate flex-1">{s.title}</span>
+                        <div
+                          key={s.id}
+                          className="flex items-center justify-between bg-paper p-3 rounded-xl border border-ink/5"
+                        >
+                          <span className="font-medium truncate flex-1">
+                            {s.title}
+                          </span>
                           <div className="flex gap-2">
-                            <button onClick={() => openEditModal("शब्द", s)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg"><Edit3 className="w-4 h-4" /></button>
-                            <button onClick={() => handleDelete("शब्द", s.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"><XCircle className="w-4 h-4" /></button>
+                            <button
+                              onClick={() => openEditModal("शब्द", s)}
+                              className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete("शब्द", s.id)}
+                              className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </button>
                           </div>
                         </div>
                       ))}
                     </div>
                   </div>
+
                   {/* Aartis */}
-                  <div><h3 className="font-bold text-lg mb-2 text-accent-dark">आरती ({aartis.length})</h3>
+                  <div>
+                    <h3 className="font-bold text-lg mb-2 text-accent-dark">
+                      आरती
+                    </h3>
                     <div className="max-h-40 overflow-y-auto space-y-2 pr-2">
                       {aartis.map((m) => (
-                        <div key={m.id} className="flex items-center justify-between bg-paper p-3 rounded-xl border border-ink/5">
-                          <span className="font-medium truncate flex-1">{m.title}</span>
+                        <div
+                          key={m.id}
+                          className="flex items-center justify-between bg-paper p-3 rounded-xl border border-ink/5"
+                        >
+                          <span className="font-medium truncate flex-1">
+                            {m.title}
+                          </span>
                           <div className="flex gap-2">
-                            <button onClick={() => openEditModal("आरती", m)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg"><Edit3 className="w-4 h-4" /></button>
-                            <button onClick={() => handleDelete("आरती", m.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"><XCircle className="w-4 h-4" /></button>
+                            <button
+                              onClick={() => openEditModal("आरती", m)}
+                              className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete("आरती", m.id)}
+                              className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </button>
                           </div>
                         </div>
                       ))}
                     </div>
                   </div>
+
                   {/* Bhajans */}
-                  <div><h3 className="font-bold text-lg mb-2 text-accent-dark">भजन ({bhajans.length})</h3>
+                  <div>
+                    <h3 className="font-bold text-lg mb-2 text-accent-dark">
+                      भजन
+                    </h3>
                     <div className="max-h-40 overflow-y-auto space-y-2 pr-2">
                       {bhajans.map((m) => (
-                        <div key={m.id} className="flex items-center justify-between bg-paper p-3 rounded-xl border border-ink/5">
-                          <span className="font-medium truncate flex-1">{m.title}</span>
+                        <div
+                          key={m.id}
+                          className="flex items-center justify-between bg-paper p-3 rounded-xl border border-ink/5"
+                        >
+                          <span className="font-medium truncate flex-1">
+                            {m.title}
+                          </span>
                           <div className="flex gap-2">
-                            <button onClick={() => openEditModal("भजन", m)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg"><Edit3 className="w-4 h-4" /></button>
-                            <button onClick={() => handleDelete("भजन", m.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"><XCircle className="w-4 h-4" /></button>
+                            <button
+                              onClick={() => openEditModal("भजन", m)}
+                              className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete("भजन", m.id)}
+                              className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </button>
                           </div>
                         </div>
                       ))}
                     </div>
                   </div>
+
                   {/* Sakhis */}
-                  <div><h3 className="font-bold text-lg mb-2 text-accent-dark">साखी ({sakhis.length})</h3>
+                  <div>
+                    <h3 className="font-bold text-lg mb-2 text-accent-dark">
+                      साखी
+                    </h3>
                     <div className="max-h-40 overflow-y-auto space-y-2 pr-2">
                       {sakhis.map((m) => (
-                        <div key={m.id} className="flex items-center justify-between bg-paper p-3 rounded-xl border border-ink/5">
-                          <span className="font-medium truncate flex-1">{m.title}</span>
+                        <div
+                          key={m.id}
+                          className="flex items-center justify-between bg-paper p-3 rounded-xl border border-ink/5"
+                        >
+                          <span className="font-medium truncate flex-1">
+                            {m.title}
+                          </span>
                           <div className="flex gap-2">
-                            <button onClick={() => openEditModal("साखी", m)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg"><Edit3 className="w-4 h-4" /></button>
-                            <button onClick={() => handleDelete("साखी", m.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"><XCircle className="w-4 h-4" /></button>
+                            <button
+                              onClick={() => openEditModal("साखी", m)}
+                              className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete("साखी", m.id)}
+                              className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </button>
                           </div>
                         </div>
                       ))}
                     </div>
                   </div>
+
                   {/* Mantras */}
-                  <div><h3 className="font-bold text-lg mb-2 text-accent-dark">मंत्र ({mantras.length})</h3>
+                  <div>
+                    <h3 className="font-bold text-lg mb-2 text-accent-dark">
+                      मंत्र
+                    </h3>
                     <div className="max-h-40 overflow-y-auto space-y-2 pr-2">
                       {mantras.map((m) => (
-                        <div key={m.id} className="flex items-center justify-between bg-paper p-3 rounded-xl border border-ink/5">
-                          <span className="font-medium truncate flex-1">{m.title}</span>
+                        <div
+                          key={m.id}
+                          className="flex items-center justify-between bg-paper p-3 rounded-xl border border-ink/5"
+                        >
+                          <span className="font-medium truncate flex-1">
+                            {m.title}
+                          </span>
                           <div className="flex gap-2">
-                            <button onClick={() => openEditModal("मंत्र", m)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg"><Edit3 className="w-4 h-4" /></button>
-                            <button onClick={() => handleDelete("मंत्र", m.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"><XCircle className="w-4 h-4" /></button>
+                            <button
+                              onClick={() => openEditModal("मंत्र", m)}
+                              className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete("मंत्र", m.id)}
+                              className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </button>
                           </div>
                         </div>
                       ))}
                     </div>
                   </div>
-                  {/* Niyams */}
-                  <div><h3 className="font-bold text-lg mb-2 text-accent-dark">नियम ({niyams.length})</h3>
-                    <div className="max-h-40 overflow-y-auto space-y-2 pr-2">
-                      {niyams.map((t, i) => (
-                        <div key={i} className="flex items-center justify-between bg-paper p-3 rounded-xl border border-ink/5">
-                          <span className="font-medium truncate flex-1 text-sm">{t}</span>
-                          <div className="flex gap-2">
-                            <button onClick={() => handleDelete("नियम", t)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"><XCircle className="w-4 h-4" /></button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+
                   {/* Thoughts */}
-                  <div><h3 className="font-bold text-lg mb-2 text-accent-dark">सुविचार ({thoughts.length})</h3>
+                  <div>
+                    <h3 className="font-bold text-lg mb-2 text-accent-dark">
+                      सुविचार
+                    </h3>
                     <div className="max-h-40 overflow-y-auto space-y-2 pr-2">
                       {thoughts.map((t, i) => (
-                        <div key={i} className="flex items-center justify-between bg-paper p-3 rounded-xl border border-ink/5">
-                          <span className="font-medium truncate flex-1 text-sm">{t}</span>
+                        <div
+                          key={i}
+                          className="flex items-center justify-between bg-paper p-3 rounded-xl border border-ink/5"
+                        >
+                          <span className="font-medium truncate flex-1 text-sm">
+                            {t}
+                          </span>
                           <div className="flex gap-2">
-                            <button onClick={() => handleDelete("सुविचार", t)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"><XCircle className="w-4 h-4" /></button>
+                            <button
+                              onClick={() =>
+                                openEditModal("सुविचार", { text: t }, i)
+                              }
+                              className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete("सुविचार", "", i)}
+                              className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </button>
                           </div>
                         </div>
                       ))}
                     </div>
                   </div>
+
                   {/* Meles */}
-                  <div><h3 className="font-bold text-lg mb-2 text-accent-dark">मेले ({meles.length})</h3>
+                  <div>
+                    <h3 className="font-bold text-lg mb-2 text-accent-dark">
+                      मेले
+                    </h3>
                     <div className="max-h-40 overflow-y-auto space-y-2 pr-2">
                       {meles.map((m, i) => (
-                        <div key={i} className="flex items-center justify-between bg-paper p-3 rounded-xl border border-ink/5">
-                          <span className="font-medium truncate flex-1 text-sm">{m.name} - {m.dateStr}</span>
+                        <div
+                          key={m.id || i}
+                          className="flex items-center justify-between bg-paper p-3 rounded-xl border border-ink/5"
+                        >
+                          <span className="font-medium truncate flex-1 text-sm">
+                            {m.name} - {m.dateStr}
+                          </span>
                           <div className="flex gap-2">
-                            <button onClick={() => openEditModal("मेले", m, i)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg"><Edit3 className="w-4 h-4" /></button>
-                            <button onClick={() => handleDelete("मेले", m.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"><XCircle className="w-4 h-4" /></button>
+                            <button
+                              onClick={() => openEditModal("मेले", m, i)}
+                              className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete("मेले", m.id)}
+                              className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </button>
                           </div>
                         </div>
                       ))}
@@ -2605,6 +3149,12 @@ export default function App() {
                       className="w-full p-2 rounded-lg border border-ink/20 bg-white text-sm"
                     />
                   </div>
+                  <button
+                    onClick={handleSaveSettings}
+                    className="w-full bg-accent text-white font-bold py-3 rounded-xl hover:bg-accent-dark transition-colors"
+                  >
+                    Save Settings
+                  </button>
                 </div>
               </div>
 
@@ -2657,26 +3207,180 @@ export default function App() {
             {editModalOpen && editItemData && (
               <div className="fixed inset-0 z-50 bg-ink/50 backdrop-blur-sm flex items-center justify-center p-4">
                 <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl">
-                  <h2 className="text-xl font-bold mb-4">संपादित करें</h2>
+                  <h2 className="text-xl font-bold mb-4">
+                    संपादित करें (Edit)
+                  </h2>
                   <form onSubmit={handleEditSave} className="space-y-4">
-                    {editItemData.type !== "सुविचार" && editItemData.type !== "नियम" && editItemData.type !== "मेले" && (
+                    {editItemData.type !== "सुविचार" &&
+                      editItemData.type !== "मेले" && editItemData.type !== "बधाई संदेश" && (
                         <>
-                          <input value={editItemData.title || ""} onChange={(e) => setEditItemData({ ...editItemData, title: e.target.value }) } required type="text" className="w-full p-3 rounded-xl border border-ink/20" />
-                          <input value={editItemData.audioUrl || ""} onChange={(e) => setEditItemData({ ...editItemData, audioUrl: e.target.value }) } type="url" className="w-full p-3 rounded-xl border border-ink/20" />
+                          <div>
+                            <label className="block font-bold text-sm mb-1">
+                              शीर्षक (Title)
+                            </label>
+                            <input
+                              value={editItemData.title || ""}
+                              onChange={(e) =>
+                                setEditItemData({
+                                  ...editItemData,
+                                  title: e.target.value,
+                                })
+                              }
+                              required
+                              type="text"
+                              className="w-full p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="block font-bold text-sm mb-1">
+                              ऑडियो लिंक (Audio URL)
+                            </label>
+                            <input
+                              value={editItemData.audioUrl || ""}
+                              onChange={(e) =>
+                                setEditItemData({
+                                  ...editItemData,
+                                  audioUrl: e.target.value,
+                                })
+                              }
+                              type="url"
+                              className="w-full p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="block font-bold text-sm mb-1">
+                              क्रम (Sequence)
+                            </label>
+                            <input
+                              value={editItemData.sequence || ""}
+                              onChange={(e) =>
+                                setEditItemData({
+                                  ...editItemData,
+                                  sequence: e.target.value ? Number(e.target.value) : "",
+                                })
+                              }
+                              type="number"
+                              className="w-full p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none"
+                            />
+                          </div>
                         </>
                       )}
-                    {editItemData.type === "मेले" && (
+
+                    {editItemData.type === "बधाई संदेश" && (
                       <>
-                        <input value={editItemData.name || ""} onChange={(e) => setEditItemData({ ...editItemData, name: e.target.value }) } required type="text" className="w-full p-3 rounded-xl border border-ink/20" />
-                        <input value={editItemData.dateStr || ""} onChange={(e) => setEditItemData({ ...editItemData, dateStr: e.target.value }) } required type="date" className="w-full p-3 rounded-xl border border-ink/20" />
-                        <input value={editItemData.location || ""} onChange={(e) => setEditItemData({ ...editItemData, location: e.target.value }) } required type="text" className="w-full p-3 rounded-xl border border-ink/20" />
+                        <div>
+                          <label className="block font-bold text-sm mb-1">व्यक्ति का नाम</label>
+                          <input 
+                            value={editItemData.name || ""} 
+                            onChange={(e) => setEditItemData({ ...editItemData, name: e.target.value }) } 
+                            required 
+                            type="text" 
+                            className="w-full p-3 rounded-xl border border-ink/20 bg-white outline-none" 
+                          />
+                        </div>
+                        <div>
+                          <label className="block font-bold text-sm mb-1">फोटो का लिंक</label>
+                          <input 
+                            value={editItemData.photoUrl || ""} 
+                            onChange={(e) => setEditItemData({ ...editItemData, photoUrl: e.target.value }) } 
+                            type="url" 
+                            className="w-full p-3 rounded-xl border border-ink/20 bg-white outline-none" 
+                          />
+                        </div>
                       </>
                     )}
-                    <textarea value={editItemData.text || editItemData.desc || ""} onChange={(e) => setEditItemData({ ...editItemData, [editItemData.type === "मेले" ? "desc" : "text"]: e.target.value }) } required className="w-full p-3 rounded-xl border border-ink/20 h-32" ></textarea>
+
+                    {editItemData.type === "मेले" && (
+                      <>
+                        <div>
+                          <label className="block font-bold text-sm mb-1">
+                            मेले का नाम (Name)
+                          </label>
+                          <input
+                            value={editItemData.name || ""}
+                            onChange={(e) =>
+                              setEditItemData({
+                                ...editItemData,
+                                name: e.target.value,
+                              })
+                            }
+                            required
+                            type="text"
+                            className="w-full p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block font-bold text-sm mb-1">
+                            तिथि (Date)
+                          </label>
+                          <input
+                            value={editItemData.dateStr || ""}
+                            onChange={(e) =>
+                              setEditItemData({
+                                ...editItemData,
+                                dateStr: e.target.value,
+                              })
+                            }
+                            required
+                            type="date"
+                            className="w-full p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block font-bold text-sm mb-1">
+                            स्थान (Location)
+                          </label>
+                          <input
+                            value={editItemData.location || ""}
+                            onChange={(e) =>
+                              setEditItemData({
+                                ...editItemData,
+                                location: e.target.value,
+                              })
+                            }
+                            required
+                            type="text"
+                            className="w-full p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none"
+                          />
+                        </div>
+                      </>
+                    )}
+                    <div>
+                      <label className="block font-bold text-sm mb-1">
+                        {editItemData.type === "सुविचार"
+                          ? "सुविचार"
+                          : editItemData.type === "मेले"
+                            ? "विवरण (Description)"
+                            : editItemData.type === "बधाई संदेश"
+                              ? "बधाई संदेश"
+                              : "पाठ (Text)"}
+                      </label>
+                      <textarea
+                        value={editItemData.text || editItemData.desc || ""}
+                        onChange={(e) =>
+                          setEditItemData({
+                            ...editItemData,
+                            [editItemData.type === "मेले" ? "desc" : "text"]:
+                              e.target.value,
+                          })
+                        }
+                        required
+                        className="w-full p-3 rounded-xl border border-ink/20 bg-white h-32 focus:border-accent outline-none"
+                      ></textarea>
+                    </div>
                     <div className="flex gap-3 mt-6">
-                      <button type="button" onClick={() => setEditModalOpen(false)} className="flex-1 bg-ink/10 text-ink font-bold py-3 rounded-xl">रद्द करें</button>
-                      <button type="submit" disabled={isSaving} className="flex-1 bg-accent text-white font-bold py-3 rounded-xl flex justify-center items-center gap-2">
-                        {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : "सेव करें"}
+                      <button
+                        type="button"
+                        onClick={() => setEditModalOpen(false)}
+                        className="flex-1 bg-ink/10 text-ink font-bold py-3 rounded-xl"
+                      >
+                        रद्द करें
+                      </button>
+                      <button
+                        type="submit"
+                        className="flex-1 bg-accent text-white font-bold py-3 rounded-xl"
+                      >
+                        सेव करें
                       </button>
                     </div>
                   </form>
@@ -2685,26 +3389,116 @@ export default function App() {
             )}
           </motion.div>
         );
-
-      default: return null;
     }
   };
 
   return (
     <div className="min-h-screen max-w-md mx-auto relative shadow-2xl bg-paper overflow-x-hidden flex flex-col">
       {currentScreen !== "admin" && currentScreen !== "admin_login" && (
-        <Header onNavigate={navigateTo} logoUrl={settings.logoUrl} isAdminAuthenticated={isAdminAuthenticated} unreadCount={unreadCount} onNotificationClick={() => setShowNotifications(true)} />
+        <Header
+          onNavigate={navigateTo}
+          logoUrl={settings.logoUrl}
+          isAdminAuthenticated={isAdminAuthenticated}
+          unreadCount={unreadCount}
+          onNotificationClick={() => setShowNotifications(true)}
+        />
       )}
-      <div className="flex-1 relative"><AnimatePresence mode="wait">{renderScreen()}</AnimatePresence></div>
+
+      <div className="flex-1 relative">
+        <AnimatePresence mode="wait">{renderScreen()}</AnimatePresence>
+      </div>
+
+      {/* Notifications Panel */}
+      <AnimatePresence>
+        {showNotifications && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="absolute top-[60px] right-4 w-80 bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-ink/10 z-50 overflow-hidden"
+          >
+            <div className="p-4 border-b border-ink/10 flex justify-between items-center bg-paper/50">
+              <h3 className="font-bold text-ink">नोटिफिकेशन्स</h3>
+              <div className="flex gap-3">
+                {unreadCount > 0 && (
+                  <button
+                    onClick={markAllRead}
+                    className="text-xs text-accent font-bold hover:underline"
+                  >
+                    Mark all read
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowNotifications(false)}
+                  className="text-ink-light hover:text-ink"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+            <div className="max-h-80 overflow-y-auto">
+              {notifications.length === 0 ? (
+                <div className="p-6 text-center text-ink-light text-sm">
+                  कोई नया नोटिफिकेशन नहीं है।
+                </div>
+              ) : (
+                notifications.map((n) => (
+                  <div
+                    key={n.id}
+                    className={`p-4 border-b border-ink/5 last:border-0 ${n.read ? "opacity-60" : "bg-accent/5"}`}
+                  >
+                    <div className="flex justify-between items-start mb-1">
+                      <h4 className="font-bold text-sm text-ink">{n.title}</h4>
+                      <span className="text-[10px] text-ink-light">
+                        {n.date}
+                      </span>
+                    </div>
+                    <p className="text-xs text-ink-light leading-relaxed">
+                      {n.message}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Fixed Bottom Section (Ad + Nav) */}
       {currentScreen !== "admin" && currentScreen !== "admin_login" && (
         <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto z-50 flex flex-col">
           <AdBanner text={settings.adText} />
           <div className="bg-white/95 backdrop-blur-xl border-t border-ink/10 flex justify-around items-center py-2 px-1 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] pb-safe">
-            <NavItem icon={<Home className="w-6 h-6" />} label="होम" isActive={currentScreen === "home"} onClick={() => navigateTo("home")} />
-            <NavItem icon={<HeartHandshake className="w-6 h-6" />} label="सहयोग" isActive={currentScreen === "donate"} onClick={() => navigateTo("donate")} />
-            <NavItem icon={<CalendarDays className="w-6 h-6" />} label="अमावस" isActive={currentScreen === "amavasya"} onClick={() => navigateTo("amavasya")} />
-            <NavItem icon={<Info className="w-6 h-6" />} label="हमारे बारे" isActive={currentScreen === "about"} onClick={() => navigateTo("about")} />
-            <NavItem icon={<ShieldCheck className="w-6 h-6" />} label="गोपनीयता" isActive={currentScreen === "privacy"} onClick={() => navigateTo("privacy")} />
+            <NavItem
+              icon={<Home className="w-6 h-6" />}
+              label="होम"
+              isActive={currentScreen === "home"}
+              onClick={() => navigateTo("home")}
+            />
+            <NavItem
+              icon={<HeartHandshake className="w-6 h-6" />}
+              label="सहयोग"
+              isActive={currentScreen === "donate"}
+              onClick={() => navigateTo("donate")}
+            />
+            <NavItem
+              icon={<CalendarDays className="w-6 h-6" />}
+              label="अमावस"
+              isActive={currentScreen === "amavasya"}
+              onClick={() => navigateTo("amavasya")}
+            />
+            <NavItem
+              icon={<Info className="w-6 h-6" />}
+              label="हमारे बारे में"
+              isActive={currentScreen === "about"}
+              onClick={() => navigateTo("about")}
+            />
+            <NavItem
+              icon={<ShieldCheck className="w-6 h-6" />}
+              label="गोपनीयता"
+              isActive={currentScreen === "privacy"}
+              onClick={() => navigateTo("privacy")}
+            />
           </div>
         </div>
       )}
@@ -2712,12 +3506,35 @@ export default function App() {
   );
 }
 
-function NavItem({ icon, label, isActive, onClick }: { icon: React.ReactNode; label: string; isActive: boolean; onClick: () => void; }) {
+function NavItem({
+  icon,
+  label,
+  isActive,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  isActive: boolean;
+  onClick: () => void;
+}) {
   return (
-    <button onClick={onClick} className={`flex flex-col items-center justify-center w-[70px] h-14 rounded-2xl transition-all duration-300 ${isActive ? "text-accent-dark scale-110" : "text-ink-light hover:bg-ink/5"}`}>
-      <div className={`mb-1 transition-transform duration-300 ${isActive ? "-translate-y-1" : ""}`}>{icon}</div>
-      <span className={`text-[10px] font-bold leading-none transition-opacity duration-300 ${isActive ? "opacity-100" : "opacity-70"}`}>{label}</span>
-      {isActive && <div className="absolute bottom-1 w-1 h-1 bg-accent-dark rounded-full"></div>}
+    <button
+      onClick={onClick}
+      className={`flex flex-col items-center justify-center w-[70px] h-14 rounded-2xl transition-all duration-300 ${isActive ? "text-accent-dark scale-110" : "text-ink-light hover:bg-ink/5"}`}
+    >
+      <div
+        className={`mb-1 transition-transform duration-300 ${isActive ? "-translate-y-1" : ""}`}
+      >
+        {icon}
+      </div>
+      <span
+        className={`text-[10px] font-bold leading-none transition-opacity duration-300 ${isActive ? "opacity-100" : "opacity-70"}`}
+      >
+        {label}
+      </span>
+      {isActive && (
+        <div className="absolute bottom-1 w-1 h-1 bg-accent-dark rounded-full"></div>
+      )}
     </button>
   );
 }
