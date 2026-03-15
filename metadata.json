@@ -1,0 +1,5 @@
+{
+  "name": "सबदवाणी (Sabadwani)",
+  "description": "गुरु जम्भेश्वर भगवान की सबदवाणी, आरती, साखी, पंचांग और बिश्नोई धर्म।",
+  "requestFramePermissions": ["geolocation"]
+}
