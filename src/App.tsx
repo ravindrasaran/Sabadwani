@@ -334,11 +334,13 @@ function AdBanner({ text, link }: { text: string, link?: string }) {
   );
 }
 
-function AudioPlayer({ url, onEnded, onPlay, onPause, autoPlay = false, title = 'सबदवाणी' }: { 
+function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay = false, title = 'सबदवाणी' }: { 
   url: string, 
   onEnded?: () => void, 
   onPlay?: () => void, 
   onPause?: () => void,
+  onNext?: () => void,
+  onPrev?: () => void,
   autoPlay?: boolean,
   title?: string
 }) {
@@ -350,25 +352,6 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, autoPlay = false, title = 
     const audio = audioRef.current;
     if (!audio) return;
 
-    const handlePlay = () => {
-      setIsPlaying(true);
-      if (onPlay) onPlay();
-      if ('mediaSession' in navigator) {
-        navigator.mediaSession.playbackState = 'playing';
-      }
-    };
-
-    const handlePause = () => {
-      setIsPlaying(false);
-      if (onPause) onPause();
-      if ('mediaSession' in navigator) {
-        navigator.mediaSession.playbackState = 'paused';
-      }
-    };
-
-    audio.addEventListener('play', handlePlay);
-    audio.addEventListener('pause', handlePause);
-
     if ('mediaSession' in navigator) {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: title,
@@ -376,13 +359,10 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, autoPlay = false, title = 
       });
       navigator.mediaSession.setActionHandler('play', () => audio.play());
       navigator.mediaSession.setActionHandler('pause', () => audio.pause());
+      if (onNext) navigator.mediaSession.setActionHandler('nexttrack', onNext);
+      if (onPrev) navigator.mediaSession.setActionHandler('previoustrack', onPrev);
     }
-
-    return () => {
-      audio.removeEventListener('play', handlePlay);
-      audio.removeEventListener('pause', handlePause);
-    };
-  }, [url, title, onPlay, onPause]);
+  }, [url, title, onNext, onPrev]);
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -390,7 +370,6 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, autoPlay = false, title = 
       audioRef.current.pause();
       audioRef.current.load();
       if (autoPlay) {
-        // Add a small delay to ensure DOM is ready and user interaction is registered
         timer = setTimeout(() => {
           if (audioRef.current) {
             audioRef.current.play().catch((e) => {
@@ -405,7 +384,13 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, autoPlay = false, title = 
     return () => {
       if (timer) clearTimeout(timer);
     };
-  }, [url, autoPlay]); // Added autoPlay to dependency array
+  }, [url]); // Only reload when URL changes
+
+  useEffect(() => {
+    if (autoPlay && audioRef.current && audioRef.current.paused) {
+      audioRef.current.play().catch(() => setIsPlaying(false));
+    }
+  }, [autoPlay]);
 
   const togglePlay = () => {
     if (audioRef.current) {
@@ -433,6 +418,23 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, autoPlay = false, title = 
         ref={audioRef}
         src={url || undefined}
         onTimeUpdate={handleTimeUpdate}
+        onPlay={() => {
+          setIsPlaying(true);
+          if (onPlay) onPlay();
+          if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = 'playing';
+          }
+        }}
+        onPause={() => {
+          setIsPlaying(false);
+          if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = 'paused';
+          }
+          // Do not call onPause if the audio has ended, because onEnded will handle it
+          if (audioRef.current && !audioRef.current.ended && onPause) {
+            onPause();
+          }
+        }}
         onEnded={() => {
           setIsPlaying(false);
           setProgress(0);
@@ -1689,11 +1691,51 @@ function MainApp() {
   const bichhudaList = useMemo(() => getBichhudaList(bichhudaYear), [bichhudaYear]);
 
   const handleGetLocation = () => {
+    setChoghadiyaLoading(true);
+    
+    const fallbackToIP = async (originalError?: any) => {
+      try {
+        const res = await fetch("https://ipapi.co/json/");
+        const data = await res.json();
+        if (data.city) {
+          const resolvedName = [data.city, data.region, data.country_name === "India" ? "" : data.country_name]
+            .filter(Boolean)
+            .join(", ");
+          setChoghadiyaLocation(resolvedName);
+          calculateChoghadiya(resolvedName, choghadiyaDate);
+          return;
+        }
+      } catch (e) {
+        console.warn("ipapi.co fallback failed, trying ipinfo.io", e);
+        try {
+          const res2 = await fetch("https://ipinfo.io/json");
+          const data2 = await res2.json();
+          if (data2.city) {
+            const resolvedName = [data2.city, data2.region, data2.country === "IN" ? "" : data2.country]
+              .filter(Boolean)
+              .join(", ");
+            setChoghadiyaLocation(resolvedName);
+            calculateChoghadiya(resolvedName, choghadiyaDate);
+            return;
+          }
+        } catch (e2) {
+          console.warn("ipinfo.io fallback failed", e2);
+        }
+      }
+
+      if (originalError && originalError.code === originalError.PERMISSION_DENIED) {
+        setChoghadiyaError("लोकेशन की अनुमति नहीं मिली। कृपया सेटिंग्स में जाकर अनुमति दें या शहर का नाम लिखें।");
+      } else {
+        setChoghadiyaError("लोकेशन प्राप्त करने में त्रुटि। कृपया शहर का नाम लिखें।");
+      }
+      setChoghadiyaLoading(false);
+    };
+
     if (!navigator.geolocation) {
-      showToast("आपका ब्राउज़र लोकेशन सपोर्ट नहीं करता है।");
+      fallbackToIP();
       return;
     }
-    setChoghadiyaLoading(true);
+
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         try {
@@ -1712,18 +1754,13 @@ function MainApp() {
           setChoghadiyaLocation(resolvedName);
           calculateChoghadiya(resolvedName, choghadiyaDate);
         } catch (error) {
-          setChoghadiyaError("लोकेशन प्राप्त करने में त्रुटि।");
-          setChoghadiyaLoading(false);
+          fallbackToIP(error);
         }
       },
       (error) => {
-        if (error.code === error.PERMISSION_DENIED) {
-          setChoghadiyaError("लोकेशन की अनुमति नहीं मिली। कृपया सेटिंग्स में जाकर अनुमति दें।");
-        } else {
-          setChoghadiyaError("लोकेशन प्राप्त करने में त्रुटि।");
-        }
-        setChoghadiyaLoading(false);
+        fallbackToIP(error);
       },
+      { timeout: 10000, maximumAge: 60000 }
     );
   };
 
@@ -1810,6 +1847,8 @@ function MainApp() {
             name: `${name} (${type === "good" ? "उत्तम" : type === "bad" ? "अशुभ" : "सामान्य"})`,
             time: `${formatTime(slotStart)} - ${formatTime(slotEnd)}`,
             type,
+            startTime: slotStart,
+            endTime: slotEnd,
           };
         });
       };
@@ -1849,6 +1888,18 @@ function MainApp() {
         return new Date(aY, aM - 1, aD).getTime() - new Date(bY, bM - 1, bD).getTime();
       }
     );
+
+  useEffect(() => {
+    if (currentScreen === "choghadiya") {
+      const timer = setTimeout(() => {
+        const currentSlot = document.getElementById('current-choghadiya-slot');
+        if (currentSlot) {
+          currentSlot.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [currentScreen, choghadiyaSlots]);
 
   // Scroll to upcoming mela when mele screen is opened
   useEffect(() => {
@@ -2921,6 +2972,8 @@ function MainApp() {
                       autoPlay={autoPlayAudio}
                       onPlay={() => setAutoPlayAudio(true)}
                       onPause={() => setAutoPlayAudio(false)}
+                      onNext={() => handleSwipe("left")}
+                      onPrev={() => handleSwipe("right")}
                       title={selectedSabad.title}
                     />
                   )}
@@ -3351,17 +3404,25 @@ function MainApp() {
                         <Sun className="w-5 h-5" /> दिन का चौघड़िया
                       </h3>
                       <div className="grid grid-cols-1 gap-2">
-                        {choghadiyaSlots.day.map((slot, idx) => (
+                        {choghadiyaSlots.day.map((slot, idx) => {
+                          const now = new Date();
+                          const isToday = choghadiyaDate === now.toISOString().split('T')[0];
+                          const isCurrent = isToday && now >= slot.startTime && now < slot.endTime;
+                          return (
                           <div
                             key={`day-${slot.name}-${idx}`}
-                            className={`flex justify-between p-3 rounded-xl border ${slot.type === "good" ? "bg-green-50 border-green-200 text-green-800" : slot.type === "bad" ? "bg-red-50 border-red-200 text-red-800" : "bg-blue-50 border-blue-200 text-blue-800"}`}
+                            id={isCurrent ? "current-choghadiya-slot" : undefined}
+                            className={`flex justify-between p-3 rounded-xl border ${isCurrent ? "ring-2 ring-accent shadow-md scale-[1.02] transition-transform" : ""} ${slot.type === "good" ? "bg-green-50 border-green-200 text-green-800" : slot.type === "bad" ? "bg-red-50 border-red-200 text-red-800" : "bg-blue-50 border-blue-200 text-blue-800"}`}
                           >
-                            <span className="font-bold">{slot.name}</span>
-                            <span className="text-sm font-medium">
+                            <div className="flex flex-col">
+                              <span className="font-bold">{slot.name}</span>
+                              {isCurrent && <span className="text-xs font-bold text-accent">अभी चल रहा है</span>}
+                            </div>
+                            <span className="text-sm font-medium flex items-center">
                               {slot.time}
                             </span>
                           </div>
-                        ))}
+                        )})}
                       </div>
                     </div>
 
@@ -3370,17 +3431,25 @@ function MainApp() {
                         <Book className="w-5 h-5" /> रात का चौघड़िया
                       </h3>
                       <div className="grid grid-cols-1 gap-2">
-                        {choghadiyaSlots.night.map((slot, idx) => (
+                        {choghadiyaSlots.night.map((slot, idx) => {
+                          const now = new Date();
+                          const isToday = choghadiyaDate === now.toISOString().split('T')[0];
+                          const isCurrent = isToday && now >= slot.startTime && now < slot.endTime;
+                          return (
                           <div
                             key={`night-${slot.name}-${idx}`}
-                            className={`flex justify-between p-3 rounded-xl border ${slot.type === "good" ? "bg-green-50 border-green-200 text-green-800" : slot.type === "bad" ? "bg-red-50 border-red-200 text-red-800" : "bg-blue-50 border-blue-200 text-blue-800"}`}
+                            id={isCurrent ? "current-choghadiya-slot" : undefined}
+                            className={`flex justify-between p-3 rounded-xl border ${isCurrent ? "ring-2 ring-accent shadow-md scale-[1.02] transition-transform" : ""} ${slot.type === "good" ? "bg-green-50 border-green-200 text-green-800" : slot.type === "bad" ? "bg-red-50 border-red-200 text-red-800" : "bg-blue-50 border-blue-200 text-blue-800"}`}
                           >
-                            <span className="font-bold">{slot.name}</span>
-                            <span className="text-sm font-medium">
+                            <div className="flex flex-col">
+                              <span className="font-bold">{slot.name}</span>
+                              {isCurrent && <span className="text-xs font-bold text-accent">अभी चल रहा है</span>}
+                            </div>
+                            <span className="text-sm font-medium flex items-center">
                               {slot.time}
                             </span>
                           </div>
-                        ))}
+                        )})}
                       </div>
                     </div>
                     <p className="text-xs text-ink-light mt-4 italic text-center">
