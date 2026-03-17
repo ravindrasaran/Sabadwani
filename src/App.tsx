@@ -2000,21 +2000,24 @@ function MainApp() {
   };
 
   const handleShare = async () => {
+    const shareText = `सबदवाणी ऐप से यह पाठ पढ़ें:\n\n${selectedSabad?.title || "सबदवाणी"}\n\n${(selectedSabad?.text || "").substring(0, 200)}...`;
+    
     if (navigator.share) {
       try {
         await navigator.share({
           title: selectedSabad?.title || "सबदवाणी",
-          text:
-            "सबदवाणी ऐप से यह पाठ पढ़ें:\n\n" +
-            (selectedSabad?.text || "").substring(0, 100) +
-            "...",
-          url: window.location.href,
+          text: shareText,
         });
       } catch (error) {
         // Ignore share cancellation or errors
       }
     } else {
-      showToast("लिंक कॉपी कर लिया गया है!");
+      try {
+        await navigator.clipboard.writeText(shareText);
+        showToast("पाठ कॉपी कर लिया गया है!");
+      } catch (err) {
+        showToast("कॉपी करने में विफल!");
+      }
     }
   };
 
@@ -3262,7 +3265,10 @@ function MainApp() {
                   <div className="flex gap-2">
                     <input
                       value={contribAudio}
-                      onChange={(e) => setContribAudio(e.target.value)}
+                      onChange={(e) => {
+                        setContribAudio(e.target.value);
+                        if (e.target.value) setContribAudioFile(null);
+                      }}
                       type="url"
                       className="flex-1 p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none transition-colors"
                       placeholder="https://..."
@@ -3272,7 +3278,12 @@ function MainApp() {
                         type="file"
                         accept="audio/*"
                         className="hidden"
-                        onChange={(e) => handleFileSelect(e, setContribAudioFile, false, setContribAudioError)}
+                        onChange={(e) => {
+                          handleFileSelect(e, (file) => {
+                            setContribAudioFile(file);
+                            if (file) setContribAudio("");
+                          }, false, setContribAudioError);
+                        }}
                       />
                       <Upload className="w-5 h-5" />
                     </label>
@@ -4588,6 +4599,7 @@ function MainApp() {
                                     setEditItemData({
                                       ...editItemData,
                                       audioUrl: e.target.value,
+                                      audioFile: e.target.value ? null : editItemData.audioFile
                                     })
                                   }
                                   type="url"
@@ -4598,7 +4610,9 @@ function MainApp() {
                                     type="file"
                                     accept="audio/*"
                                     className="hidden"
-                                    onChange={(e) => handleFileSelect(e, (file) => setEditItemData({ ...editItemData, audioFile: file }), false, setEditAudioError)}
+                                    onChange={(e) => {
+                                      handleFileSelect(e, (file) => setEditItemData({ ...editItemData, audioFile: file, audioUrl: file ? "" : editItemData.audioUrl }), false, setEditAudioError);
+                                    }}
                                   />
                                   <Upload className="w-5 h-5" />
                                 </label>
@@ -4722,6 +4736,7 @@ function MainApp() {
                                   setEditItemData({
                                     ...editItemData,
                                     photoUrl: e.target.value,
+                                    photoFile: e.target.value ? null : editItemData.photoFile
                                   })
                                 }
                                 required={!editItemData.photoFile}
@@ -4733,7 +4748,9 @@ function MainApp() {
                                   type="file"
                                   accept="image/*"
                                   className="hidden"
-                                  onChange={(e) => handleFileSelect(e, (file) => setEditItemData({ ...editItemData, photoFile: file }), true, setEditPhotoError)}
+                                  onChange={(e) => {
+                                    handleFileSelect(e, (file) => setEditItemData({ ...editItemData, photoFile: file, photoUrl: file ? "" : editItemData.photoUrl }), true, setEditPhotoError);
+                                  }}
                                 />
                                 <Upload className="w-5 h-5" />
                               </label>
