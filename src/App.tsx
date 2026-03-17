@@ -40,6 +40,7 @@ import {
   Flame,
   AlertTriangle,
   AlertCircle,
+  Hand,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useGesture } from "@use-gesture/react";
@@ -333,16 +334,55 @@ function AdBanner({ text, link }: { text: string, link?: string }) {
   );
 }
 
-function AudioPlayer({ url, onEnded, onPlay, onPause, autoPlay = false }: { 
+function AudioPlayer({ url, onEnded, onPlay, onPause, autoPlay = false, title = 'सबदवाणी' }: { 
   url: string, 
   onEnded?: () => void, 
   onPlay?: () => void, 
   onPause?: () => void,
-  autoPlay?: boolean 
+  autoPlay?: boolean,
+  title?: string
 }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const handlePlay = () => {
+      setIsPlaying(true);
+      if (onPlay) onPlay();
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'playing';
+      }
+    };
+
+    const handlePause = () => {
+      setIsPlaying(false);
+      if (onPause) onPause();
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'paused';
+      }
+    };
+
+    audio.addEventListener('play', handlePlay);
+    audio.addEventListener('pause', handlePause);
+
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: title,
+        artist: 'गुरु जम्भेश्वर भगवान',
+      });
+      navigator.mediaSession.setActionHandler('play', () => audio.play());
+      navigator.mediaSession.setActionHandler('pause', () => audio.pause());
+    }
+
+    return () => {
+      audio.removeEventListener('play', handlePlay);
+      audio.removeEventListener('pause', handlePause);
+    };
+  }, [url, title, onPlay, onPause]);
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -353,10 +393,7 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, autoPlay = false }: {
         // Add a small delay to ensure DOM is ready and user interaction is registered
         timer = setTimeout(() => {
           if (audioRef.current) {
-            audioRef.current.play().then(() => {
-              setIsPlaying(true);
-              if (onPlay) onPlay();
-            }).catch((e) => {
+            audioRef.current.play().catch((e) => {
               setIsPlaying(false);
             });
           }
@@ -374,16 +411,9 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, autoPlay = false }: {
     if (audioRef.current) {
       if (isPlaying) {
         audioRef.current.pause();
-        if (onPause) onPause();
       } else {
-        audioRef.current
-          .play()
-          .then(() => {
-            if (onPlay) onPlay();
-          })
-          .catch((e) => {});
+        audioRef.current.play().catch(e => {});
       }
-      setIsPlaying(!isPlaying);
     }
   };
 
@@ -985,6 +1015,41 @@ function MainApp() {
   const [selectedSabad, setSelectedSabad] = useState<SabadItem | null>(null);
   const [fontSize, setFontSize] = useState(18);
   const [isBookmarked, setIsBookmarked] = useState(false);
+  const [slideDir, setSlideDir] = useState(1);
+  const [hasSeenSwipeHint, setHasSeenSwipeHint] = useState(() => {
+    return localStorage.getItem("hasSeenSwipeHint") === "true";
+  });
+
+  const [selectedCategory, setSelectedCategory] = useState<"aarti" | "bhajan" | "sakhi" | "mantra">("aarti");
+
+  // Save last read sabad when it changes
+  useEffect(() => {
+    if (selectedSabad && (currentScreen === "reading" || currentScreen === "audio_reading")) {
+      localStorage.setItem("lastReadSabad", JSON.stringify({
+        sabad: selectedSabad,
+        screen: currentScreen,
+        category: currentScreen === "audio_reading" ? selectedCategory : undefined
+      }));
+    }
+  }, [selectedSabad, currentScreen, selectedCategory]);
+
+  const handleOpenCategory = (targetScreen: "reading" | "audio_reading", listScreen: "shabad_list" | "category_list", category?: "aarti" | "bhajan" | "sakhi" | "mantra") => {
+    const savedLastRead = localStorage.getItem("lastReadSabad");
+    if (savedLastRead) {
+      try {
+        const parsed = JSON.parse(savedLastRead);
+        if (parsed && parsed.sabad && parsed.screen === targetScreen && parsed.category === category) {
+          setSelectedSabad(parsed.sabad);
+          if (category) setSelectedCategory(category);
+          navigateTo(targetScreen);
+          return;
+        }
+      } catch (e) {}
+    }
+    
+    if (category) setSelectedCategory(category);
+    navigateTo(listScreen);
+  };
 
   const [bookmarks, setBookmarks] = useState<string[]>(() => {
     const saved = localStorage.getItem("shabad_bookmarks");
@@ -1018,7 +1083,6 @@ function MainApp() {
   const [badhais, setBadhais] = useState<any[]>([]);
   const [meles, setMeles] = useState<any[]>([]);
 
-  const [selectedCategory, setSelectedCategory] = useState<"aarti" | "bhajan" | "sakhi" | "mantra">("aarti");
   const [autoPlayAudio, setAutoPlayAudio] = useState(false);
 
   const [pendingPosts, setPendingPosts] = useState<SabadItem[]>([]);
@@ -1786,8 +1850,27 @@ function MainApp() {
       }
     );
 
+  // Scroll to upcoming mela when mele screen is opened
+  useEffect(() => {
+    if (currentScreen === "mele") {
+      const timer = setTimeout(() => {
+        const cards = document.querySelectorAll('.mela-card');
+        const targetIdx = processedMeles.findIndex((m: any) => m.upcoming);
+        if (targetIdx !== -1 && cards[targetIdx]) {
+          cards[targetIdx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [currentScreen, processedMeles]);
+
   // --- Swipe Gesture Logic ---
   const handleSwipe = (direction: "left" | "right") => {
+    if (!hasSeenSwipeHint) {
+      setHasSeenSwipeHint(true);
+      localStorage.setItem("hasSeenSwipeHint", "true");
+    }
+
     if (!selectedSabad) return;
 
     let currentList: SabadItem[] = [];
@@ -1807,9 +1890,11 @@ function MainApp() {
 
     if (direction === "left" && currentIndex < currentList.length - 1) {
       // Swipe Left -> Next Item
+      setSlideDir(1);
       setSelectedSabad(currentList[currentIndex + 1]);
     } else if (direction === "right" && currentIndex > 0) {
       // Swipe Right -> Prev Item
+      setSlideDir(-1);
       setSelectedSabad(currentList[currentIndex - 1]);
     }
   };
@@ -1833,7 +1918,7 @@ function MainApp() {
       },
     },
     {
-      drag: { filterTaps: true, swipe: { distance: 50 } },
+      drag: { axis: 'x', filterTaps: true, swipe: { distance: 50 } },
       pinch: { eventOptions: { passive: false } },
     },
   );
@@ -2179,9 +2264,11 @@ function MainApp() {
                 </div>
                 <div className="text-right">
                   <p className="text-[12px] font-black text-accent-dark">
-                    {getTithiName(getJD(new Date()))}
+                    {getTithiName(getJD(new Date(new Date().setHours(6, 0, 0, 0))))}
                   </p>
-                  <p className="text-[10px] font-bold text-ink-light uppercase mt-0.5">विक्रमी संवत 2083</p>
+                  <p className="text-[10px] font-bold text-ink-light uppercase mt-0.5">
+                    विक्रमी संवत {getSamvat(getJD(new Date(new Date().setHours(6, 0, 0, 0))))}
+                  </p>
                 </div>
               </div>
             </div>
@@ -2190,7 +2277,7 @@ function MainApp() {
             <div className="grid grid-cols-3 gap-1 px-4 mt-0.5 flex-1 overflow-y-auto pb-4 scrollbar-hide">
               {/* 1. Sabadwani */}
               <button
-                onClick={() => navigateTo("shabad_list")}
+                onClick={() => handleOpenCategory("reading", "shabad_list")}
                 className="flex flex-col items-center justify-center p-2.5 bg-white/80 backdrop-blur-sm rounded-2xl border border-ink/5 hover:bg-white hover:shadow-md transition-all shadow-sm group"
               >
                 <div className="bg-accent/10 p-2 rounded-xl mb-1.5 group-hover:bg-accent/20 transition-colors group-hover:scale-110 duration-300">
@@ -2220,7 +2307,7 @@ function MainApp() {
 
               {/* 3. Aarti */}
               <button
-                onClick={() => { setSelectedCategory("aarti"); navigateTo("category_list"); }}
+                onClick={() => handleOpenCategory("audio_reading", "category_list", "aarti")}
                 className="flex flex-col items-center justify-center p-2.5 bg-white/80 backdrop-blur-sm rounded-2xl border border-ink/5 hover:bg-white hover:shadow-md transition-all shadow-sm group"
               >
                 <div className="bg-accent/10 p-2 rounded-xl mb-1.5 group-hover:bg-accent/20 transition-colors group-hover:scale-110 duration-300">
@@ -2235,7 +2322,7 @@ function MainApp() {
 
               {/* 4. Bhajan */}
               <button
-                onClick={() => { setSelectedCategory("bhajan"); navigateTo("category_list"); }}
+                onClick={() => handleOpenCategory("audio_reading", "category_list", "bhajan")}
                 className="flex flex-col items-center justify-center p-2.5 bg-white/80 backdrop-blur-sm rounded-2xl border border-ink/5 hover:bg-white hover:shadow-md transition-all shadow-sm group"
               >
                 <div className="bg-accent/10 p-2 rounded-xl mb-1.5 group-hover:bg-accent/20 transition-colors group-hover:scale-110 duration-300">
@@ -2250,7 +2337,7 @@ function MainApp() {
 
               {/* 5. Sakhi */}
               <button
-                onClick={() => { setSelectedCategory("sakhi"); navigateTo("category_list"); }}
+                onClick={() => handleOpenCategory("audio_reading", "category_list", "sakhi")}
                 className="flex flex-col items-center justify-center p-2.5 bg-white/80 backdrop-blur-sm rounded-2xl border border-ink/5 hover:bg-white hover:shadow-md transition-all shadow-sm group"
               >
                 <div className="bg-accent/10 p-2 rounded-xl mb-1.5 group-hover:bg-accent/20 transition-colors group-hover:scale-110 duration-300">
@@ -2265,7 +2352,7 @@ function MainApp() {
 
               {/* 6. Mantra */}
               <button
-                onClick={() => { setSelectedCategory("mantra"); navigateTo("category_list"); }}
+                onClick={() => handleOpenCategory("audio_reading", "category_list", "mantra")}
                 className="flex flex-col items-center justify-center p-2.5 bg-white/80 backdrop-blur-sm rounded-2xl border border-ink/5 hover:bg-white hover:shadow-md transition-all shadow-sm group"
               >
                 <div className="bg-accent/10 p-2 rounded-xl mb-1.5 group-hover:bg-accent/20 transition-colors group-hover:scale-110 duration-300">
@@ -2724,14 +2811,38 @@ function MainApp() {
         );
 
       case "reading":
-      case "audio_reading":
+      case "audio_reading": {
+        let readingList: SabadItem[] = [];
+        if (currentScreen === "reading") readingList = sabads;
+        else if (currentScreen === "audio_reading") {
+          if (selectedCategory === "aarti") readingList = aartis;
+          else if (selectedCategory === "bhajan") readingList = bhajans;
+          else if (selectedCategory === "sakhi") readingList = sakhis;
+          else if (selectedCategory === "mantra") readingList = mantras;
+        }
+        const readingIndex = selectedSabad ? readingList.findIndex(item => item.id === selectedSabad.id) : -1;
+        const totalCount = readingList.length;
+        const categoryLabel = currentScreen === "reading" ? "शब्द" : selectedCategory === "aarti" ? "आरती" : selectedCategory === "bhajan" ? "भजन" : selectedCategory === "sakhi" ? "साखी" : selectedCategory === "mantra" ? "मंत्र" : "शब्द";
+
         return (
           <motion.div
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.98 }}
-            className="min-h-screen flex flex-col pb-32"
+            className="min-h-screen flex flex-col pb-32 relative"
           >
+            {!hasSeenSwipeHint && (
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 20 }}
+                className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-ink text-white px-5 py-3 rounded-full shadow-2xl text-sm flex items-center gap-3 z-50 pointer-events-none whitespace-nowrap"
+              >
+                <Hand className="w-5 h-5 animate-pulse text-accent" />
+                अगला {categoryLabel} देखने के लिए बाएं swipe करें
+              </motion.div>
+            )}
+
             <div className="sticky top-[60px] z-10 bg-paper/95 backdrop-blur-md p-3 flex items-center justify-between shadow-sm border-b border-ink/10">
               <button
                 onClick={handleBack}
@@ -2739,6 +2850,13 @@ function MainApp() {
               >
                 <ChevronLeft className="w-6 h-6" />
               </button>
+
+              {/* Position Indicator */}
+              {readingIndex !== -1 && totalCount > 0 && (
+                <div className="text-xs font-bold text-ink-light bg-ink/5 px-3 py-1.5 rounded-full tracking-wide">
+                  {readingIndex + 1} / {totalCount} {categoryLabel}
+                </div>
+              )}
 
               {/* Font Size Controls */}
               <div className="flex items-center gap-1 font-bold shrink-0 bg-ink/5 rounded-full px-2 py-1">
@@ -2777,12 +2895,13 @@ function MainApp() {
             </div>
 
             {/* Swipeable Container */}
-            <AnimatePresence mode="popLayout">
+            <AnimatePresence mode="popLayout" custom={slideDir}>
               <motion.div
                 key={selectedSabad?.id}
-                initial={{ opacity: 0, x: 50 }}
+                custom={slideDir}
+                initial={(dir) => ({ opacity: 0, x: dir > 0 ? 50 : -50 })}
                 animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -50 }}
+                exit={(dir) => ({ opacity: 0, x: dir < 0 ? 50 : -50 })}
                 transition={{ duration: 0.3, ease: "circOut" }}
                 {...(bindGestures() as any)}
                 className="px-5 py-6 flex-1 flex flex-col items-center w-full touch-pan-y overflow-y-auto"
@@ -2802,6 +2921,7 @@ function MainApp() {
                       autoPlay={autoPlayAudio}
                       onPlay={() => setAutoPlayAudio(true)}
                       onPause={() => setAutoPlayAudio(false)}
+                      title={selectedSabad.title}
                     />
                   )}
 
@@ -2820,25 +2940,34 @@ function MainApp() {
                 </div>
 
                 <div
-                  className="text-center leading-relaxed max-w-2xl whitespace-pre-wrap mt-2 bg-white/60 p-6 sm:p-8 rounded-3xl shadow-sm border border-ink/10 text-ink select-none"
+                  className="text-center leading-relaxed max-w-2xl whitespace-pre-wrap mt-2 bg-white/60 p-6 sm:p-8 rounded-3xl shadow-sm border border-ink/10 text-ink select-none mb-8"
                   style={{ fontSize: `${fontSize}px` }}
                 >
                   {selectedSabad?.text || ""}
                 </div>
 
-                {/* Swipe Indicators */}
-                <div className="flex justify-between w-full max-w-md mt-8 text-ink-light/50 px-4">
-                  <div className="flex items-center gap-1 text-xs">
-                    <ChevronLeft className="w-4 h-4" /> पिछला
-                  </div>
-                  <div className="flex items-center gap-1 text-xs">
-                    अगला <ChevronRight className="w-4 h-4" />
-                  </div>
+                {/* Navigation Buttons */}
+                <div className="flex justify-between w-full max-w-md mt-4 mb-8 px-4">
+                  <button 
+                    onClick={() => handleSwipe("right")}
+                    disabled={readingIndex <= 0}
+                    className={`flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-white hover:bg-ink/5 text-ink font-medium border border-ink/10 shadow-sm transition-all active:scale-95 ${readingIndex <= 0 ? 'opacity-40 cursor-not-allowed' : ''}`}
+                  >
+                    <ChevronLeft className="w-5 h-5" /> पिछला
+                  </button>
+                  <button 
+                    onClick={() => handleSwipe("left")}
+                    disabled={readingIndex >= totalCount - 1}
+                    className={`flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-white hover:bg-ink/5 text-ink font-medium border border-ink/10 shadow-sm transition-all active:scale-95 ${readingIndex >= totalCount - 1 ? 'opacity-40 cursor-not-allowed' : ''}`}
+                  >
+                    अगला <ChevronRight className="w-5 h-5" />
+                  </button>
                 </div>
               </motion.div>
             </AnimatePresence>
           </motion.div>
         );
+      }
 
       case "amavasya":
         return (
@@ -3377,7 +3506,7 @@ function MainApp() {
               {processedMeles.map((mela) => (
                 <div
                   key={mela.id}
-                  className={`bg-white/90 p-5 rounded-3xl shadow-sm border ${mela.upcoming ? "border-accent/50 ring-1 ring-accent/20" : "border-ink/5"} relative overflow-hidden`}
+                  className={`mela-card bg-white/90 p-5 rounded-3xl shadow-sm border ${mela.upcoming ? "border-accent/50 ring-1 ring-accent/20" : "border-ink/5"} relative overflow-hidden`}
                 >
                   {mela.upcoming && (
                     <div className="absolute top-0 right-0 bg-accent text-white text-xs font-bold px-3 py-1 rounded-bl-xl">
