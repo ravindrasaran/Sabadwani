@@ -1706,7 +1706,7 @@ function MainApp() {
           return;
         }
       } catch (e) {
-        console.warn("ipapi.co fallback failed, trying ipinfo.io", e);
+        // ipapi.co fallback failed, trying ipinfo.io
         try {
           const res2 = await fetch("https://ipinfo.io/json");
           const data2 = await res2.json();
@@ -1719,7 +1719,7 @@ function MainApp() {
             return;
           }
         } catch (e2) {
-          console.warn("ipinfo.io fallback failed", e2);
+          // ipinfo.io fallback failed
         }
       }
 
@@ -1790,7 +1790,7 @@ function MainApp() {
           setChoghadiyaLocation(city + (state ? ", " + state : ""));
         }
       } catch (e) {
-        console.warn("Geo lookup failed, using defaults");
+        // Geo lookup failed, using defaults
       }
 
       const targetDate = new Date(dateStr);
@@ -2874,6 +2874,8 @@ function MainApp() {
         const readingIndex = selectedSabad ? readingList.findIndex(item => item.id === selectedSabad.id) : -1;
         const totalCount = readingList.length;
         const categoryLabel = currentScreen === "reading" ? "शब्द" : selectedCategory === "aarti" ? "आरती" : selectedCategory === "bhajan" ? "भजन" : selectedCategory === "sakhi" ? "साखी" : selectedCategory === "mantra" ? "मंत्र" : "शब्द";
+        const isFeminine = (currentScreen === "audio_reading" && (selectedCategory === "aarti" || selectedCategory === "sakhi"));
+        const nextWord = isFeminine ? "अगली" : "अगला";
 
         return (
           <motion.div
@@ -2890,7 +2892,7 @@ function MainApp() {
                 className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-ink text-white px-5 py-3 rounded-full shadow-2xl text-sm flex items-center gap-3 z-50 pointer-events-none whitespace-nowrap"
               >
                 <Hand className="w-5 h-5 animate-pulse text-accent" />
-                अगला {categoryLabel} देखने के लिए बाएं swipe करें
+                {nextWord} {categoryLabel} देखने के लिए बाएं swipe करें
               </motion.div>
             )}
 
