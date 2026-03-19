@@ -1,0 +1,39 @@
+{
+  "entities": {
+    "Sabad": {
+      "title": "Sabad",
+      "description": "A religious text or hymn.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Title of the sabad" },
+        "text": { "type": "string", "description": "Content of the sabad" },
+        "author": { "type": "string", "description": "Author of the sabad" },
+        "userId": { "type": "string", "description": "ID of the user who contributed" }
+      },
+      "required": ["title", "text"]
+    },
+    "PendingPost": {
+      "title": "PendingPost",
+      "description": "A post waiting for approval.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "text": { "type": "string" },
+        "author": { "type": "string" },
+        "type": { "type": "string" },
+        "userId": { "type": "string" }
+      },
+      "required": ["title", "text", "type"]
+    }
+  },
+  "firestore": {
+    "/shabads/{sabadId}": {
+      "schema": { "$ref": "Sabad" },
+      "description": "Collection of approved shabads."
+    },
+    "/pendingPosts/{postId}": {
+      "schema": { "$ref": "PendingPost" },
+      "description": "Collection of posts waiting for approval."
+    }
+  }
+}

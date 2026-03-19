@@ -40,6 +40,8 @@ import {
   Flame,
   AlertTriangle,
   AlertCircle,
+  Clock,
+  User,
   Hand,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -128,6 +130,10 @@ type SabadItem = {
   text?: string;
   author?: string;
   sequence?: number;
+  type?: string;
+  userId?: string;
+  createdAt?: string;
+  timestamp?: string;
 };
 
 type AppSettings = {
@@ -248,7 +254,10 @@ function Header({
             alt="App Logo"
             className="w-10 h-10 rounded-full shadow-md border-2 border-white object-cover"
             referrerPolicy="no-referrer"
-            onError={(e) => { e.currentTarget.src = "/logo.png"; }}
+            onError={(e) => { 
+              e.currentTarget.onerror = null;
+              e.currentTarget.src = "/logo.png"; 
+            }}
           />
           <div className="absolute -bottom-1 -right-1 bg-green-500 w-3 h-3 rounded-full border-2 border-white"></div>
         </div>
@@ -334,7 +343,7 @@ function AdBanner({ text, link }: { text: string, link?: string }) {
   );
 }
 
-function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay = false, title = 'सबदवाणी' }: { 
+function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay = false, title = 'सबदवाणी', showToast }: { 
   url: string, 
   onEnded?: () => void, 
   onPlay?: () => void, 
@@ -342,7 +351,8 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
   onNext?: () => void,
   onPrev?: () => void,
   autoPlay?: boolean,
-  title?: string
+  title?: string,
+  showToast?: (msg: string) => void
 }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -418,6 +428,10 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
         ref={audioRef}
         src={url || undefined}
         onTimeUpdate={handleTimeUpdate}
+        onError={() => {
+          if (showToast) showToast("ऑडियो लोड करने में विफल। लिंक टूटा हुआ हो सकता है।");
+          setIsPlaying(false);
+        }}
         onPlay={() => {
           setIsPlaying(true);
           if (onPlay) onPlay();
@@ -506,7 +520,10 @@ const getSunLongitude = (jd: number) => {
 const getTithiDiff = (jd: number) => {
   const m = getMoonLongitude(jd);
   const s = getSunLongitude(jd);
-  return (m - s + 360) % 360;
+  // Ensure positive modulo result
+  let diff = (m - s) % 360;
+  if (diff < 0) diff += 360;
+  return diff;
 };
 
 const findTransition = (
@@ -545,12 +562,15 @@ const getTithiName = (jd: number) => {
     "प्रतिपदा", "द्वितीया", "तृतीया", "चतुर्थी", "पंचमी", "षष्ठी", "सप्तमी", "अष्टमी", "नवमी", "दशमी", "एकादशी", "द्वादशी", "त्रयोदशी", "चतुर्दशी", "पूर्णिमा"
   ];
   
-  let paksha = tithiNum <= 15 ? "शुक्ल" : "कृष्ण";
-  let nameIndex = (tithiNum - 1) % 15;
+  // Clamp tithiNum to 1-30 range and handle NaN
+  const safeTithiNum = isNaN(tithiNum) ? 1 : Math.max(1, Math.min(30, tithiNum));
+  
+  let paksha = safeTithiNum <= 15 ? "शुक्ल" : "कृष्ण";
+  let nameIndex = (safeTithiNum - 1) % 15;
   let name = names[nameIndex];
   
-  if (tithiNum === 15) name = "पूर्णिमा";
-  if (tithiNum === 30) {
+  if (safeTithiNum === 15) name = "पूर्णिमा";
+  if (safeTithiNum === 30) {
     paksha = "कृष्ण";
     name = "अमावस्या";
   }
@@ -739,9 +759,14 @@ const PremiumBanner = ({ meles, badhais, dailyThought }: any) => {
     }
     foundMela = closestMela;
 
+    const now = new Date();
+
     // Check Amavasya
     for (const amavasya of bannerAmavasyaList) {
       if (!amavasya.startDate || !amavasya.endDate) continue;
+      
+      // If the exact end time has already passed, skip this Amavasya
+      if (now > amavasya.endDate) continue;
       
       const startDay = new Date(amavasya.startDate);
       startDay.setHours(0,0,0,0);
@@ -832,7 +857,7 @@ const PremiumBanner = ({ meles, badhais, dailyThought }: any) => {
             </div>
             
             <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-red-500/90 text-white text-[10px] font-bold px-3 py-0.5 rounded-b-lg shadow-md z-20 flex items-center gap-1 border border-t-0 border-white/20">
-              <Bell className="w-3 h-3 animate-pulse" /> आगामी सूचना
+              <Bell className="w-3 h-3 animate-pulse" /> {(flashAlert.mela?.diffDays === 0 || flashAlert.amavasya?.diffDays === 0) ? "सूचना" : "आगामी सूचना"}
             </div>
             
             <div className="relative z-10 flex flex-col justify-center items-center h-full w-full pt-3">
@@ -934,7 +959,10 @@ const PremiumBanner = ({ meles, badhais, dailyThought }: any) => {
                   alt="Profile" 
                   className="w-full h-full object-cover rounded-2xl border-2 border-white shadow-xl bg-white/20 relative z-10" 
                   referrerPolicy="no-referrer" 
-                  onError={(e) => { e.currentTarget.src = "/logo.png"; }}
+                  onError={(e) => { 
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = "/logo.png"; 
+                  }}
                 />
                 <div className="absolute inset-0 rounded-2xl bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-70 z-20"></div>
                 <div className="absolute -bottom-1 -right-1 bg-yellow-400 p-1 rounded-full shadow-lg z-30 border border-white">
@@ -1088,7 +1116,26 @@ function MainApp() {
   const [autoPlayAudio, setAutoPlayAudio] = useState(false);
 
   const [pendingPosts, setPendingPosts] = useState<SabadItem[]>([]);
-  const [approvedPosts, setApprovedPosts] = useState<SabadItem[]>([]);
+
+  const recentApprovedPosts = useMemo(() => {
+    const all = [
+      ...sabads.map(s => ({ ...s, type: "शब्द" })),
+      ...bhajans.map(s => ({ ...s, type: "भजन" })),
+      ...aartis.map(s => ({ ...s, type: "आरती" })),
+      ...mantras.map(s => ({ ...s, type: "मंत्र" })),
+      ...sakhis.map(s => ({ ...s, type: "साखी" }))
+    ];
+    return all
+      .filter(item => item.author && item.author !== "Admin")
+      .sort((a, b) => new Date(b.createdAt || b.timestamp || 0).getTime() - new Date(a.createdAt || a.timestamp || 0).getTime())
+      .slice(0, 10);
+  }, [sabads, bhajans, aartis, mantras, sakhis]);
+
+  const myPendingPosts = useMemo(() => {
+    const currentUserId = auth.currentUser?.uid;
+    if (!currentUserId) return [];
+    return pendingPosts.filter(post => post.userId === currentUserId);
+  }, [pendingPosts, auth.currentUser]);
 
   useEffect(() => {
     if (!db) return;
@@ -1234,16 +1281,6 @@ function MainApp() {
         setPendingPosts([]);
       }
     });
-    const unsubApproved = onSnapshot(collection(db, "approvedPosts"), (snapshot) => {
-      if (!snapshot.empty) {
-        setApprovedPosts(snapshot.docs.map((doc) => {
-          const data = doc.data();
-          return { id: doc.id, ...data, title: normalizeText(data.title), text: normalizeText(data.text) } as SabadItem;
-        }));
-      } else {
-        setApprovedPosts([]);
-      }
-    });
     const unsubSettings = onSnapshot(doc(db, "settings", "general"), (doc) => {
       if (doc.exists()) {
         setSettings((prev) => ({ ...prev, ...doc.data() }));
@@ -1260,7 +1297,6 @@ function MainApp() {
       unsubGreetings();
       unsubMeles();
       unsubPending();
-      unsubApproved();
       unsubSettings();
     };
   }, []);
@@ -1324,6 +1360,8 @@ function MainApp() {
       setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
       return;
     }
+    const isOnline = await checkIsOnline();
+    if (!isOnline) return;
     try {
       if (!db) return;
       await updateDoc(doc(db, "notifications", id), { read: true });
@@ -1333,6 +1371,8 @@ function MainApp() {
   };
 
   const markAllRead = async () => {
+    const isOnline = await checkIsOnline();
+    if (!isOnline) return;
     localStorage.setItem("hasSeenWelcome", "true");
     if (!db) return;
     try {
@@ -1479,6 +1519,11 @@ function MainApp() {
   const [confirmDialog, setConfirmDialog] = useState<{isOpen: boolean, title: string, message: string, onConfirm: () => void} | null>(null);
 
   const toggleBadhaiStatus = async (id: string, currentStatus: boolean) => {
+    const isOnline = await checkIsOnline();
+    if (!isOnline) {
+      showToast("आप अभी ऑफ़लाइन हैं। कृपया इंटरनेट कनेक्शन की जांच करें।");
+      return;
+    }
     if (!db) return;
     try {
       await updateDoc(doc(db, "badhais", id), { isActive: !currentStatus });
@@ -1497,12 +1542,15 @@ function MainApp() {
   const handleEditSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting) return;
-    if (editAudioError || editPhotoError) {
-      showToast("कृपया पहले फाइल से जुड़ी त्रुटि को ठीक करें।");
+    
+    const isOnline = await checkIsOnline();
+    if (!isOnline) {
+      showToast("आप अभी ऑफ़लाइन हैं। कृपया इंटरनेट कनेक्शन की जांच करें।");
       return;
     }
-    if (!navigator.onLine) {
-      showToast("आप अभी ऑफ़लाइन हैं। कृपया इंटरनेट कनेक्शन की जांच करें।");
+
+    if (editAudioError || editPhotoError) {
+      showToast("कृपया पहले फाइल से जुड़ी त्रुटि को ठीक करें।");
       return;
     }
     if (!db) {
@@ -1595,8 +1643,22 @@ function MainApp() {
     }
   };
 
+  const checkIsOnline = async () => {
+    if (!navigator.onLine) return false;
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      await fetch(window.location.origin + "/?ping=" + Date.now(), { method: "HEAD", signal: controller.signal });
+      clearTimeout(timeoutId);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  };
+
   const handleDelete = async (type: string, id: string, index?: number) => {
-    if (!navigator.onLine) {
+    const isOnline = await checkIsOnline();
+    if (!isOnline) {
       showToast("आप अभी ऑफ़लाइन हैं। कृपया इंटरनेट कनेक्शन की जांच करें।");
       return;
     }
@@ -1932,7 +1994,7 @@ function MainApp() {
       else if (selectedCategory === "sakhi") currentList = sakhis;
       else if (selectedCategory === "mantra") currentList = mantras;
     }
-    else if (currentScreen === "community_posts") currentList = approvedPosts;
+    else if (currentScreen === "community_posts") currentList = recentApprovedPosts;
 
     const currentIndex = currentList.findIndex(
       (item) => item.id === selectedSabad.id,
@@ -2024,12 +2086,15 @@ function MainApp() {
   const handleContributeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting) return;
-    if (contribAudioError) {
-      showToast("कृपया पहले ऑडियो से जुड़ी त्रुटि को ठीक करें।");
+    
+    const isOnline = await checkIsOnline();
+    if (!isOnline) {
+      showToast("आप अभी ऑफ़लाइन हैं। कृपया इंटरनेट कनेक्शन की जांच करें।");
       return;
     }
-    if (!navigator.onLine) {
-      showToast("आप अभी ऑफलाइन हैं। इंटरनेट चालू होने पर प्रयास करें।");
+
+    if (contribAudioError) {
+      showToast("कृपया पहले ऑडियो से जुड़ी त्रुटि को ठीक करें।");
       return;
     }
     if (parseInt(captchaAnswer) !== captchaExpected) {
@@ -2061,6 +2126,7 @@ function MainApp() {
         author: contribAuthor || "अज्ञात भक्त",
         type: contribType,
         timestamp: new Date().toISOString(),
+        userId: auth.currentUser?.uid,
       };
       
       await addDoc(collection(db, "pendingPosts"), newPost);
@@ -2148,7 +2214,8 @@ function MainApp() {
 
 
   const handleSaveSettings = async () => {
-    if (!navigator.onLine) {
+    const isOnline = await checkIsOnline();
+    if (!isOnline) {
       showToast("आप अभी ऑफ़लाइन हैं। कृपया इंटरनेट कनेक्शन की जांच करें।");
       return;
     }
@@ -2191,7 +2258,8 @@ function MainApp() {
   };
 
   const approvePost = async (post: any) => {
-    if (!navigator.onLine) {
+    const isOnline = await checkIsOnline();
+    if (!isOnline) {
       showToast("आप अभी ऑफ़लाइन हैं। कृपया इंटरनेट कनेक्शन की जांच करें।");
       return;
     }
@@ -2210,8 +2278,11 @@ function MainApp() {
       await addDoc(collection(db, collectionName), {
         title: post.title,
         text: post.text,
-        audioUrl: post.audioUrl,
-        author: post.author,
+        audioUrl: post.audioUrl || "",
+        author: post.author || "अज्ञात भक्त",
+        type: post.type || "भजन",
+        createdAt: post.createdAt || new Date().toISOString(),
+        userId: post.userId || "",
       });
       
       // Remove from pending
@@ -2234,7 +2305,8 @@ function MainApp() {
   };
 
   const rejectPost = async (post: any) => {
-    if (!navigator.onLine) {
+    const isOnline = await checkIsOnline();
+    if (!isOnline) {
       showToast("आप अभी ऑफ़लाइन हैं। कृपया इंटरनेट कनेक्शन की जांच करें।");
       return;
     }
@@ -2497,9 +2569,6 @@ function MainApp() {
                 onClick={() => navigateTo("community_posts")}
                 className="flex flex-col items-center justify-center p-2.5 bg-white/80 backdrop-blur-sm rounded-2xl border border-ink/5 hover:bg-white hover:shadow-md transition-all shadow-sm group relative"
               >
-                {approvedPosts.length > 0 && (
-                  <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-red-500 rounded-full border border-white shadow-sm"></span>
-                )}
                 <div className="bg-accent/10 p-2 rounded-xl mb-1.5 group-hover:bg-accent/20 transition-colors group-hover:scale-110 duration-300">
                   <HeartHandshake className="w-5 h-5 text-accent-dark" />
                 </div>
@@ -2820,7 +2889,16 @@ function MainApp() {
           >
             <PremiumHeader title="भक्त योगदान" onBack={handleBack} icon={HeartHandshake} />
             <div className="flex flex-col p-4 gap-4">
-              {approvedPosts.length === 0 ? (
+              <div className="bg-white/50 backdrop-blur-sm p-5 rounded-[2rem] border border-accent/10 mb-2 shadow-sm flex gap-4 items-center">
+                <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center shrink-0">
+                  <Info className="w-5 h-5 text-accent-dark" />
+                </div>
+                <p className="text-xs text-ink-light leading-relaxed font-medium">
+                  यहाँ सबदवाणी परिवार के सज्जनों द्वारा भेजे गए नवीनतम 10 योगदान दिखाए जा रहे हैं। आप भी अपना योगदान भेज सकते हैं।
+                </p>
+              </div>
+
+              {recentApprovedPosts.length === 0 && myPendingPosts.length === 0 ? (
                 <div className="text-center text-ink-light mt-10">
                   <Users className="w-16 h-16 mx-auto opacity-20 mb-4" />
                   <p className="text-xl">अभी तक कोई योगदान नहीं है।</p>
@@ -2832,33 +2910,114 @@ function MainApp() {
                   </button>
                 </div>
               ) : (
-                approvedPosts.map((item) => (
-                  <div
-                    key={item.id}
-                    className="bg-white/80 rounded-3xl p-5 shadow-sm border border-ink/10"
-                  >
-                    <h3 className="text-xl font-bold text-ink mb-2">
-                      {item.title}
-                    </h3>
-                    {item.author && item.author.toLowerCase() !== "admin" && (
-                      <p className="text-sm text-ink-light mb-4 flex items-center gap-2">
-                        <Users className="w-4 h-4" /> {item.author}
-                      </p>
-                    )}
-                    <p className="text-ink whitespace-pre-wrap line-clamp-3 mb-4 break-words">
-                      {item.text}
-                    </p>
+                <div className="flex flex-col gap-5">
+                  {/* User's own contribution prompt if they haven't sent anything */}
+                  {!recentApprovedPosts.some(p => p.userId === auth.currentUser?.uid) && myPendingPosts.length === 0 && (
                     <button
-                      onClick={() => {
-                        setSelectedSabad(item);
-                        navigateTo("reading");
-                      }}
-                      className="text-accent-dark font-bold flex items-center gap-1"
+                      onClick={() => navigateTo("contribute")}
+                      className="bg-accent/5 p-6 rounded-[2rem] border border-dashed border-accent/30 flex items-center justify-between group hover:bg-accent/10 transition-all"
                     >
-                      पूरा पढ़ें <ChevronRight className="w-4 h-4" />
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center">
+                          <PlusCircle className="w-6 h-6 text-accent-dark" />
+                        </div>
+                        <div className="text-left">
+                          <h4 className="font-bold text-ink">अपना योगदान भेजें</h4>
+                          <p className="text-[10px] text-ink-light">सबदवाणी परिवार में अपना योगदान जोड़ें</p>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-accent-dark group-hover:translate-x-1 transition-transform" />
                     </button>
+                  )}
+
+                  {/* Pending Section */}
+                  {myPendingPosts.length > 0 && (
+                    <div className="flex flex-col gap-3">
+                      <h4 className="text-xs font-bold text-accent-dark uppercase tracking-widest ml-2">मेरे लंबित योगदान</h4>
+                      {myPendingPosts.map((item) => (
+                        <div
+                          key={item.id}
+                          className="bg-white/40 rounded-[2rem] p-6 shadow-sm border border-dashed border-accent/30 relative overflow-hidden"
+                        >
+                          <div className="absolute top-0 right-0 bg-accent/10 px-4 py-1.5 rounded-bl-2xl text-[10px] font-bold text-accent uppercase tracking-wider">
+                            समीक्षाधीन
+                          </div>
+                          <h3 className="text-lg font-bold text-ink mb-2">
+                            {item.title}
+                          </h3>
+                          <div className="flex items-center gap-3 text-ink-light text-xs mb-4">
+                            <span className="bg-accent/5 text-accent-dark px-2.5 py-1 rounded-full font-bold">{item.type}</span>
+                            <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {new Date(item.timestamp).toLocaleDateString('hi-IN')}</span>
+                          </div>
+                          <p className="text-ink-light text-sm line-clamp-2 italic">
+                            "{item.text}"
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Recent Feed */}
+                  <div className="flex flex-col gap-5">
+                    {recentApprovedPosts.map((item) => (
+                      <div
+                        key={item.id}
+                        className={`group bg-white rounded-[2rem] p-6 shadow-sm border ${auth.currentUser?.uid === item.userId ? "border-accent/50 ring-1 ring-accent/20" : "border-ink/5"} hover:shadow-xl hover:shadow-accent/5 transition-all duration-500 relative overflow-hidden`}
+                      >
+                        <div className="absolute -right-4 -top-4 w-24 h-24 bg-accent/5 rounded-full blur-2xl group-hover:bg-accent/10 transition-colors"></div>
+                        
+                        <div className="flex flex-col mb-4">
+                          <h3 className="text-xl font-bold text-ink group-hover:text-accent-dark transition-colors leading-tight">
+                            {item.title}
+                          </h3>
+                          <div className="flex items-center gap-2 mt-1.5">
+                            <span className="bg-accent/10 text-accent-dark text-[10px] font-bold px-2.5 py-0.5 rounded-md uppercase tracking-wider">
+                              {item.type}
+                            </span>
+                            {auth.currentUser?.uid === item.userId && (
+                              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100 uppercase tracking-wider">आपका योगदान</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2.5 text-ink-light text-sm mb-6">
+                          <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center border border-accent/5">
+                            <User className="w-4 h-4 text-accent-dark" />
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="font-bold text-ink/80 text-xs leading-none mb-0.5">{item.author}</span>
+                            <span className="text-[10px] opacity-60">सबदवाणी परिवार</span>
+                          </div>
+                        </div>
+
+                        <div className="relative mb-6 pl-4 border-l-2 border-accent/20">
+                          <p className="text-ink-light text-sm line-clamp-3 leading-relaxed">
+                            {item.text}
+                          </p>
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            setSelectedSabad(item);
+                            if (item.type === "शब्द") {
+                              navigateTo("reading");
+                            } else {
+                              if (item.type === "भजन") setSelectedCategory("bhajan");
+                              else if (item.type === "आरती") setSelectedCategory("aarti");
+                              else if (item.type === "मंत्र") setSelectedCategory("mantra");
+                              else if (item.type === "साखी") setSelectedCategory("sakhi");
+                              setAutoPlayAudio(false);
+                              navigateTo("audio_reading");
+                            }
+                          }}
+                          className="w-full py-4 bg-ink/5 hover:bg-accent hover:text-white text-ink font-bold rounded-2xl transition-all duration-300 flex items-center justify-center gap-2 group/btn"
+                        >
+                          पूरा पढ़ें <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                ))
+                </div>
               )}
             </div>
           </motion.div>
@@ -2980,6 +3139,7 @@ function MainApp() {
                       onNext={() => handleSwipe("left")}
                       onPrev={() => handleSwipe("right")}
                       title={selectedSabad.title}
+                      showToast={showToast}
                     />
                   )}
 
@@ -3060,7 +3220,10 @@ function MainApp() {
                   alt="UPI QR Code"
                   className="w-32 h-32 object-contain"
                   referrerPolicy="no-referrer"
-                  onError={(e) => { e.currentTarget.src = "/logo.png"; }}
+                  onError={(e) => { 
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = "/logo.png"; 
+                  }}
                 />
               </div>
 
@@ -3109,7 +3272,10 @@ function MainApp() {
                   alt="Logo"
                   className="w-24 h-24 rounded-full shadow-lg border-4 border-white object-cover"
                   referrerPolicy="no-referrer"
-                  onError={(e) => { e.currentTarget.src = "/logo.png"; }}
+                  onError={(e) => { 
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = "/logo.png"; 
+                  }}
                 />
               </div>
               <div className="bg-white/80 p-6 rounded-3xl shadow-md border border-ink/10 text-left space-y-4 text-lg">
@@ -3255,6 +3421,7 @@ function MainApp() {
                   <option>भजन</option>
                   <option>आरती</option>
                   <option>मंत्र</option>
+                  <option>साखी</option>
                 </select>
               </div>
               <div>
@@ -3735,7 +3902,8 @@ function MainApp() {
                       showToast("कृपया पहले फाइल से जुड़ी त्रुटि को ठीक करें।");
                       return;
                     }
-                    if (!navigator.onLine) {
+                    const isOnline = await checkIsOnline();
+                    if (!isOnline) {
                       showToast("आप अभी ऑफ़लाइन हैं। कृपया इंटरनेट कनेक्शन की जांच करें।");
                       return;
                     }
@@ -3893,7 +4061,10 @@ function MainApp() {
                           <div className="flex gap-2">
                             <input
                               value={contribAudio}
-                              onChange={(e) => setContribAudio(e.target.value)}
+                              onChange={(e) => {
+                                setContribAudio(e.target.value);
+                                if (e.target.value) setContribAudioFile(null);
+                              }}
                               type="url"
                               className="flex-1 p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none transition-colors"
                               placeholder="https://..."
@@ -3903,7 +4074,10 @@ function MainApp() {
                                 type="file"
                                 accept="audio/*"
                                 className="hidden"
-                                onChange={(e) => handleFileSelect(e, setContribAudioFile, false, setContribAudioError)}
+                                onChange={(e) => handleFileSelect(e, (file) => {
+                                  setContribAudioFile(file);
+                                  if (file) setContribAudio("");
+                                }, false, setContribAudioError)}
                               />
                               <Upload className="w-5 h-5" />
                             </label>
@@ -3949,7 +4123,10 @@ function MainApp() {
                           <div className="flex gap-2">
                             <input
                               value={contribPhotoUrl}
-                              onChange={(e) => setContribPhotoUrl(e.target.value)}
+                              onChange={(e) => {
+                                setContribPhotoUrl(e.target.value);
+                                if (e.target.value) setContribPhotoFile(null);
+                              }}
                               required={!contribPhotoFile}
                               type="url"
                               className="flex-1 p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none transition-colors"
@@ -3960,7 +4137,10 @@ function MainApp() {
                                 type="file"
                                 accept="image/*"
                                 className="hidden"
-                                onChange={(e) => handleFileSelect(e, setContribPhotoFile, true, setContribPhotoError)}
+                                onChange={(e) => handleFileSelect(e, (file) => {
+                                  setContribPhotoFile(file);
+                                  if (file) setContribPhotoUrl("");
+                                }, true, setContribPhotoError)}
                               />
                               <Upload className="w-5 h-5" />
                             </label>
@@ -4532,11 +4712,16 @@ function MainApp() {
                       >
                         <h3 className="font-bold text-lg">{post.title}</h3>
                         <p className="text-xs text-ink-light mb-2">
-                          By: {post.author}
+                          By: {post.author} | Type: {post.type}
                         </p>
-                        <p className="text-sm line-clamp-2 mb-3 bg-white/50 p-2 rounded break-words">
+                        <div className="text-sm mb-3 bg-white/50 p-3 rounded break-words max-h-60 overflow-y-auto whitespace-pre-wrap">
                           {post.text}
-                        </p>
+                        </div>
+                        {post.audioUrl && (
+                          <div className="mb-3">
+                            <audio controls src={post.audioUrl} className="w-full h-10" />
+                          </div>
+                        )}
                         <div className="flex gap-2">
                           <button
                             onClick={() => approvePost(post)}
@@ -5087,7 +5272,10 @@ function AmavasyaScreen({ amavasyaList, selectedYear, setSelectedYear, handleBac
                   alt="Jambho Ji"
                   className="w-12 h-12 rounded-full border-2 border-white ring-4 ring-accent/30 shadow-lg object-cover relative z-10"
                   referrerPolicy="no-referrer"
-                  onError={(e) => { e.currentTarget.src = "/logo.png"; }}
+                  onError={(e) => { 
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = "/logo.png"; 
+                  }}
                 />
               </div>
             </div>
