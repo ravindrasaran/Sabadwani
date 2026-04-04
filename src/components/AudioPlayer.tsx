@@ -87,7 +87,7 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
 
     const handleWaiting = () => {
       setIsBuffering(true);
-      updateMediaSessionState('none');
+      // Do not set state to 'none' here, as it destroys the lock screen controls during track transitions
     };
     const handleCanPlay = () => setIsBuffering(false);
     const handlePlaying = () => {
@@ -104,6 +104,7 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
         setLocalError("ऑडियो लोड करने में विफल।");
       }
       setIsPlaying(false);
+      updateMediaSessionState('paused');
     };
 
     const handlePlayEvent = () => {
@@ -132,7 +133,7 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
     const handleEndedEvent = () => {
       setIsPlaying(false);
       setProgress(0);
-      clearMediaSession();
+      updateMediaSessionState('paused');
       try {
         if (callbacksRef.current.onEnded) callbacksRef.current.onEnded();
       } catch (e) {

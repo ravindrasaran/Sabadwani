@@ -1057,8 +1057,8 @@ function MainApp() {
       
       return {
         ...mela,
-        isUpcoming: diffDays >= 0 && diffDays <= 30,
-        upcoming: diffDays >= 0 && diffDays <= 30, // Keep both for compatibility
+        isUpcoming: diffDays >= 0,
+        upcoming: diffDays >= 0, // Keep both for compatibility
         daysLeft: diffDays,
         formattedDate: melaDate.toLocaleDateString('hi-IN', {
           day: 'numeric',
@@ -3291,10 +3291,10 @@ function MainApp() {
             initial={{ opacity: 0, y: -50 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -50 }}
-            className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] bg-ink text-white px-6 py-3 rounded-full shadow-2xl text-sm font-medium flex items-center gap-2 whitespace-nowrap"
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] bg-ink text-white px-5 py-2.5 rounded-full shadow-2xl text-[13px] font-medium flex items-center justify-center gap-2.5 whitespace-nowrap"
           >
-            <img src="/logo.png" alt="Logo" className="w-5 h-5 rounded-full" />
-            {toastMessage}
+            <img src="/logo.png" alt="Logo" className="w-5 h-5 rounded-full shadow-sm" />
+            <span>{toastMessage}</span>
           </motion.div>
         )}
       </AnimatePresence>
