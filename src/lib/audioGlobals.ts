@@ -49,6 +49,24 @@ export const updateMediaSessionState = async (state: 'playing' | 'paused' | 'non
   }
 };
 
+export const clearMediaSession = async () => {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await MediaSession.setPlaybackState({ playbackState: 'none' });
+      // We can't easily clear metadata in the current plugin version without setting empty values
+      await MediaSession.setMetadata({
+        title: '',
+        artist: '',
+        album: '',
+        artwork: []
+      });
+    } catch (e) {}
+  } else if ('mediaSession' in navigator) {
+    navigator.mediaSession.playbackState = 'none';
+    navigator.mediaSession.metadata = null;
+  }
+};
+
 let lastPositionUpdate = 0;
 export const updateMediaSessionPosition = async (position: number, duration: number, playbackRate: number) => {
   const now = Date.now();

@@ -14,7 +14,7 @@ import { useSabadData } from "./hooks/useSabadData";
 import { generateAmavasyaForYear, getBichhudaList, getJD, getTithiName, getSamvat } from "./lib/astro";
 import { vibrate, checkIsOnline } from "./lib/utils";
 import { ShabadSkeleton, PostSkeleton, BannerSkeleton, CategorySkeleton, MelaSkeleton } from "./components/Skeleton";
-import { globalAudio, setupGlobalMediaSessionListener, updateMediaSessionState } from "./lib/audioGlobals";
+import { globalAudio, setupGlobalMediaSessionListener, clearMediaSession } from "./lib/audioGlobals";
 import React, { useState, useEffect, useRef, useMemo, ReactNode } from "react";
 import {
   Book,
@@ -57,6 +57,7 @@ import { Capacitor } from '@capacitor/core';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { AppUpdate } from '@capawesome/capacitor-app-update';
+import { LocalNotifications } from '@capacitor/local-notifications';
 import { format, addDays } from "date-fns";
 import { hi } from "date-fns/locale";
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
@@ -162,6 +163,12 @@ function MainApp() {
     const performAppUpdate = async () => {
       if (Capacitor.isNativePlatform()) {
         try {
+          // Request notification permissions for Android 13+
+          const perm = await LocalNotifications.checkPermissions();
+          if (perm.display !== 'granted') {
+            await LocalNotifications.requestPermissions();
+          }
+
           const result = await AppUpdate.getAppUpdateInfo();
           if (result.updateAvailability === 2) { // UPDATE_AVAILABLE
             if (result.immediateUpdateAllowed) {
@@ -229,20 +236,18 @@ function MainApp() {
       // Hide Splash Screen after app is ready
       SplashScreen.hide().catch(() => {});
 
-      // Handle back button
-      const backListener = CapacitorApp.addListener('backButton', () => {
-        if (currentScreen === 'home') {
-          CapacitorApp.exitApp();
-        } else {
-          window.history.back();
+      // Handle app state changes (background/foreground)
+      CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+        if (!isActive) {
+          // App is in background
+          if (globalAudio && globalAudio.paused) {
+            // If paused, maybe clear session to be safe
+            // updateMediaSessionState('paused');
+          }
         }
       });
-
-      return () => {
-        backListener.then(l => l.remove());
-      };
     }
-  }, [currentScreen]);
+  }, []);
 
   const [selectedSabad, setSelectedSabad] = useState<SabadItem | null>(null);
   const [isMiniPlayerDismissed, setIsMiniPlayerDismissed] = useState(false);
@@ -1098,13 +1103,13 @@ function MainApp() {
   // --- Swipe Gesture Logic ---
   const handleSwipe = (direction: "left" | "right") => {
     try {
+      if (!selectedSabad) return;
       vibrate(10);
+      
       if (!hasSeenSwipeHint) {
         setHasSeenSwipeHint(true);
         localStorage.setItem("hasSeenSwipeHint", "true");
       }
-
-      if (!selectedSabad) return;
 
       let currentList: SabadItem[] = [];
       if (currentScreen === "reading") currentList = sabads;
@@ -1116,32 +1121,34 @@ function MainApp() {
       }
       else if (currentScreen === "community_posts") currentList = recentApprovedPosts;
 
-      let currentIndex = currentList.findIndex(
-        (item) => item.id === selectedSabad.id,
-      );
-
-      if (currentIndex === -1 && selectedSabad) {
+      // Fallback if list is empty or not found
+      if (!currentList || currentList.length === 0) {
         if (selectedSabad.type === "शब्द") currentList = sabads;
         else if (selectedSabad.type === "आरती" || selectedCategory === "aarti") currentList = aartis;
         else if (selectedSabad.type === "भजन" || selectedCategory === "bhajan") currentList = bhajans;
         else if (selectedSabad.type === "साखी" || selectedCategory === "sakhi") currentList = sakhis;
         else if (selectedSabad.type === "मंत्र" || selectedCategory === "mantra") currentList = mantras;
-        
-        currentIndex = currentList.findIndex(
-          (item) => item.id === selectedSabad.id,
-        );
       }
+
+      if (!currentList || currentList.length === 0) return;
+
+      const currentIndex = currentList.findIndex(
+        (item) => item && item.id === selectedSabad.id,
+      );
 
       if (currentIndex === -1) return;
 
       if (direction === "left" && currentIndex < currentList.length - 1) {
         setSlideDir(1);
-        setSelectedSabad(currentList[currentIndex + 1]);
+        const nextItem = currentList[currentIndex + 1];
+        if (nextItem) setSelectedSabad(nextItem);
       } else if (direction === "right" && currentIndex > 0) {
         setSlideDir(-1);
-        setSelectedSabad(currentList[currentIndex - 1]);
+        const prevItem = currentList[currentIndex - 1];
+        if (prevItem) setSelectedSabad(prevItem);
       }
     } catch (err) {
+      console.error("Swipe error:", err);
     }
   };
 
@@ -1295,17 +1302,22 @@ function MainApp() {
     }
   };
 
-  const [backPressCount, setBackPressCount] = useState(0);
+  const backPressCountRef = useRef(0);
 
   useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
     const handleBackButton = async () => {
       if (currentScreen === "home") {
-        if (backPressCount > 0) {
+        if (backPressCountRef.current > 0) {
           CapacitorApp.exitApp();
         } else {
           showToast("बाहर निकलने के लिए फिर से दबाएं");
-          setBackPressCount(1);
-          setTimeout(() => setBackPressCount(0), 2000);
+          vibrate(10);
+          backPressCountRef.current = 1;
+          setTimeout(() => {
+            backPressCountRef.current = 0;
+          }, 2000);
         }
       } else {
         handleBack();
@@ -1316,7 +1328,7 @@ function MainApp() {
     return () => {
       backListener.then(listener => listener.remove());
     };
-  }, [currentScreen, backPressCount]);
+  }, [currentScreen]);
 
   const handleBack = () => {
     vibrate(8);
@@ -2041,7 +2053,7 @@ function MainApp() {
           >
             <PremiumHeader title="संपूर्ण सबदवाणी" onBack={handleBack} icon={Book} />
             <div className="flex flex-col p-2 mt-2">
-              {isLoading ? (
+              {isLoading || sabads.length === 0 ? (
                 [...Array(8)].map((_, i) => <ShabadSkeleton key={i} />)
               ) : (
                 sabads.map((item) => (
@@ -2078,7 +2090,7 @@ function MainApp() {
           >
             <PremiumHeader title={`${categoryData.title} संग्रह`} onBack={handleBack} icon={categoryData.icon} />
             <div className="flex flex-col p-2 mt-2">
-              {isLoading ? (
+              {isLoading || categoryData.list.length === 0 ? (
                 [...Array(6)].map((_, i) => <ShabadSkeleton key={i} />)
               ) : (
                 categoryData.list.map((item) => (
@@ -3370,7 +3382,7 @@ function MainApp() {
                 variant="mini"
                 onClose={() => {
                   if (globalAudio) globalAudio.pause();
-                  updateMediaSessionState('none');
+                  clearMediaSession();
                   setIsMiniPlayerDismissed(true);
                   setIsAudioActive(false);
                 }}

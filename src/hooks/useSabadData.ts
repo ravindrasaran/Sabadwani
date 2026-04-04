@@ -43,10 +43,10 @@ export function useSabadData() {
   const [pendingPosts, setPendingPosts] = useState<SabadItem[]>([]);
   const [settings, setSettings] = useState<AppSettings>({
     logoUrl: "",
-    qrCodeUrl: "",
-    upiId: "",
+    qrCodeUrl: "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=upi://pay?pa=ravindrasaran@icici&pn=Sabadwani",
+    upiId: "ravindrasaran@icici",
     jaapAudioUrl: "",
-    adText: "",
+    adText: "सबदवाणी PDF अभी डाउनलोड करें - बिल्कुल फ्री!",
     adLink: "",
     isAdEnabled: true
   });

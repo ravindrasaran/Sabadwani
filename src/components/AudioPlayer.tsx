@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "motion/react";
 import { Play, Pause, ChevronLeft, ChevronRight, Loader2, AlertCircle, X } from "lucide-react";
-import { globalAudio, setGlobalAudioCallbacks, updateMediaSessionMetadata, updateMediaSessionState, updateMediaSessionPosition } from "../lib/audioGlobals";
+import { globalAudio, setGlobalAudioCallbacks, updateMediaSessionMetadata, updateMediaSessionState, updateMediaSessionPosition, clearMediaSession } from "../lib/audioGlobals";
 import { checkIsOnline, vibrate } from "../lib/utils";
 
 const logger = {
@@ -132,7 +132,7 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
     const handleEndedEvent = () => {
       setIsPlaying(false);
       setProgress(0);
-      updateMediaSessionState('none');
+      clearMediaSession();
       try {
         if (callbacksRef.current.onEnded) callbacksRef.current.onEnded();
       } catch (e) {
@@ -158,6 +158,13 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
       globalAudio.removeEventListener('play', handlePlayEvent);
       globalAudio.removeEventListener('pause', handlePauseEvent);
       globalAudio.removeEventListener('ended', handleEndedEvent);
+      
+      // If this is the full player being unmounted, we might want to keep the mini player
+      // But if the whole audio system is being stopped, we should clear it.
+      // For now, let's just ensure state is paused if we're not playing anymore.
+      if (globalAudio.paused) {
+        updateMediaSessionState('paused');
+      }
     };
   }, [autoPlay, url]);
 

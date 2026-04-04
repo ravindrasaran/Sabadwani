@@ -13,9 +13,8 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@capacitor/android": "^8.3.0",
+    "@capacitor/android": "latest",
     "@capacitor/app": "latest",
-    "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "latest",
     "@capacitor/core": "latest",
     "@capacitor/filesystem": "latest",
@@ -30,13 +29,11 @@
     "@capacitor/status-bar": "latest",
     "@capawesome/capacitor-app-update": "^8.0.3",
     "@capgo/capacitor-media-session": "^8.0.17",
-    "@google/genai": "^1.47.0",
     "@tailwindcss/vite": "^4.1.14",
     "@use-gesture/react": "^10.3.1",
     "@vitejs/plugin-react": "^5.0.4",
     "astronomia": "^4.2.0",
     "date-fns": "^4.1.0",
-    "dotenv": "^17.2.3",
     "firebase": "^12.11.0",
     "lucide-react": "^1.7.0",
     "motion": "^12.38.0",
@@ -45,6 +42,7 @@
     "suncalc": "^1.9.0"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
     "@types/node": "^22.14.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
