@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+
+# Production / Build
+dist/
+build/
+www/
+
+# Android Specific Junk (Very Important)
+android/app/build/
+android/.gradle/
+android/local.properties
+android/project.properties
+android/captures/
+.externalNativeBuild/
+.cxx/
+
+# Environment / Secrets
+.env*
+!.env.example
+*.keystore
+google-services.json
+
+# Misc
+.DS_Store
+*.log
+.vscode/
+.idea/
