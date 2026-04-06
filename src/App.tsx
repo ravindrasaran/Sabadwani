@@ -12,8 +12,9 @@ import ShabadCard from "./components/ShabadCard";
 import { useWakeLock } from "./hooks/useWakeLock";
 import { useSabadData } from "./hooks/useSabadData";
 import { generateAmavasyaForYear, getBichhudaList, getJD, getTithiName, getSamvat } from "./lib/astro";
-import { vibrate, checkIsOnline } from "./lib/utils";
+import { vibrate, checkIsOnline, getSearchSkeleton } from "./lib/utils";
 import { ShabadSkeleton, PostSkeleton, BannerSkeleton, CategorySkeleton, MelaSkeleton } from "./components/Skeleton";
+import { GPayIcon, PhonePeIcon, PaytmIcon, AmazonPayIcon } from "./components/PaymentIcons";
 import { globalAudio, setupGlobalMediaSessionListener, clearMediaSession } from "./lib/audioGlobals";
 import React, { useState, useEffect, useRef, useMemo, ReactNode } from "react";
 import {
@@ -48,6 +49,9 @@ import {
   Clock,
   User,
   Hand,
+  Mic,
+  ChevronsDown,
+  Pause,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useGesture } from "@use-gesture/react";
@@ -156,9 +160,24 @@ const niyamList = [
 
 function MainApp() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const paymentIntentPending = useRef(false);
 
   useEffect(() => {
     setupGlobalMediaSessionListener();
+
+    // Web fallback for payment return message
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && paymentIntentPending.current) {
+        paymentIntentPending.current = false;
+        setTimeout(() => {
+          showToast("सहयोग के प्रयास के लिए आपका बहुत-बहुत धन्यवाद! 🙏");
+        }, 500);
+      }
+    };
+    
+    if (!Capacitor.isNativePlatform()) {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
 
     const performAppUpdate = async () => {
       if (Capacitor.isNativePlatform()) {
@@ -244,6 +263,14 @@ function MainApp() {
             // If paused, maybe clear session to be safe
             // updateMediaSessionState('paused');
           }
+        } else {
+          // App returned to foreground
+          if (paymentIntentPending.current) {
+            paymentIntentPending.current = false;
+            setTimeout(() => {
+              showToast("सहयोग के प्रयास के लिए आपका बहुत-बहुत धन्यवाद! 🙏");
+            }, 500);
+          }
         }
       });
     }
@@ -251,7 +278,7 @@ function MainApp() {
 
   const [selectedSabad, setSelectedSabad] = useState<SabadItem | null>(null);
   const [isMiniPlayerDismissed, setIsMiniPlayerDismissed] = useState(false);
-  const [fontSize, setFontSize] = useState(18);
+  const [fontSize, setFontSize] = useState(20);
   const [slideDir, setSlideDir] = useState(1);
   const [hasSeenSwipeHint, setHasSeenSwipeHint] = useState(() => {
     return localStorage.getItem("hasSeenSwipeHint") === "true";
@@ -337,6 +364,82 @@ function MainApp() {
 
   const [autoPlayAudio, setAutoPlayAudio] = useState(false);
   const [readingTheme, setReadingTheme] = useState<'light' | 'sepia' | 'dark'>('light');
+  const [isAutoScrolling, setIsAutoScrolling] = useState(false);
+  const [autoScrollSpeed, setAutoScrollSpeed] = useState(1); // 1 = slow, 2 = medium, 3 = fast
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const autoScrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (currentScreen !== "reading" && currentScreen !== "audio_reading") {
+      setIsAutoScrolling(false);
+    }
+  }, [currentScreen]);
+
+  useEffect(() => {
+    const handleTouch = (e: Event) => {
+      // Ignore if clicking on the auto-scroll controls
+      const target = e.target as HTMLElement;
+      if (target.closest('.auto-scroll-control')) return;
+
+      if (isAutoScrolling) {
+        setIsAutoScrolling(false);
+        showToast("ऑटो-स्क्रॉल बंद");
+      }
+    };
+
+    if (isAutoScrolling) {
+      window.addEventListener('touchstart', handleTouch, { passive: true });
+      window.addEventListener('mousedown', handleTouch, { passive: true });
+      window.addEventListener('wheel', handleTouch, { passive: true });
+    }
+
+    return () => {
+      window.removeEventListener('touchstart', handleTouch);
+      window.removeEventListener('mousedown', handleTouch);
+      window.removeEventListener('wheel', handleTouch);
+    };
+  }, [isAutoScrolling]);
+
+  useEffect(() => {
+    if (isAutoScrolling && (currentScreen === "reading" || currentScreen === "audio_reading")) {
+      const speedMap = { 1: 30, 2: 20, 3: 10 }; // milliseconds per pixel
+      autoScrollIntervalRef.current = setInterval(() => {
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTop += 1;
+        } else {
+          // Fallback to window scroll if container ref isn't attached
+          window.scrollBy(0, 1);
+        }
+      }, speedMap[autoScrollSpeed as keyof typeof speedMap]);
+    } else {
+      if (autoScrollIntervalRef.current) {
+        clearInterval(autoScrollIntervalRef.current);
+      }
+    }
+    return () => {
+      if (autoScrollIntervalRef.current) {
+        clearInterval(autoScrollIntervalRef.current);
+      }
+    };
+  }, [isAutoScrolling, autoScrollSpeed, currentScreen]);
+
+  const toggleAutoScroll = (e?: React.MouseEvent | React.TouchEvent) => {
+    if (e) e.stopPropagation();
+    vibrate(5);
+    setIsAutoScrolling(!isAutoScrolling);
+    if (!isAutoScrolling) {
+      showToast("ऑटो-स्क्रॉल चालू");
+    } else {
+      showToast("ऑटो-स्क्रॉल बंद");
+    }
+  };
+
+  const cycleAutoScrollSpeed = (e?: React.MouseEvent | React.TouchEvent) => {
+    if (e) e.stopPropagation();
+    vibrate(5);
+    setAutoScrollSpeed(prev => prev >= 3 ? 1 : prev + 1);
+    showToast(`स्पीड: ${autoScrollSpeed >= 3 ? 'धीमी' : autoScrollSpeed === 1 ? 'मध्यम' : 'तेज़'}`);
+  };
 
   const { isLoading, sabads, aartis, bhajans, sakhis, mantras, thoughts, meles, notices, badhais, pendingPosts, settings, setSettings } = useSabadData();
 
@@ -556,6 +659,61 @@ function MainApp() {
 
   // --- Premium Features State ---
   const [searchQuery, setSearchQuery] = useState("");
+  const [isListening, setIsListening] = useState(false);
+
+  const startVoiceSearch = (e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
+    
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      showToast("क्षमा करें, आपका ब्राउज़र वॉइस सर्च को सपोर्ट नहीं करता है।");
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'hi-IN';
+      recognition.continuous = false;
+      recognition.interimResults = false;
+
+      recognition.onstart = () => {
+        setIsListening(true);
+        showToast("सुन रहा हूँ... बोलिए");
+      };
+
+      recognition.onresult = (event: any) => {
+        let transcript = event.results[0][0].transcript;
+        // Remove common punctuation that voice recognition adds
+        transcript = transcript.replace(/[.,।?!]/g, '').trim();
+        console.log("Voice search transcript:", transcript);
+        setSearchQuery(transcript);
+        setIsListening(false);
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error("Voice search error:", event.error);
+        setIsListening(false);
+        if (event.error === 'not-allowed') {
+          showToast("माइक्रोफ़ोन की अनुमति नहीं मिली। कृपया ब्राउज़र सेटिंग्स चेक करें।");
+        } else if (event.error === 'no-speech') {
+          showToast("कोई आवाज़ सुनाई नहीं दी।");
+        } else {
+          showToast(`आवाज़ पहचानने में समस्या हुई (${event.error})।`);
+        }
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognition.start();
+    } catch (e) {
+      console.error("Speech recognition start error:", e);
+      setIsListening(false);
+      showToast("वॉइस सर्च शुरू करने में त्रुटि हुई।");
+    }
+  };
+
   const [malaCount, setMalaCount] = useState(() => {
     const saved = localStorage.getItem("malaCount");
     return saved ? parseInt(saved) : 0;
@@ -1138,13 +1296,36 @@ function MainApp() {
 
       if (currentIndex === -1) return;
 
-      if (direction === "left" && currentIndex < currentList.length - 1) {
+      let nextIndex = currentIndex;
+      let prevIndex = currentIndex;
+
+      const isSabadsList = currentList === sabads;
+
+      if (direction === "left") {
+        if (isSabadsList && currentIndex === 65) { // 66th sabad (index 65)
+          nextIndex = 67; // Skip 67th (index 66) to 68th (index 67)
+        } else if (isSabadsList && currentIndex === 119) { // 120th sabad (index 119)
+          nextIndex = 66; // Loop to 67th (index 66)
+        } else if (currentIndex < currentList.length - 1) {
+          nextIndex = currentIndex + 1;
+        } else {
+          return; // End of list
+        }
         setSlideDir(1);
-        const nextItem = currentList[currentIndex + 1];
+        const nextItem = currentList[nextIndex];
         if (nextItem) setSelectedSabad(nextItem);
-      } else if (direction === "right" && currentIndex > 0) {
+      } else if (direction === "right") {
+        if (isSabadsList && currentIndex === 67) { // 68th sabad (index 67)
+          prevIndex = 65; // Back to 66th (index 65)
+        } else if (isSabadsList && currentIndex === 66) { // 67th sabad (index 66)
+          prevIndex = 119; // Back to 120th (index 119)
+        } else if (currentIndex > 0) {
+          prevIndex = currentIndex - 1;
+        } else {
+          return; // Start of list
+        }
         setSlideDir(-1);
-        const prevItem = currentList[currentIndex - 1];
+        const prevItem = currentList[prevIndex];
         if (prevItem) setSelectedSabad(prevItem);
       }
     } catch (err) {
@@ -1303,6 +1484,36 @@ function MainApp() {
   };
 
   const backPressCountRef = useRef(0);
+
+  const handlePaymentIntent = (app: string) => {
+    if (!settings.upiId) {
+      showToast("UPI ID उपलब्ध नहीं है।");
+      return;
+    }
+    
+    // Format: upi://pay?pa=UPI_ID&pn=NAME&cu=INR
+    const upiUrl = `upi://pay?pa=${settings.upiId}&pn=Sabadwani&cu=INR`;
+    
+    let finalUrl = upiUrl;
+    if (app === 'gpay') {
+      finalUrl = `tez://upi/pay?pa=${settings.upiId}&pn=Sabadwani&cu=INR`;
+    } else if (app === 'phonepe') {
+      finalUrl = `phonepe://pay?pa=${settings.upiId}&pn=Sabadwani&cu=INR`;
+    } else if (app === 'paytm') {
+      finalUrl = `paytmmp://pay?pa=${settings.upiId}&pn=Sabadwani&cu=INR`;
+    } else if (app === 'amazon') {
+      finalUrl = upiUrl; // Amazon Pay handles standard UPI intents well
+    }
+    
+    paymentIntentPending.current = true;
+    
+    // Use window.open with _system for better Capacitor compatibility
+    if (Capacitor.isNativePlatform()) {
+      window.open(finalUrl, '_system');
+    } else {
+      window.location.href = finalUrl;
+    }
+  };
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
@@ -1821,18 +2032,36 @@ function MainApp() {
         );
 
       case "search":
-        const filteredSabads = searchQuery ? sabads.filter(s => s.title.toLowerCase().includes(searchQuery.toLowerCase()) || (s.text && s.text.toLowerCase().includes(searchQuery.toLowerCase()))) : [];
-        const filteredAartis = searchQuery ? aartis.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase()) || (m.text && m.text.toLowerCase().includes(searchQuery.toLowerCase()))) : [];
-        const filteredBhajans = searchQuery ? bhajans.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase()) || (m.text && m.text.toLowerCase().includes(searchQuery.toLowerCase()))) : [];
-        const filteredSakhis = searchQuery ? sakhis.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase()) || (m.text && m.text.toLowerCase().includes(searchQuery.toLowerCase()))) : [];
-        const filteredMantras = searchQuery ? mantras.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase()) || (m.text && m.text.toLowerCase().includes(searchQuery.toLowerCase()))) : [];
-        const filteredMeles = searchQuery ? meles.filter(m => m.name.toLowerCase().includes(searchQuery.toLowerCase()) || m.location.toLowerCase().includes(searchQuery.toLowerCase())) : [];
+        const searchSkeleton = getSearchSkeleton(searchQuery);
+        const matchSearch = (title: string, text?: string) => {
+          if (!searchQuery) return false;
+          // Exact match first (for Hindi typing)
+          if (title.toLowerCase().includes(searchQuery.toLowerCase())) return true;
+          if (text && text.toLowerCase().includes(searchQuery.toLowerCase())) return true;
+          
+          // Hinglish/Phonetic match
+          if (searchSkeleton.length < 2) return false; // Don't fuzzy match on single letters
+          const titleSkeleton = getSearchSkeleton(title);
+          if (titleSkeleton.includes(searchSkeleton)) return true;
+          if (text) {
+             const textSkeleton = getSearchSkeleton(text);
+             if (textSkeleton.includes(searchSkeleton)) return true;
+          }
+          return false;
+        };
+
+        const filteredSabads = searchQuery ? sabads.filter(s => matchSearch(s.title, s.text)) : [];
+        const filteredAartis = searchQuery ? aartis.filter(m => matchSearch(m.title, m.text)) : [];
+        const filteredBhajans = searchQuery ? bhajans.filter(m => matchSearch(m.title, m.text)) : [];
+        const filteredSakhis = searchQuery ? sakhis.filter(m => matchSearch(m.title, m.text)) : [];
+        const filteredMantras = searchQuery ? mantras.filter(m => matchSearch(m.title, m.text)) : [];
+        const filteredMeles = searchQuery ? meles.filter(m => matchSearch(m.name, m.location)) : [];
         
         return (
           <motion.div key="search" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="pb-32 bg-paper min-h-screen">
             <PremiumHeader title="खोजें (Search)" onBack={() => navigateTo('home')} icon={Search} />
             <div className="px-6 pt-4">
-              <div className="relative mb-4">
+              <div className="relative mb-4 flex items-center">
                 <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-ink-light" />
                 <input 
                   autoFocus
@@ -1840,8 +2069,14 @@ function MainApp() {
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder="शब्द, भजन, आरती, साखी या मेले खोजें..." 
-                  className="w-full pl-12 pr-4 py-3 rounded-2xl border border-ink/20 bg-white focus:border-accent outline-none shadow-sm"
+                  className="w-full pl-12 pr-14 py-3 rounded-2xl border border-ink/20 bg-white focus:border-accent outline-none shadow-sm"
                 />
+                <button 
+                  onClick={startVoiceSearch}
+                  className={`absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full transition-all ${isListening ? 'bg-accent/20 text-accent animate-pulse' : 'text-ink-light hover:bg-ink/5'}`}
+                >
+                  <Mic className="w-5 h-5" />
+                </button>
               </div>
 
             {isLoading ? (
@@ -2270,6 +2505,15 @@ function MainApp() {
           else if (selectedCategory === "sakhi") readingList = sakhis;
           else if (selectedCategory === "mantra") readingList = mantras;
         }
+
+        // Fallback to ensure navigation works even if category is not set (e.g. from mini player)
+        if (readingList.length === 0 && selectedSabad) {
+          if (selectedSabad.type === "शब्द") readingList = sabads;
+          else if (selectedSabad.type === "आरती") readingList = aartis;
+          else if (selectedSabad.type === "भजन") readingList = bhajans;
+          else if (selectedSabad.type === "साखी") readingList = sakhis;
+          else if (selectedSabad.type === "मंत्र") readingList = mantras;
+        }
         const readingIndex = selectedSabad ? readingList.findIndex(item => item.id === selectedSabad.id) : -1;
         const totalCount = readingList.length;
         const categoryLabel = currentScreen === "reading" ? "शब्द" : selectedCategory === "aarti" ? "आरती" : selectedCategory === "bhajan" ? "भजन" : selectedCategory === "sakhi" ? "साखी" : selectedCategory === "mantra" ? "मंत्र" : "शब्द";
@@ -2376,6 +2620,36 @@ function MainApp() {
                 >
                   A+
                 </button>
+              </div>
+
+              {/* Auto Scroll Controls */}
+              <div className={`auto-scroll-control flex items-center gap-0.5 sm:gap-1 shrink-0 rounded-full px-1 sm:px-2 py-1 ${
+                readingTheme === 'dark' ? 'bg-white/10' : 
+                readingTheme === 'sepia' ? 'bg-[#5c4b37]/10' : 
+                'bg-ink/5'
+              }`}>
+                <button
+                  onClick={toggleAutoScroll}
+                  className={`p-1.5 rounded-full transition-colors touch-manipulation active:scale-90 ${
+                    isAutoScrolling 
+                      ? 'bg-accent text-white shadow-sm' 
+                      : readingTheme === 'dark' ? 'hover:bg-white/10' : readingTheme === 'sepia' ? 'hover:bg-[#5c4b37]/10' : 'hover:bg-ink/10'
+                  }`}
+                >
+                  {isAutoScrolling ? <Pause className="w-4 h-4 sm:w-5 sm:h-5" /> : <ChevronsDown className="w-4 h-4 sm:w-5 sm:h-5" />}
+                </button>
+                {isAutoScrolling && (
+                  <button
+                    onClick={cycleAutoScrollSpeed}
+                    className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${
+                      readingTheme === 'dark' ? 'bg-white/20' : 
+                      readingTheme === 'sepia' ? 'bg-[#5c4b37]/20' : 
+                      'bg-ink/10'
+                    }`}
+                  >
+                    {autoScrollSpeed}x
+                  </button>
+                )}
               </div>
 
               {/* Action Icons */}
@@ -2490,7 +2764,7 @@ function MainApp() {
                   }}
                 >
                   <div
-                    className={`text-center leading-relaxed w-full whitespace-pre-wrap mt-2 p-6 sm:p-8 rounded-3xl shadow-sm border select-none mb-6 transition-colors duration-300 ${
+                    className={`text-center leading-relaxed w-full whitespace-pre-wrap mt-2 p-6 sm:p-8 rounded-3xl shadow-sm border select-none mb-6 transition-colors duration-300 font-medium ${
                       readingTheme === 'dark' ? 'bg-[#1a1a1a] border-white/10 text-[#e0e0e0]' : 
                       readingTheme === 'sepia' ? 'bg-[#fdf8ed] border-[#5c4b37]/10 text-[#5c4b37]' : 
                       'bg-white/60 border-ink/10 text-ink'
@@ -2517,9 +2791,9 @@ function MainApp() {
                     </button>
                     <button 
                       onClick={() => handleSwipe("left")}
-                      disabled={readingIndex >= totalCount - 1}
+                      disabled={readingList === sabads && readingIndex === 119 ? false : readingIndex >= totalCount - 1}
                       className={`flex items-center justify-center gap-1.5 px-5 sm:px-8 py-3.5 rounded-2xl font-medium border shadow-md transition-all active:scale-95 touch-manipulation ${
-                        readingIndex >= totalCount - 1 ? 'opacity-40 cursor-not-allowed' : ''
+                        (readingList === sabads && readingIndex === 119) ? '' : (readingIndex >= totalCount - 1 ? 'opacity-40 cursor-not-allowed' : '')
                       } ${
                         readingTheme === 'dark' ? 'bg-[#1a1a1a] border-white/10 text-white hover:bg-white/5 active:bg-white/10' : 
                         readingTheme === 'sepia' ? 'bg-[#fdf8ed] border-[#5c4b37]/10 text-[#5c4b37] hover:bg-[#5c4b37]/5 active:bg-[#5c4b37]/10' : 
@@ -2577,6 +2851,44 @@ function MainApp() {
                     e.currentTarget.src = "/logo.png"; 
                   }}
                 />
+              </div>
+
+              <div className="w-full relative mb-4 mt-2">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-ink/10"></div>
+                </div>
+                <div className="relative flex justify-center text-[10px] uppercase tracking-widest font-bold">
+                  <span className="px-3 bg-white text-ink-light/60">
+                    सीधे ऐप से पे करें
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-3 w-full mb-6">
+                <button onClick={() => handlePaymentIntent('gpay')} className="flex flex-col items-center gap-2">
+                  <div className="w-12 h-12 bg-white rounded-2xl shadow-sm border border-ink/5 flex items-center justify-center p-2 active:scale-95 transition-transform">
+                    <GPayIcon />
+                  </div>
+                  <span className="text-[10px] font-bold text-ink-light">GPay</span>
+                </button>
+                <button onClick={() => handlePaymentIntent('phonepe')} className="flex flex-col items-center gap-2">
+                  <div className="w-12 h-12 bg-white rounded-2xl shadow-sm border border-ink/5 flex items-center justify-center p-2 active:scale-95 transition-transform">
+                    <PhonePeIcon />
+                  </div>
+                  <span className="text-[10px] font-bold text-ink-light">PhonePe</span>
+                </button>
+                <button onClick={() => handlePaymentIntent('paytm')} className="flex flex-col items-center gap-2">
+                  <div className="w-12 h-12 bg-white rounded-2xl shadow-sm border border-ink/5 flex items-center justify-center p-2 active:scale-95 transition-transform">
+                    <PaytmIcon />
+                  </div>
+                  <span className="text-[10px] font-bold text-ink-light">Paytm</span>
+                </button>
+                <button onClick={() => handlePaymentIntent('amazon')} className="flex flex-col items-center gap-2">
+                  <div className="w-12 h-12 bg-white rounded-2xl shadow-sm border border-ink/5 flex items-center justify-center p-2 active:scale-95 transition-transform">
+                    <AmazonPayIcon />
+                  </div>
+                  <span className="text-[10px] font-bold text-ink-light">Amazon</span>
+                </button>
               </div>
 
               <div className="w-full relative mb-4">
@@ -3082,8 +3394,14 @@ function MainApp() {
                   .map((item) => (
                     <div
                       key={item.start}
-                      className={`bg-paper p-4 rounded-2xl border ${item.isUpcoming ? "border-accent/50 ring-1 ring-accent/20" : "border-ink/5"} flex flex-col relative overflow-hidden`}
+                      className={`bg-paper p-4 rounded-2xl border ${item.isRunning ? "border-accent/50 ring-2 ring-accent/20 shadow-sm" : item.isUpcoming ? "border-accent/50 ring-1 ring-accent/20" : "border-ink/5"} flex flex-col relative overflow-hidden transition-all`}
                     >
+                      {item.isRunning && (
+                        <div className="absolute top-0 right-0 bg-accent text-white text-[10px] font-bold px-2 py-0.5 rounded-bl-lg flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></span>
+                          चल रहा है
+                        </div>
+                      )}
                       {item.isUpcoming && (
                         <div className="absolute top-0 right-0 bg-accent text-white text-[10px] font-bold px-2 py-0.5 rounded-bl-lg">
                           आगामी

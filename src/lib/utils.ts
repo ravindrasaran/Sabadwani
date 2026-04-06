@@ -69,3 +69,48 @@ export const vibrate = (pattern: number | number[] = 50) => {
     }
   }
 };
+
+export const getSearchSkeleton = (text: string): string => {
+  if (!text) return "";
+  
+  // 1. Map Hindi to Latin basic equivalents
+  const charMap: Record<string, string> = {
+    'क': 'k', 'ख': 'kh', 'ग': 'g', 'घ': 'gh', 'ङ': 'n',
+    'च': 'ch', 'छ': 'chh', 'ज': 'j', 'झ': 'jh', 'ञ': 'n',
+    'ट': 't', 'ठ': 'th', 'ड': 'd', 'ढ': 'dh', 'ण': 'n',
+    'त': 't', 'थ': 'th', 'द': 'd', 'ध': 'dh', 'न': 'n',
+    'प': 'p', 'फ': 'ph', 'ब': 'b', 'भ': 'bh', 'म': 'm',
+    'य': 'y', 'र': 'r', 'ल': 'l', 'व': 'v', 'श': 'sh', 'ष': 'sh', 'स': 's', 'ह': 'h',
+    'क्ष': 'ksh', 'त्र': 'tr', 'ज्ञ': 'gy',
+    'क़': 'q', 'ख़': 'kh', 'ग़': 'gh', 'ज़': 'z', 'ड़': 'd', 'ढ़': 'dh', 'फ़': 'f',
+    'अ': 'a', 'आ': 'a', 'इ': 'i', 'ई': 'i', 'उ': 'u', 'ऊ': 'u', 'ऋ': 'ri', 'ए': 'e', 'ऐ': 'e', 'ओ': 'o', 'औ': 'o',
+    'ा': 'a', 'ि': 'i', 'ी': 'i', 'ु': 'u', 'ू': 'u', 'ृ': 'ri', 'े': 'e', 'ै': 'e', 'ो': 'o', 'ौ': 'o', 'ं': 'n', 'ः': 'h', '्': '', '़': '', 'ँ': 'n'
+  };
+
+  let latinized = '';
+  for (let char of text.toLowerCase()) {
+    if (charMap[char] !== undefined) {
+      latinized += charMap[char];
+    } else {
+      latinized += char;
+    }
+  }
+
+  // 2. Normalize English phonetics
+  latinized = latinized
+    .replace(/ph/g, 'f')
+    .replace(/bh/g, 'b')
+    .replace(/dh/g, 'd')
+    .replace(/th/g, 't')
+    .replace(/kh/g, 'k')
+    .replace(/gh/g, 'g')
+    .replace(/jh/g, 'j')
+    .replace(/ch/g, 'c')
+    .replace(/sh/g, 's')
+    .replace(/v/g, 'b') // v and b are often interchanged in Hindi
+    .replace(/w/g, 'b')
+    .replace(/z/g, 'j');
+
+  // 3. Remove all English vowels and non-alphanumeric chars to create a skeleton
+  return latinized.replace(/[aeiouy\W_]/g, '');
+};

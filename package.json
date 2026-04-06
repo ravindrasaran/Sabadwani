@@ -35,6 +35,7 @@
     "astronomia": "^4.2.0",
     "date-fns": "^4.1.0",
     "firebase": "^12.11.0",
+    "html2canvas": "^1.4.1",
     "lucide-react": "^1.7.0",
     "motion": "^12.38.0",
     "react": "^19.2.4",
@@ -42,7 +43,6 @@
     "suncalc": "^1.9.0"
   },
   "devDependencies": {
-    "@capacitor/assets": "^3.0.5",
     "@types/node": "^22.14.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

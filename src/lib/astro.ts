@@ -204,7 +204,8 @@ const getBichhudaList = (year: number) => {
           monthName: format(startDate, "MMMM", { locale: hi }),
           start: format(startDate, "dd MMMM, EEEE, hh:mm:ss a", { locale: hi }),
           end: format(endDate, "dd MMMM, EEEE, hh:mm:ss a", { locale: hi }),
-          isUpcoming: endDate > new Date(),
+          isUpcoming: startDate > new Date(),
+          isRunning: startDate <= new Date() && endDate > new Date(),
           rawStart: startDate,
         });
       }
