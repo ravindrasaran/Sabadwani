@@ -666,7 +666,7 @@ function MainApp() {
     
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      showToast("क्षमा करें, आपका ब्राउज़र वॉइस सर्च को सपोर्ट नहीं करता है।");
+      showToast("क्षमा करें, आपका डिवाइस वॉइस सर्च को सपोर्ट नहीं करता है।");
       return;
     }
 
@@ -694,7 +694,7 @@ function MainApp() {
         console.error("Voice search error:", event.error);
         setIsListening(false);
         if (event.error === 'not-allowed') {
-          showToast("माइक्रोफ़ोन की अनुमति नहीं मिली। कृपया ब्राउज़र सेटिंग्स चेक करें।");
+          showToast("माइक्रोफ़ोन की अनुमति नहीं मिली। कृपया डिवाइस सेटिंग्स चेक करें।");
         } else if (event.error === 'no-speech') {
           showToast("कोई आवाज़ सुनाई नहीं दी।");
         } else {
@@ -1382,6 +1382,8 @@ function MainApp() {
 
   const [pendingDeepLinkId, setPendingDeepLinkId] = useState<string | null>(null);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
+  const [paymentModalApp, setPaymentModalApp] = useState<string | null>(null);
+  const [donationAmount, setDonationAmount] = useState("51");
 
   // --- Deep Linking ---
   useEffect(() => {
@@ -1485,31 +1487,61 @@ function MainApp() {
 
   const backPressCountRef = useRef(0);
 
-  const handlePaymentIntent = (app: string) => {
+  const handlePaymentClick = (app: string) => {
+    setPaymentModalApp(app);
+    setDonationAmount("51"); // Default amount
+  };
+
+  const executePayment = () => {
+    if (!paymentModalApp) return;
+    if (!donationAmount || isNaN(Number(donationAmount)) || Number(donationAmount) <= 0) {
+      showToast("कृपया सही राशि दर्ज करें");
+      return;
+    }
+    handlePaymentIntent(paymentModalApp, donationAmount);
+    setPaymentModalApp(null);
+  };
+
+  const handlePaymentIntent = (app: string, amount: string) => {
     if (!settings.upiId) {
       showToast("UPI ID उपलब्ध नहीं है।");
       return;
     }
     
-    // Format: upi://pay?pa=UPI_ID&pn=NAME&cu=INR
-    const upiUrl = `upi://pay?pa=${settings.upiId}&pn=Sabadwani&cu=INR`;
+    const pa = encodeURIComponent(settings.upiId);
+    const pn = encodeURIComponent("Sabadwani");
+    const cu = "INR";
+    const am = amount;
+    const tn = encodeURIComponent("Sabadwani Donation");
+    const tr = `SABD${Date.now()}`;
+    // Adding mc=0000 (Merchant Code), tr (Transaction Ref), tn (Transaction Note) 
+    // and mode=02 (Secure Intent) is required to bypass PhonePe's "QR codes via gallery" restriction.
+    const upiParams = `pa=${pa}&pn=${pn}&cu=${cu}&am=${am}&tn=${tn}&tr=${tr}&mc=0000&mode=02`;
+    const standardUpiUrl = `upi://pay?${upiParams}`;
     
-    let finalUrl = upiUrl;
+    let finalUrl = standardUpiUrl;
+    
     if (app === 'gpay') {
-      finalUrl = `tez://upi/pay?pa=${settings.upiId}&pn=Sabadwani&cu=INR`;
+      finalUrl = `tez://upi/pay?${upiParams}`;
     } else if (app === 'phonepe') {
-      finalUrl = `phonepe://pay?pa=${settings.upiId}&pn=Sabadwani&cu=INR`;
+      finalUrl = `phonepe://pay?${upiParams}`;
     } else if (app === 'paytm') {
-      finalUrl = `paytmmp://pay?pa=${settings.upiId}&pn=Sabadwani&cu=INR`;
+      finalUrl = `paytmmp://pay?${upiParams}`;
     } else if (app === 'amazon') {
-      finalUrl = upiUrl; // Amazon Pay handles standard UPI intents well
+      if (Capacitor.getPlatform() === 'android') {
+        finalUrl = `intent://pay?${upiParams}#Intent;scheme=upi;package=in.amazon.mShop.android.shopping;end`;
+      } else {
+        finalUrl = standardUpiUrl;
+      }
+    } else if (app === 'any') {
+      finalUrl = standardUpiUrl;
     }
     
     paymentIntentPending.current = true;
     
-    // Use window.open with _system for better Capacitor compatibility
     if (Capacitor.isNativePlatform()) {
-      window.open(finalUrl, '_system');
+      // Using window.location.href works best for custom schemes in Android WebViews
+      window.location.href = finalUrl;
     } else {
       window.location.href = finalUrl;
     }
@@ -2544,14 +2576,14 @@ function MainApp() {
               </motion.div>
             )}
 
-            <div className={`sticky top-[50px] z-10 p-2 sm:p-3 flex items-center justify-between gap-1 sm:gap-3 shadow-sm border-b transition-colors duration-300 ${
+            <div className={`sticky top-[50px] z-10 px-1 py-2 sm:p-3 flex items-center justify-between gap-0.5 sm:gap-3 shadow-sm border-b transition-colors duration-300 overflow-x-auto ${
               readingTheme === 'dark' ? 'bg-[#1a1a1a]/95 border-white/10 text-white' : 
               readingTheme === 'sepia' ? 'bg-[#f4ecd8]/95 border-[#5c4b37]/10 text-[#5c4b37]' : 
               'bg-paper/95 border-ink/10 text-ink'
-            } backdrop-blur-md`}>
+            } backdrop-blur-md [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]`}>
               <button
                 onClick={handleBack}
-                className={`p-2 -ml-1 rounded-full shrink-0 transition-all touch-manipulation active:scale-90 ${
+                className={`p-1 sm:p-2 -ml-0.5 sm:-ml-1 rounded-full shrink-0 transition-all touch-manipulation active:scale-90 ${
                   readingTheme === 'dark' ? 'hover:bg-white/10 active:bg-white/20' : 
                   readingTheme === 'sepia' ? 'hover:bg-[#5c4b37]/10 active:bg-[#5c4b37]/20' : 
                   'hover:bg-ink/10 active:bg-ink/20'
@@ -2562,30 +2594,30 @@ function MainApp() {
 
               {/* Position Indicator */}
               {readingIndex !== -1 && totalCount > 0 && (
-                <div className={`flex flex-col sm:flex-row items-center justify-center text-xs font-bold px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl sm:rounded-full tracking-wide shrink-0 leading-tight sm:leading-normal ${
+                <div className={`flex flex-col sm:flex-row items-center justify-center text-[10px] sm:text-xs font-bold px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-xl sm:rounded-full tracking-wide shrink-0 leading-tight sm:leading-normal ${
                   readingTheme === 'dark' ? 'bg-white/10 text-white/80' : 
                   readingTheme === 'sepia' ? 'bg-[#5c4b37]/10 text-[#5c4b37]/80' : 
                   'bg-ink/5 text-ink-light'
                 }`}>
-                  <span>{readingIndex + 1} / {totalCount}</span>
-                  <span className="text-[10px] sm:text-xs sm:ml-1">{categoryLabel}</span>
+                  <span>{readingIndex + 1}/{totalCount}</span>
+                  <span className="text-[10px] sm:text-xs ml-0.5 sm:ml-1">{categoryLabel}</span>
                 </div>
               )}
 
               {/* Theme Switcher */}
-              <div className={`flex items-center gap-1 shrink-0 rounded-full px-1.5 py-1 ${
+              <div className={`flex items-center gap-0.5 sm:gap-1 shrink-0 rounded-full px-1 sm:px-1.5 py-1 ${
                 readingTheme === 'dark' ? 'bg-white/10' : 
                 readingTheme === 'sepia' ? 'bg-[#5c4b37]/10' : 
                 'bg-ink/5'
               }`}>
-                <button onClick={() => { vibrate(5); setReadingTheme('light'); }} className={`p-1.5 rounded-full touch-manipulation active:scale-90 ${readingTheme === 'light' ? 'bg-white shadow-sm' : 'opacity-50'}`}>
-                  <div className="w-4 h-4 rounded-full bg-white border border-gray-300"></div>
+                <button onClick={() => { vibrate(5); setReadingTheme('light'); }} className={`p-1 sm:p-1.5 rounded-full touch-manipulation active:scale-90 ${readingTheme === 'light' ? 'bg-white shadow-sm' : 'opacity-50'}`}>
+                  <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-white border border-gray-300"></div>
                 </button>
-                <button onClick={() => { vibrate(5); setReadingTheme('sepia'); }} className={`p-1.5 rounded-full touch-manipulation active:scale-90 ${readingTheme === 'sepia' ? 'bg-[#f4ecd8] shadow-sm' : 'opacity-50'}`}>
-                  <div className="w-4 h-4 rounded-full bg-[#f4ecd8] border border-[#d4c4a8]"></div>
+                <button onClick={() => { vibrate(5); setReadingTheme('sepia'); }} className={`p-1 sm:p-1.5 rounded-full touch-manipulation active:scale-90 ${readingTheme === 'sepia' ? 'bg-[#f4ecd8] shadow-sm' : 'opacity-50'}`}>
+                  <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-[#f4ecd8] border border-[#d4c4a8]"></div>
                 </button>
-                <button onClick={() => { vibrate(5); setReadingTheme('dark'); }} className={`p-1.5 rounded-full touch-manipulation active:scale-90 ${readingTheme === 'dark' ? 'bg-[#1a1a1a] shadow-sm' : 'opacity-50'}`}>
-                  <div className="w-4 h-4 rounded-full bg-[#1a1a1a] border border-gray-600"></div>
+                <button onClick={() => { vibrate(5); setReadingTheme('dark'); }} className={`p-1 sm:p-1.5 rounded-full touch-manipulation active:scale-90 ${readingTheme === 'dark' ? 'bg-[#1a1a1a] shadow-sm' : 'opacity-50'}`}>
+                  <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-[#1a1a1a] border border-gray-600"></div>
                 </button>
               </div>
 
@@ -2597,7 +2629,7 @@ function MainApp() {
               }`}>
                 <button
                   onClick={() => { vibrate(5); setFontSize((f) => Math.max(f - 2, 12)); }}
-                  className={`p-1 sm:p-1.5 rounded-full text-sm transition-colors touch-manipulation active:scale-90 ${
+                  className={`p-1 sm:p-1.5 rounded-full text-xs sm:text-sm transition-colors touch-manipulation active:scale-90 ${
                     readingTheme === 'dark' ? 'hover:bg-white/10' : 
                     readingTheme === 'sepia' ? 'hover:bg-[#5c4b37]/10' : 
                     'hover:bg-ink/10'
@@ -2605,14 +2637,14 @@ function MainApp() {
                 >
                   A-
                 </button>
-                <div className={`w-px h-4 mx-0.5 sm:mx-1 ${
+                <div className={`w-px h-3.5 sm:h-4 mx-0.5 sm:mx-1 ${
                   readingTheme === 'dark' ? 'bg-white/20' : 
                   readingTheme === 'sepia' ? 'bg-[#5c4b37]/20' : 
                   'bg-ink/20'
                 }`}></div>
                 <button
                   onClick={() => { vibrate(5); setFontSize((f) => Math.min(f + 2, 32)); }}
-                  className={`p-1 sm:p-1.5 rounded-full text-sm transition-colors touch-manipulation active:scale-90 ${
+                  className={`p-1 sm:p-1.5 rounded-full text-xs sm:text-sm transition-colors touch-manipulation active:scale-90 ${
                     readingTheme === 'dark' ? 'hover:bg-white/10' : 
                     readingTheme === 'sepia' ? 'hover:bg-[#5c4b37]/10' : 
                     'hover:bg-ink/10'
@@ -2630,7 +2662,7 @@ function MainApp() {
               }`}>
                 <button
                   onClick={toggleAutoScroll}
-                  className={`p-1.5 rounded-full transition-colors touch-manipulation active:scale-90 ${
+                  className={`p-1 sm:p-1.5 rounded-full transition-colors touch-manipulation active:scale-90 ${
                     isAutoScrolling 
                       ? 'bg-accent text-white shadow-sm' 
                       : readingTheme === 'dark' ? 'hover:bg-white/10' : readingTheme === 'sepia' ? 'hover:bg-[#5c4b37]/10' : 'hover:bg-ink/10'
@@ -2641,7 +2673,7 @@ function MainApp() {
                 {isAutoScrolling && (
                   <button
                     onClick={cycleAutoScrollSpeed}
-                    className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${
+                    className={`text-[10px] sm:text-xs font-bold px-1.5 py-0.5 rounded-full ${
                       readingTheme === 'dark' ? 'bg-white/20' : 
                       readingTheme === 'sepia' ? 'bg-[#5c4b37]/20' : 
                       'bg-ink/10'
@@ -2653,10 +2685,10 @@ function MainApp() {
               </div>
 
               {/* Action Icons */}
-              <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
+              <div className="flex items-center gap-0 sm:gap-1 shrink-0">
                 <button
                   onClick={() => toggleBookmark(selectedSabad?.id || "")}
-                  className={`p-1.5 sm:p-2 rounded-full transition-colors touch-manipulation active:scale-95 ${
+                  className={`p-1 sm:p-2 rounded-full transition-colors touch-manipulation active:scale-95 ${
                     readingTheme === 'dark' ? 'hover:bg-white/10' : 
                     readingTheme === 'sepia' ? 'hover:bg-[#5c4b37]/10' : 
                     'hover:bg-ink/10'
@@ -2669,19 +2701,19 @@ function MainApp() {
                     transition={{ duration: 0.3, ease: "easeOut" }}
                   >
                     <Bookmark
-                      className={`w-5 h-5 ${bookmarks.includes(selectedSabad?.id || "") ? "fill-accent text-accent" : (readingTheme === 'dark' ? "text-white/70" : readingTheme === 'sepia' ? "text-[#5c4b37]/70" : "text-ink-light")}`}
+                      className={`w-4 h-4 sm:w-5 sm:h-5 ${bookmarks.includes(selectedSabad?.id || "") ? "fill-accent text-accent" : (readingTheme === 'dark' ? "text-white/70" : readingTheme === 'sepia' ? "text-[#5c4b37]/70" : "text-ink-light")}`}
                     />
                   </motion.div>
                 </button>
                 <button
                   onClick={handleShare}
-                  className={`p-1.5 sm:p-2 rounded-full transition-colors touch-manipulation active:scale-95 ${
+                  className={`p-1 sm:p-2 rounded-full transition-colors touch-manipulation active:scale-95 ${
                     readingTheme === 'dark' ? 'hover:bg-white/10' : 
                     readingTheme === 'sepia' ? 'hover:bg-[#5c4b37]/10' : 
                     'hover:bg-ink/10'
                   }`}
                 >
-                  <Share2 className={`w-5 h-5 ${readingTheme === 'dark' ? "text-white/70" : readingTheme === 'sepia' ? "text-[#5c4b37]/70" : "text-ink-light"}`} />
+                  <Share2 className={`w-4 h-4 sm:w-5 sm:h-5 ${readingTheme === 'dark' ? "text-white/70" : readingTheme === 'sepia' ? "text-[#5c4b37]/70" : "text-ink-light"}`} />
                 </button>
               </div>
             </div>
@@ -2864,32 +2896,40 @@ function MainApp() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-4 gap-3 w-full mb-6">
-                <button onClick={() => handlePaymentIntent('gpay')} className="flex flex-col items-center gap-2">
+              <div className="grid grid-cols-4 gap-3 w-full mb-4">
+                <button onClick={() => handlePaymentClick('gpay')} className="flex flex-col items-center gap-2">
                   <div className="w-12 h-12 bg-white rounded-2xl shadow-sm border border-ink/5 flex items-center justify-center p-2 active:scale-95 transition-transform">
                     <GPayIcon />
                   </div>
                   <span className="text-[10px] font-bold text-ink-light">GPay</span>
                 </button>
-                <button onClick={() => handlePaymentIntent('phonepe')} className="flex flex-col items-center gap-2">
+                <button onClick={() => handlePaymentClick('phonepe')} className="flex flex-col items-center gap-2">
                   <div className="w-12 h-12 bg-white rounded-2xl shadow-sm border border-ink/5 flex items-center justify-center p-2 active:scale-95 transition-transform">
                     <PhonePeIcon />
                   </div>
                   <span className="text-[10px] font-bold text-ink-light">PhonePe</span>
                 </button>
-                <button onClick={() => handlePaymentIntent('paytm')} className="flex flex-col items-center gap-2">
+                <button onClick={() => handlePaymentClick('paytm')} className="flex flex-col items-center gap-2">
                   <div className="w-12 h-12 bg-white rounded-2xl shadow-sm border border-ink/5 flex items-center justify-center p-2 active:scale-95 transition-transform">
                     <PaytmIcon />
                   </div>
                   <span className="text-[10px] font-bold text-ink-light">Paytm</span>
                 </button>
-                <button onClick={() => handlePaymentIntent('amazon')} className="flex flex-col items-center gap-2">
+                <button onClick={() => handlePaymentClick('amazon')} className="flex flex-col items-center gap-2">
                   <div className="w-12 h-12 bg-white rounded-2xl shadow-sm border border-ink/5 flex items-center justify-center p-2 active:scale-95 transition-transform">
                     <AmazonPayIcon />
                   </div>
                   <span className="text-[10px] font-bold text-ink-light">Amazon</span>
                 </button>
               </div>
+
+              <button 
+                onClick={() => handlePaymentClick('any')}
+                className="w-full bg-ink/5 hover:bg-ink/10 text-ink py-3 rounded-2xl font-bold text-sm mb-6 transition-colors flex items-center justify-center gap-2"
+              >
+                <span>अन्य UPI ऐप से पे करें</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
 
               <div className="w-full relative mb-4">
                 <div className="absolute inset-0 flex items-center">
@@ -3762,6 +3802,77 @@ function MainApp() {
         onConfirm={confirmDialog?.onConfirm || (() => {})}
         onCancel={() => setConfirmDialog(null)}
       />
+
+      {/* Payment Amount Modal */}
+      <AnimatePresence>
+        {paymentModalApp && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4 sm:p-0"
+            onClick={() => setPaymentModalApp(null)}
+          >
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="bg-paper w-full max-w-sm rounded-[2rem] p-6 shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-bold text-ink">सहयोग राशि चुनें</h3>
+                <button onClick={() => setPaymentModalApp(null)} className="p-2 bg-ink/5 rounded-full text-ink-light hover:bg-ink/10">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <p className="text-sm text-ink-light mb-6">
+                सुरक्षा कारणों से, {paymentModalApp === 'phonepe' ? 'PhonePe' : paymentModalApp === 'amazon' ? 'Amazon Pay' : paymentModalApp === 'gpay' ? 'Google Pay' : paymentModalApp === 'paytm' ? 'Paytm' : 'UPI ऐप'} के लिए राशि यहीं दर्ज करना आवश्यक है।
+              </p>
+
+              <div className="grid grid-cols-3 gap-3 mb-6">
+                {['11', '21', '51', '101', '501'].map(amt => (
+                  <button
+                    key={amt}
+                    onClick={() => setDonationAmount(amt)}
+                    className={`py-3 rounded-xl font-bold text-lg transition-all ${
+                      donationAmount === amt 
+                        ? 'bg-accent text-white shadow-md scale-105' 
+                        : 'bg-white border border-ink/10 text-ink hover:bg-ink/5'
+                    }`}
+                  >
+                    ₹{amt}
+                  </button>
+                ))}
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-light font-bold">₹</span>
+                  <input
+                    type="number"
+                    value={['11', '21', '51', '101', '501'].includes(donationAmount) ? "" : donationAmount}
+                    onChange={(e) => setDonationAmount(e.target.value)}
+                    placeholder="अन्य"
+                    className={`w-full h-full pl-7 pr-2 py-3 bg-white border rounded-xl text-center font-bold text-lg focus:outline-none transition-all ${
+                      !['11', '21', '51', '101', '501'].includes(donationAmount) && donationAmount !== ""
+                        ? 'border-accent ring-2 ring-accent/20 text-accent'
+                        : 'border-ink/10 text-ink focus:border-accent'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              <button
+                onClick={executePayment}
+                className="w-full bg-gradient-to-r from-accent to-accent-dark text-white py-4 rounded-2xl font-bold text-lg shadow-lg hover:shadow-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+              >
+                <span>₹{donationAmount || '0'} पे करें</span>
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
     </div>
   );
