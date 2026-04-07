@@ -2,12 +2,12 @@ apply plugin: 'com.android.application'
 
 android {
     namespace "com.ravindrasaran.sabadwani"
-    compileSdk 34  // हमने इसे सीधा 34 कर दिया है
+    compileSdk 36
 
     defaultConfig {
         applicationId "com.ravindrasaran.sabadwani"
-        minSdkVersion 22     // कम से कम Android 5.1 (ताकि पुराने फोन पर चले)
-        targetSdkVersion 34  // Play Store की ताज़ा गाइडलाइन के अनुसार
+        minSdkVersion 22
+        targetSdkVersion 36
         versionCode 8
         versionName "1.3.4"
         
