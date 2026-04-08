@@ -1,5 +1,4 @@
-import React from 'react';
-import { HeartHandshake, XCircle, CheckCircle2 } from 'lucide-react';
+import { HeartHandshake, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface PaymentStatusModalProps {

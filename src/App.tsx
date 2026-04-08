@@ -14,7 +14,6 @@ import { useSabadData } from "./hooks/useSabadData";
 import { generateAmavasyaForYear, getBichhudaList, getJD, getTithiName, getSamvat } from "./lib/astro";
 import { vibrate, checkIsOnline, getSearchSkeleton } from "./lib/utils";
 import { ShabadSkeleton, PostSkeleton, BannerSkeleton, CategorySkeleton, MelaSkeleton } from "./components/Skeleton";
-import { GPayIcon, PhonePeIcon, PaytmIcon, AmazonPayIcon } from "./components/PaymentIcons";
 import { globalAudio, setupGlobalMediaSessionListener, clearMediaSession } from "./lib/audioGlobals";
 import React, { useState, useEffect, useRef, useMemo, ReactNode } from "react";
 import {
@@ -685,7 +684,6 @@ function MainApp() {
         let transcript = event.results[0][0].transcript;
         // Remove common punctuation that voice recognition adds
         transcript = transcript.replace(/[.,।?!]/g, '').trim();
-        console.log("Voice search transcript:", transcript);
         setSearchQuery(transcript);
         setIsListening(false);
       };
@@ -1382,8 +1380,6 @@ function MainApp() {
 
   const [pendingDeepLinkId, setPendingDeepLinkId] = useState<string | null>(null);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
-  const [paymentModalApp, setPaymentModalApp] = useState<string | null>(null);
-  const [donationAmount, setDonationAmount] = useState("51");
 
   // --- Deep Linking ---
   useEffect(() => {
@@ -1486,66 +1482,6 @@ function MainApp() {
   };
 
   const backPressCountRef = useRef(0);
-
-  const handlePaymentClick = (app: string) => {
-    setPaymentModalApp(app);
-    setDonationAmount("51"); // Default amount
-  };
-
-  const executePayment = () => {
-    if (!paymentModalApp) return;
-    if (!donationAmount || isNaN(Number(donationAmount)) || Number(donationAmount) <= 0) {
-      showToast("कृपया सही राशि दर्ज करें");
-      return;
-    }
-    handlePaymentIntent(paymentModalApp, donationAmount);
-    setPaymentModalApp(null);
-  };
-
-  const handlePaymentIntent = (app: string, amount: string) => {
-    if (!settings.upiId) {
-      showToast("UPI ID उपलब्ध नहीं है।");
-      return;
-    }
-    
-    const pa = encodeURIComponent(settings.upiId);
-    const pn = encodeURIComponent("Sabadwani");
-    const cu = "INR";
-    const am = amount;
-    const tn = encodeURIComponent("Sabadwani Donation");
-    const tr = `SABD${Date.now()}`;
-    // Adding mc=0000 (Merchant Code), tr (Transaction Ref), tn (Transaction Note) 
-    // and mode=02 (Secure Intent) is required to bypass PhonePe's "QR codes via gallery" restriction.
-    const upiParams = `pa=${pa}&pn=${pn}&cu=${cu}&am=${am}&tn=${tn}&tr=${tr}&mc=0000&mode=02`;
-    const standardUpiUrl = `upi://pay?${upiParams}`;
-    
-    let finalUrl = standardUpiUrl;
-    
-    if (app === 'gpay') {
-      finalUrl = `tez://upi/pay?${upiParams}`;
-    } else if (app === 'phonepe') {
-      finalUrl = `phonepe://pay?${upiParams}`;
-    } else if (app === 'paytm') {
-      finalUrl = `paytmmp://pay?${upiParams}`;
-    } else if (app === 'amazon') {
-      if (Capacitor.getPlatform() === 'android') {
-        finalUrl = `intent://pay?${upiParams}#Intent;scheme=upi;package=in.amazon.mShop.android.shopping;end`;
-      } else {
-        finalUrl = standardUpiUrl;
-      }
-    } else if (app === 'any') {
-      finalUrl = standardUpiUrl;
-    }
-    
-    paymentIntentPending.current = true;
-    
-    if (Capacitor.isNativePlatform()) {
-      // Using window.location.href works best for custom schemes in Android WebViews
-      window.location.href = finalUrl;
-    } else {
-      window.location.href = finalUrl;
-    }
-  };
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
@@ -2891,53 +2827,7 @@ function MainApp() {
                 </div>
                 <div className="relative flex justify-center text-[10px] uppercase tracking-widest font-bold">
                   <span className="px-3 bg-white text-ink-light/60">
-                    सीधे ऐप से पे करें
-                  </span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-4 gap-3 w-full mb-4">
-                <button onClick={() => handlePaymentClick('gpay')} className="flex flex-col items-center gap-2">
-                  <div className="w-12 h-12 bg-white rounded-2xl shadow-sm border border-ink/5 flex items-center justify-center p-2 active:scale-95 transition-transform">
-                    <GPayIcon />
-                  </div>
-                  <span className="text-[10px] font-bold text-ink-light">GPay</span>
-                </button>
-                <button onClick={() => handlePaymentClick('phonepe')} className="flex flex-col items-center gap-2">
-                  <div className="w-12 h-12 bg-white rounded-2xl shadow-sm border border-ink/5 flex items-center justify-center p-2 active:scale-95 transition-transform">
-                    <PhonePeIcon />
-                  </div>
-                  <span className="text-[10px] font-bold text-ink-light">PhonePe</span>
-                </button>
-                <button onClick={() => handlePaymentClick('paytm')} className="flex flex-col items-center gap-2">
-                  <div className="w-12 h-12 bg-white rounded-2xl shadow-sm border border-ink/5 flex items-center justify-center p-2 active:scale-95 transition-transform">
-                    <PaytmIcon />
-                  </div>
-                  <span className="text-[10px] font-bold text-ink-light">Paytm</span>
-                </button>
-                <button onClick={() => handlePaymentClick('amazon')} className="flex flex-col items-center gap-2">
-                  <div className="w-12 h-12 bg-white rounded-2xl shadow-sm border border-ink/5 flex items-center justify-center p-2 active:scale-95 transition-transform">
-                    <AmazonPayIcon />
-                  </div>
-                  <span className="text-[10px] font-bold text-ink-light">Amazon</span>
-                </button>
-              </div>
-
-              <button 
-                onClick={() => handlePaymentClick('any')}
-                className="w-full bg-ink/5 hover:bg-ink/10 text-ink py-3 rounded-2xl font-bold text-sm mb-6 transition-colors flex items-center justify-center gap-2"
-              >
-                <span>अन्य UPI ऐप से पे करें</span>
-                <ChevronRight className="w-4 h-4" />
-              </button>
-
-              <div className="w-full relative mb-4">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-ink/10"></div>
-                </div>
-                <div className="relative flex justify-center text-[10px] uppercase tracking-widest font-bold">
-                  <span className="px-3 bg-white text-ink-light/60">
-                    या UPI ID कॉपी करें
+                    UPI ID कॉपी करें
                   </span>
                 </div>
               </div>
@@ -2952,7 +2842,7 @@ function MainApp() {
                 }}
                 className="bg-gradient-to-r from-accent to-accent-dark text-white px-8 py-3 rounded-2xl font-bold shadow-lg w-full hover:shadow-xl active:scale-[0.98] transition-all text-sm"
               >
-                Copy UPI ID
+                UPI ID कॉपी करें
               </button>
             </div>
             </div>
@@ -3802,77 +3692,6 @@ function MainApp() {
         onConfirm={confirmDialog?.onConfirm || (() => {})}
         onCancel={() => setConfirmDialog(null)}
       />
-
-      {/* Payment Amount Modal */}
-      <AnimatePresence>
-        {paymentModalApp && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4 sm:p-0"
-            onClick={() => setPaymentModalApp(null)}
-          >
-            <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={{ type: "spring", damping: 25, stiffness: 300 }}
-              className="bg-paper w-full max-w-sm rounded-[2rem] p-6 shadow-2xl"
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-bold text-ink">सहयोग राशि चुनें</h3>
-                <button onClick={() => setPaymentModalApp(null)} className="p-2 bg-ink/5 rounded-full text-ink-light hover:bg-ink/10">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              
-              <p className="text-sm text-ink-light mb-6">
-                सुरक्षा कारणों से, {paymentModalApp === 'phonepe' ? 'PhonePe' : paymentModalApp === 'amazon' ? 'Amazon Pay' : paymentModalApp === 'gpay' ? 'Google Pay' : paymentModalApp === 'paytm' ? 'Paytm' : 'UPI ऐप'} के लिए राशि यहीं दर्ज करना आवश्यक है।
-              </p>
-
-              <div className="grid grid-cols-3 gap-3 mb-6">
-                {['11', '21', '51', '101', '501'].map(amt => (
-                  <button
-                    key={amt}
-                    onClick={() => setDonationAmount(amt)}
-                    className={`py-3 rounded-xl font-bold text-lg transition-all ${
-                      donationAmount === amt 
-                        ? 'bg-accent text-white shadow-md scale-105' 
-                        : 'bg-white border border-ink/10 text-ink hover:bg-ink/5'
-                    }`}
-                  >
-                    ₹{amt}
-                  </button>
-                ))}
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-light font-bold">₹</span>
-                  <input
-                    type="number"
-                    value={['11', '21', '51', '101', '501'].includes(donationAmount) ? "" : donationAmount}
-                    onChange={(e) => setDonationAmount(e.target.value)}
-                    placeholder="अन्य"
-                    className={`w-full h-full pl-7 pr-2 py-3 bg-white border rounded-xl text-center font-bold text-lg focus:outline-none transition-all ${
-                      !['11', '21', '51', '101', '501'].includes(donationAmount) && donationAmount !== ""
-                        ? 'border-accent ring-2 ring-accent/20 text-accent'
-                        : 'border-ink/10 text-ink focus:border-accent'
-                    }`}
-                  />
-                </div>
-              </div>
-
-              <button
-                onClick={executePayment}
-                className="w-full bg-gradient-to-r from-accent to-accent-dark text-white py-4 rounded-2xl font-bold text-lg shadow-lg hover:shadow-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-              >
-                <span>₹{donationAmount || '0'} पे करें</span>
-                <ChevronRight className="w-5 h-5" />
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
     </div>
   );
