@@ -61,6 +61,7 @@ import { StatusBar, Style } from '@capacitor/status-bar';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { AppUpdate } from '@capawesome/capacitor-app-update';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import { format, addDays } from "date-fns";
 import { hi } from "date-fns/locale";
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
@@ -247,9 +248,9 @@ function MainApp() {
 
   useEffect(() => {
     if (Capacitor.isNativePlatform()) {
-      // Configure Status Bar
-      StatusBar.setStyle({ style: Style.Light }).catch(() => {});
-      StatusBar.setBackgroundColor({ color: '#f27d26' }).catch(() => {}); // Match theme color
+      // Configure Status Bar for Edge-to-Edge
+      StatusBar.setOverlaysWebView({ overlay: true }).catch(() => {});
+      StatusBar.setStyle({ style: Style.Dark }).catch(() => {}); // Dark style means light text for orange background
       
       // Hide Splash Screen after app is ready
       SplashScreen.hide().catch(() => {});
@@ -659,42 +660,132 @@ function MainApp() {
   // --- Premium Features State ---
   const [searchQuery, setSearchQuery] = useState("");
   const [isListening, setIsListening] = useState(false);
+  const [isVoiceSearchSupported, setIsVoiceSearchSupported] = useState(false);
 
-  const startVoiceSearch = (e?: React.MouseEvent) => {
-    if (e) e.preventDefault();
+  useEffect(() => {
+    const checkVoiceSupport = async () => {
+      if (Capacitor.isNativePlatform()) {
+        try {
+          const { available } = await SpeechRecognition.available();
+          setIsVoiceSearchSupported(available);
+        } catch (e) {
+          setIsVoiceSearchSupported(false);
+        }
+      } else {
+        setIsVoiceSearchSupported(typeof window !== 'undefined' && !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition));
+      }
+    };
+    checkVoiceSupport();
+  }, []);
+
+  const recognitionRef = useRef<any>(null);
+
+  const startVoiceSearch = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      showToast("क्षमा करें, आपका डिवाइस वॉइस सर्च को सपोर्ट नहीं करता है।");
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const { speechRecognition } = await SpeechRecognition.checkPermissions();
+        if (speechRecognition !== 'granted') {
+          const { speechRecognition: newStatus } = await SpeechRecognition.requestPermissions();
+          if (newStatus !== 'granted') {
+            showToast("माइक्रोफ़ोन की अनुमति नहीं मिली।");
+            return;
+          }
+        }
+
+        setIsListening(true);
+        vibrate(10);
+        
+        const result = await SpeechRecognition.start({
+          language: 'hi-IN',
+          maxResults: 1,
+          prompt: 'सुन रहा हूँ... बोलिए',
+          popup: true,
+          partialResults: false,
+        });
+
+        if (result.matches && result.matches.length > 0) {
+          let transcript = result.matches[0];
+          transcript = transcript.replace(/[.,।?!]/g, '').trim();
+          setSearchQuery(transcript);
+        }
+      } catch (e: any) {
+        console.error("Native voice search error:", e);
+        if (e.message && e.message.includes('No match')) {
+           showToast("कोई आवाज़ सुनाई नहीं दी।");
+        } else {
+           showToast("वॉइस सर्च में त्रुटि हुई।");
+        }
+      } finally {
+        setIsListening(false);
+      }
+      return;
+    }
+
+    const WebSpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!WebSpeechRecognition) {
+      showToast("क्षमा करें, आपका ब्राउज़र वॉइस सर्च को सपोर्ट नहीं करता है।");
+      return;
+    }
+
+    if (isListening) {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (err) {}
+      }
+      setIsListening(false);
       return;
     }
 
     try {
-      const recognition = new SpeechRecognition();
+      // Explicitly request microphone permission first (helps in iframes/WebViews)
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Stop the tracks immediately, we just needed to trigger the permission prompt
+        stream.getTracks().forEach(track => track.stop());
+      }
+      
+      const recognition = new WebSpeechRecognition();
+      recognitionRef.current = recognition;
       recognition.lang = 'hi-IN';
       recognition.continuous = false;
       recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
 
       recognition.onstart = () => {
         setIsListening(true);
         showToast("सुन रहा हूँ... बोलिए");
+        vibrate(10);
       };
 
       recognition.onresult = (event: any) => {
-        let transcript = event.results[0][0].transcript;
-        // Remove common punctuation that voice recognition adds
-        transcript = transcript.replace(/[.,।?!]/g, '').trim();
-        setSearchQuery(transcript);
+        if (event.results && event.results.length > 0) {
+          let transcript = event.results[0][0].transcript;
+          transcript = transcript.replace(/[.,।?!]/g, '').trim();
+          setSearchQuery(transcript);
+        }
         setIsListening(false);
       };
 
       recognition.onerror = (event: any) => {
-        console.error("Voice search error:", event.error);
         setIsListening(false);
+        if (event.error === 'aborted') {
+          console.log("Voice search stopped.");
+          return;
+        }
+        
+        console.error("Voice search error:", event.error);
         if (event.error === 'not-allowed') {
-          showToast("माइक्रोफ़ोन की अनुमति नहीं मिली। कृपया डिवाइस सेटिंग्स चेक करें।");
+          showToast("माइक्रोफ़ोन की अनुमति नहीं मिली। कृपया ब्राउज़र सेटिंग्स चेक करें।");
         } else if (event.error === 'no-speech') {
-          showToast("कोई आवाज़ सुनाई नहीं दी।");
+          showToast("कोई आवाज़ सुनाई नहीं दी। कृपया फिर से प्रयास करें।");
+        } else if (event.error === 'network') {
+          showToast("वॉइस सर्च के लिए इंटरनेट कनेक्शन की आवश्यकता है।");
         } else {
           showToast(`आवाज़ पहचानने में समस्या हुई (${event.error})।`);
         }
@@ -705,10 +796,14 @@ function MainApp() {
       };
 
       recognition.start();
-    } catch (e) {
+    } catch (e: any) {
       console.error("Speech recognition start error:", e);
       setIsListening(false);
-      showToast("वॉइस सर्च शुरू करने में त्रुटि हुई।");
+      if (e.name === 'NotAllowedError' || e.name === 'SecurityError') {
+        showToast("माइक्रोफ़ोन की अनुमति नहीं मिली। कृपया ब्राउज़र सेटिंग्स चेक करें।");
+      } else {
+        showToast("वॉइस सर्च शुरू करने में त्रुटि हुई।");
+      }
     }
   };
 
@@ -990,9 +1085,15 @@ function MainApp() {
   };
 
   // --- Choghadiya State & Logic ---
-  const [choghadiyaDate, setChoghadiyaDate] = useState(
-    new Date().toISOString().split("T")[0],
-  );
+  const [choghadiyaDate, setChoghadiyaDate] = useState(() => {
+    const now = new Date();
+    if (now.getHours() < 6) {
+      now.setDate(now.getDate() - 1);
+    }
+    const offset = now.getTimezoneOffset() * 60000;
+    const localISOTime = new Date(now.getTime() - offset).toISOString().slice(0, -1);
+    return localISOTime.split("T")[0];
+  });
   const [choghadiyaLocation, setChoghadiyaLocation] =
     useState("Bikaner, Rajasthan");
   const [choghadiyaLoading, setChoghadiyaLoading] = useState(false);
@@ -1120,7 +1221,8 @@ function MainApp() {
         }
       }
 
-      const targetDate = new Date(dateStr);
+      const [year, month, day] = dateStr.split("-").map(Number);
+      const targetDate = new Date(year, month - 1, day, 12, 0, 0);
       const times = SunCalc.getTimes(targetDate, lat, lon);
       const nextDayTimes = SunCalc.getTimes(addDays(targetDate, 1), lat, lon);
 
@@ -1393,8 +1495,8 @@ function MainApp() {
           shabadId = pathParts[pathParts.length - 1];
         } else {
           const pathParts = url.pathname.split('/').filter(p => p);
-          if (pathParts.includes('shabad')) {
-            const idx = pathParts.indexOf('shabad');
+          if (pathParts.includes('shabad') || pathParts.includes('sabad')) {
+            const idx = pathParts.indexOf('shabad') !== -1 ? pathParts.indexOf('shabad') : pathParts.indexOf('sabad');
             shabadId = pathParts[idx + 1];
           } else if (pathParts.length > 0) {
             shabadId = pathParts[pathParts.length - 1];
@@ -1436,8 +1538,8 @@ function MainApp() {
       // Handle web deep links on initial load
       const path = window.location.pathname;
       const pathParts = path.split('/').filter(p => p);
-      if (pathParts.includes('shabad')) {
-        const idx = pathParts.indexOf('shabad');
+      if (pathParts.includes('shabad') || pathParts.includes('sabad')) {
+        const idx = pathParts.indexOf('shabad') !== -1 ? pathParts.indexOf('shabad') : pathParts.indexOf('sabad');
         const shabadId = pathParts[idx + 1];
         if (shabadId) {
           setPendingDeepLinkId(shabadId);
@@ -1533,7 +1635,10 @@ function MainApp() {
       ? `सबदवाणी ऐप से यह ${contentType} ${action}:` 
       : `सबदवाणी ऐप से यह ${action}:`;
     
-    const shareText = `${introLine}\n\n${selectedSabad?.title || "सबदवाणी"}\n\n${(selectedSabad?.text || "").substring(0, 200)}...\n\nऐप डाउनलोड करें एवं ${action}: ${playStoreLink}`;
+    // Generate deep link
+    const deepLink = selectedSabad?.id ? `\n\nसीधे ऐप में खोलें: https://bishnoi.co.in/sabad/${selectedSabad.id}` : "";
+    
+    const shareText = `${introLine}\n\n${selectedSabad?.title || "सबदवाणी"}\n\n${(selectedSabad?.text || "").substring(0, 200)}...${deepLink}\n\nऐप डाउनलोड करें: ${playStoreLink}`;
     
     try {
       await import('@capacitor/share').then(({ Share }) => {
@@ -2037,14 +2142,16 @@ function MainApp() {
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder="शब्द, भजन, आरती, साखी या मेले खोजें..." 
-                  className="w-full pl-12 pr-14 py-3 rounded-2xl border border-ink/20 bg-white focus:border-accent outline-none shadow-sm"
+                  className={`w-full pl-12 py-3 rounded-2xl border border-ink/20 bg-white focus:border-accent outline-none shadow-sm ${isVoiceSearchSupported ? 'pr-14' : 'pr-4'}`}
                 />
-                <button 
-                  onClick={startVoiceSearch}
-                  className={`absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full transition-all ${isListening ? 'bg-accent/20 text-accent animate-pulse' : 'text-ink-light hover:bg-ink/5'}`}
-                >
-                  <Mic className="w-5 h-5" />
-                </button>
+                {isVoiceSearchSupported && (
+                  <button 
+                    onClick={startVoiceSearch}
+                    className={`absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full transition-all ${isListening ? 'bg-accent/20 text-accent animate-pulse' : 'text-ink-light hover:bg-ink/5'}`}
+                  >
+                    <Mic className="w-5 h-5" />
+                  </button>
+                )}
               </div>
 
             {isLoading ? (
@@ -2512,60 +2619,60 @@ function MainApp() {
               </motion.div>
             )}
 
-            <div className={`sticky top-[50px] z-10 px-1 py-2 sm:p-3 flex items-center justify-between gap-0.5 sm:gap-3 shadow-sm border-b transition-colors duration-300 overflow-x-auto ${
+            <div className={`sticky top-[50px] z-10 px-1.5 py-2 flex items-center justify-between gap-1 shadow-sm border-b transition-colors duration-300 overflow-x-auto ${
               readingTheme === 'dark' ? 'bg-[#1a1a1a]/95 border-white/10 text-white' : 
               readingTheme === 'sepia' ? 'bg-[#f4ecd8]/95 border-[#5c4b37]/10 text-[#5c4b37]' : 
               'bg-paper/95 border-ink/10 text-ink'
             } backdrop-blur-md [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]`}>
               <button
                 onClick={handleBack}
-                className={`p-1 sm:p-2 -ml-0.5 sm:-ml-1 rounded-full shrink-0 transition-all touch-manipulation active:scale-90 ${
+                className={`p-1.5 -ml-0.5 rounded-full shrink-0 transition-all touch-manipulation active:scale-90 ${
                   readingTheme === 'dark' ? 'hover:bg-white/10 active:bg-white/20' : 
                   readingTheme === 'sepia' ? 'hover:bg-[#5c4b37]/10 active:bg-[#5c4b37]/20' : 
                   'hover:bg-ink/10 active:bg-ink/20'
                 }`}
               >
-                <ChevronLeft className="w-6 h-6" />
+                <ChevronLeft className="w-5 h-5" />
               </button>
 
               {/* Position Indicator */}
               {readingIndex !== -1 && totalCount > 0 && (
-                <div className={`flex flex-col sm:flex-row items-center justify-center text-[10px] sm:text-xs font-bold px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-xl sm:rounded-full tracking-wide shrink-0 leading-tight sm:leading-normal ${
+                <div className={`flex flex-col items-center justify-center text-[10px] font-bold px-2 py-1 rounded-xl tracking-wide shrink-0 leading-tight ${
                   readingTheme === 'dark' ? 'bg-white/10 text-white/80' : 
                   readingTheme === 'sepia' ? 'bg-[#5c4b37]/10 text-[#5c4b37]/80' : 
                   'bg-ink/5 text-ink-light'
                 }`}>
                   <span>{readingIndex + 1}/{totalCount}</span>
-                  <span className="text-[10px] sm:text-xs ml-0.5 sm:ml-1">{categoryLabel}</span>
+                  <span className="text-[9px] opacity-90 mt-0.5">{categoryLabel}</span>
                 </div>
               )}
 
               {/* Theme Switcher */}
-              <div className={`flex items-center gap-0.5 sm:gap-1 shrink-0 rounded-full px-1 sm:px-1.5 py-1 ${
+              <div className={`flex items-center gap-0.5 shrink-0 rounded-full px-1 py-1 ${
                 readingTheme === 'dark' ? 'bg-white/10' : 
                 readingTheme === 'sepia' ? 'bg-[#5c4b37]/10' : 
                 'bg-ink/5'
               }`}>
-                <button onClick={() => { vibrate(5); setReadingTheme('light'); }} className={`p-1 sm:p-1.5 rounded-full touch-manipulation active:scale-90 ${readingTheme === 'light' ? 'bg-white shadow-sm' : 'opacity-50'}`}>
-                  <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-white border border-gray-300"></div>
+                <button onClick={() => { vibrate(5); setReadingTheme('light'); }} className={`p-1 rounded-full touch-manipulation active:scale-90 ${readingTheme === 'light' ? 'bg-white shadow-sm' : 'opacity-50'}`}>
+                  <div className="w-3.5 h-3.5 rounded-full bg-white border border-gray-300"></div>
                 </button>
-                <button onClick={() => { vibrate(5); setReadingTheme('sepia'); }} className={`p-1 sm:p-1.5 rounded-full touch-manipulation active:scale-90 ${readingTheme === 'sepia' ? 'bg-[#f4ecd8] shadow-sm' : 'opacity-50'}`}>
-                  <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-[#f4ecd8] border border-[#d4c4a8]"></div>
+                <button onClick={() => { vibrate(5); setReadingTheme('sepia'); }} className={`p-1 rounded-full touch-manipulation active:scale-90 ${readingTheme === 'sepia' ? 'bg-[#f4ecd8] shadow-sm' : 'opacity-50'}`}>
+                  <div className="w-3.5 h-3.5 rounded-full bg-[#f4ecd8] border border-[#d4c4a8]"></div>
                 </button>
-                <button onClick={() => { vibrate(5); setReadingTheme('dark'); }} className={`p-1 sm:p-1.5 rounded-full touch-manipulation active:scale-90 ${readingTheme === 'dark' ? 'bg-[#1a1a1a] shadow-sm' : 'opacity-50'}`}>
-                  <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-[#1a1a1a] border border-gray-600"></div>
+                <button onClick={() => { vibrate(5); setReadingTheme('dark'); }} className={`p-1 rounded-full touch-manipulation active:scale-90 ${readingTheme === 'dark' ? 'bg-[#1a1a1a] shadow-sm' : 'opacity-50'}`}>
+                  <div className="w-3.5 h-3.5 rounded-full bg-[#1a1a1a] border border-gray-600"></div>
                 </button>
               </div>
 
               {/* Font Size Controls */}
-              <div className={`flex items-center gap-0.5 sm:gap-1 font-bold shrink-0 rounded-full px-1 sm:px-2 py-1 ${
+              <div className={`flex items-center gap-0.5 font-bold shrink-0 rounded-full px-1 py-1 ${
                 readingTheme === 'dark' ? 'bg-white/10' : 
                 readingTheme === 'sepia' ? 'bg-[#5c4b37]/10' : 
                 'bg-ink/5'
               }`}>
                 <button
                   onClick={() => { vibrate(5); setFontSize((f) => Math.max(f - 2, 12)); }}
-                  className={`p-1 sm:p-1.5 rounded-full text-xs sm:text-sm transition-colors touch-manipulation active:scale-90 ${
+                  className={`p-1 rounded-full text-xs transition-colors touch-manipulation active:scale-90 ${
                     readingTheme === 'dark' ? 'hover:bg-white/10' : 
                     readingTheme === 'sepia' ? 'hover:bg-[#5c4b37]/10' : 
                     'hover:bg-ink/10'
@@ -2573,14 +2680,14 @@ function MainApp() {
                 >
                   A-
                 </button>
-                <div className={`w-px h-3.5 sm:h-4 mx-0.5 sm:mx-1 ${
+                <div className={`w-px h-3.5 mx-0.5 ${
                   readingTheme === 'dark' ? 'bg-white/20' : 
                   readingTheme === 'sepia' ? 'bg-[#5c4b37]/20' : 
                   'bg-ink/20'
                 }`}></div>
                 <button
                   onClick={() => { vibrate(5); setFontSize((f) => Math.min(f + 2, 32)); }}
-                  className={`p-1 sm:p-1.5 rounded-full text-xs sm:text-sm transition-colors touch-manipulation active:scale-90 ${
+                  className={`p-1 rounded-full text-xs transition-colors touch-manipulation active:scale-90 ${
                     readingTheme === 'dark' ? 'hover:bg-white/10' : 
                     readingTheme === 'sepia' ? 'hover:bg-[#5c4b37]/10' : 
                     'hover:bg-ink/10'
@@ -2591,25 +2698,25 @@ function MainApp() {
               </div>
 
               {/* Auto Scroll Controls */}
-              <div className={`auto-scroll-control flex items-center gap-0.5 sm:gap-1 shrink-0 rounded-full px-1 sm:px-2 py-1 ${
+              <div className={`auto-scroll-control flex items-center gap-0.5 shrink-0 rounded-full px-1 py-1 ${
                 readingTheme === 'dark' ? 'bg-white/10' : 
                 readingTheme === 'sepia' ? 'bg-[#5c4b37]/10' : 
                 'bg-ink/5'
               }`}>
                 <button
                   onClick={toggleAutoScroll}
-                  className={`p-1 sm:p-1.5 rounded-full transition-colors touch-manipulation active:scale-90 ${
+                  className={`p-1 rounded-full transition-colors touch-manipulation active:scale-90 ${
                     isAutoScrolling 
                       ? 'bg-accent text-white shadow-sm' 
                       : readingTheme === 'dark' ? 'hover:bg-white/10' : readingTheme === 'sepia' ? 'hover:bg-[#5c4b37]/10' : 'hover:bg-ink/10'
                   }`}
                 >
-                  {isAutoScrolling ? <Pause className="w-4 h-4 sm:w-5 sm:h-5" /> : <ChevronsDown className="w-4 h-4 sm:w-5 sm:h-5" />}
+                  {isAutoScrolling ? <Pause className="w-4 h-4" /> : <ChevronsDown className="w-4 h-4" />}
                 </button>
                 {isAutoScrolling && (
                   <button
                     onClick={cycleAutoScrollSpeed}
-                    className={`text-[10px] sm:text-xs font-bold px-1.5 py-0.5 rounded-full ${
+                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
                       readingTheme === 'dark' ? 'bg-white/20' : 
                       readingTheme === 'sepia' ? 'bg-[#5c4b37]/20' : 
                       'bg-ink/10'
@@ -2621,10 +2728,10 @@ function MainApp() {
               </div>
 
               {/* Action Icons */}
-              <div className="flex items-center gap-0 sm:gap-1 shrink-0">
+              <div className="flex items-center gap-0.5 shrink-0">
                 <button
                   onClick={() => toggleBookmark(selectedSabad?.id || "")}
-                  className={`p-1 sm:p-2 rounded-full transition-colors touch-manipulation active:scale-95 ${
+                  className={`p-1.5 rounded-full transition-colors touch-manipulation active:scale-95 ${
                     readingTheme === 'dark' ? 'hover:bg-white/10' : 
                     readingTheme === 'sepia' ? 'hover:bg-[#5c4b37]/10' : 
                     'hover:bg-ink/10'
@@ -2637,19 +2744,19 @@ function MainApp() {
                     transition={{ duration: 0.3, ease: "easeOut" }}
                   >
                     <Bookmark
-                      className={`w-4 h-4 sm:w-5 sm:h-5 ${bookmarks.includes(selectedSabad?.id || "") ? "fill-accent text-accent" : (readingTheme === 'dark' ? "text-white/70" : readingTheme === 'sepia' ? "text-[#5c4b37]/70" : "text-ink-light")}`}
+                      className={`w-4 h-4 ${bookmarks.includes(selectedSabad?.id || "") ? "fill-accent text-accent" : (readingTheme === 'dark' ? "text-white/70" : readingTheme === 'sepia' ? "text-[#5c4b37]/70" : "text-ink-light")}`}
                     />
                   </motion.div>
                 </button>
                 <button
                   onClick={handleShare}
-                  className={`p-1 sm:p-2 rounded-full transition-colors touch-manipulation active:scale-95 ${
+                  className={`p-1.5 rounded-full transition-colors touch-manipulation active:scale-95 ${
                     readingTheme === 'dark' ? 'hover:bg-white/10' : 
                     readingTheme === 'sepia' ? 'hover:bg-[#5c4b37]/10' : 
                     'hover:bg-ink/10'
                   }`}
                 >
-                  <Share2 className={`w-4 h-4 sm:w-5 sm:h-5 ${readingTheme === 'dark' ? "text-white/70" : readingTheme === 'sepia' ? "text-[#5c4b37]/70" : "text-ink-light"}`} />
+                  <Share2 className={`w-4 h-4 ${readingTheme === 'dark' ? "text-white/70" : readingTheme === 'sepia' ? "text-[#5c4b37]/70" : "text-ink-light"}`} />
                 </button>
               </div>
             </div>
@@ -2909,7 +3016,7 @@ function MainApp() {
               <ShieldCheck className="w-20 h-20 mx-auto text-accent mb-4" />
               <div className="bg-white/80 p-6 rounded-3xl shadow-md border border-ink/10 text-left space-y-4 text-sm md:text-base text-ink">
                 <p className="font-bold text-lg mb-2">गोपनीयता नीति (Privacy Policy)</p>
-                <p className="text-xs text-ink/70 mb-4">अंतिम अपडेट: 2 अप्रैल 2026</p>
+                <p className="text-xs text-ink/70 mb-4">अंतिम अपडेट: 8 अप्रैल 2026</p>
                 <p>आपकी गोपनीयता हमारे लिए अत्यंत महत्वपूर्ण है। यह ऐप (सबदवाणी / Shabadwani) Google Play Store की नीतियों का पूर्ण रूप से पालन करता है। यह गोपनीयता नीति बताती है कि हम आपकी जानकारी कैसे एकत्र, उपयोग और सुरक्षित करते हैं।</p>
                 
                 <h3 className="font-bold mt-4 text-accent-dark">1. जानकारी का संग्रह (Data Collection)</h3>
@@ -2927,6 +3034,7 @@ function MainApp() {
                 <h3 className="font-bold mt-4 text-accent-dark">2. अनुमतियां (Permissions)</h3>
                 <ul className="list-disc pl-5 space-y-1 text-ink/80">
                   <li><strong>स्थान (Location):</strong> 'चोघड़िया' और पंचांग जैसी सुविधाओं के लिए आपके डिवाइस के स्थान (Location) का उपयोग किया जाता है। <strong>महत्वपूर्ण:</strong> यह डेटा केवल आपके डिवाइस पर प्रोसेस होता है और हमारे सर्वर पर न तो भेजा जाता है और न ही सेव किया जाता है।</li>
+                  <li><strong>माइक्रोफोन (Microphone):</strong> 'वॉइस सर्च' (Voice Search) सुविधा के लिए आपके माइक्रोफोन का उपयोग किया जाता है। आपकी आवाज़ को केवल सर्च करने के लिए प्रोसेस किया जाता है और इसे हमारे सर्वर पर सेव नहीं किया जाता है।</li>
                   <li><strong>वाइब्रेशन (Vibration):</strong> 'जाप माला' सुविधा में गिनती पूरी होने पर आपको सूचित करने के लिए वाइब्रेशन का उपयोग किया जाता है।</li>
                   <li><strong>इंटरनेट (Internet):</strong> ऑडियो चलाने, डेटा सिंक करने और सामग्री डाउनलोड/अपलोड करने के लिए इंटरनेट एक्सेस की आवश्यकता होती है।</li>
                   <li><strong>बैकग्राउंड ऑडियो और नोटिफिकेशन्स (Background Audio & Notifications):</strong> ऐप को बैकग्राउंड में ऑडियो चलाने (Foreground Service) और लॉक स्क्रीन पर मीडिया कंट्रोल्स दिखाने के लिए अनुमति की आवश्यकता होती है।</li>
@@ -3217,8 +3325,7 @@ function MainApp() {
                       <div className="grid grid-cols-1 gap-2">
                         {choghadiyaSlots.day.map((slot, idx) => {
                           const now = new Date();
-                          const isToday = choghadiyaDate === now.toISOString().split('T')[0];
-                          const isCurrent = isToday && now >= slot.startTime && now < slot.endTime;
+                          const isCurrent = now >= slot.startTime && now < slot.endTime;
                           return (
                           <div
                             key={`day-${slot.name}-${idx}`}
@@ -3244,8 +3351,7 @@ function MainApp() {
                       <div className="grid grid-cols-1 gap-2">
                         {choghadiyaSlots.night.map((slot, idx) => {
                           const now = new Date();
-                          const isToday = choghadiyaDate === now.toISOString().split('T')[0];
-                          const isCurrent = isToday && now >= slot.startTime && now < slot.endTime;
+                          const isCurrent = now >= slot.startTime && now < slot.endTime;
                           return (
                           <div
                             key={`night-${slot.name}-${idx}`}
@@ -3324,7 +3430,13 @@ function MainApp() {
                   .map((item) => (
                     <div
                       key={item.start}
-                      className={`bg-paper p-4 rounded-2xl border ${item.isRunning ? "border-accent/50 ring-2 ring-accent/20 shadow-sm" : item.isUpcoming ? "border-accent/50 ring-1 ring-accent/20" : "border-ink/5"} flex flex-col relative overflow-hidden transition-all`}
+                      className={`bg-paper p-4 rounded-2xl border flex flex-col relative overflow-hidden transition-all ${
+                        item.isRunning 
+                          ? "border-accent/50 ring-2 ring-accent/20 shadow-sm" 
+                          : item.isUpcoming 
+                            ? "border-accent/50 ring-1 ring-accent/20" 
+                            : "border-ink/20"
+                      }`}
                     >
                       {item.isRunning && (
                         <div className="absolute top-0 right-0 bg-accent text-white text-[10px] font-bold px-2 py-0.5 rounded-bl-lg flex items-center gap-1">

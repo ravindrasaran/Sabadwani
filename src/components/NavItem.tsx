@@ -22,7 +22,7 @@ function NavItem({
         {icon}
       </div>
       <span
-        className={`text-[9px] font-bold leading-none transition-opacity duration-300 ${isActive ? "opacity-100" : "opacity-70"}`}
+        className={`text-[10px] font-bold leading-none transition-opacity duration-300 ${isActive ? "opacity-100" : "opacity-70"}`}
       >
         {label}
       </span>

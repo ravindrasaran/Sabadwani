@@ -43,12 +43,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <intent-filter android:label="Sabadwani Deep Link">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="sabadwani" />
-            </intent-filter>
+           <intent-filter android:autoVerify="true">
+               <action android:name="android.intent.action.VIEW" />
+               <category android:name="android.intent.category.DEFAULT" />
+               <category android:name="android.intent.category.BROWSABLE" />
+               <data android:scheme="https" android:host="bishnoi.co.in" />
+               <data android:scheme="http" android:host="bishnoi.co.in" />
+           </intent-filter>
         </activity>
 
         <provider
