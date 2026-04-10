@@ -25,6 +25,7 @@
     "@capacitor/local-notifications": "^8.0.2",
     "@capacitor/network": "latest",
     "@capacitor/preferences": "latest",
+    "@capacitor/push-notifications": "^8.0.3",
     "@capacitor/share": "latest",
     "@capacitor/splash-screen": "latest",
     "@capacitor/status-bar": "latest",

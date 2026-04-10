@@ -61,6 +61,7 @@ import { StatusBar, Style } from '@capacitor/status-bar';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { AppUpdate } from '@capawesome/capacitor-app-update';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { PushNotifications } from '@capacitor/push-notifications';
 import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import { format, addDays } from "date-fns";
 import { hi } from "date-fns/locale";
@@ -201,7 +202,47 @@ function MainApp() {
         }
       }
     };
+
+    const setupPushNotifications = async () => {
+      if (Capacitor.isNativePlatform()) {
+        try {
+          let permStatus = await PushNotifications.checkPermissions();
+          if (permStatus.receive !== 'granted') {
+            permStatus = await PushNotifications.requestPermissions();
+          }
+
+          if (permStatus.receive === 'granted') {
+            await PushNotifications.register();
+          }
+
+          PushNotifications.addListener('registration', (token) => {
+            console.log('Push registration success, token: ' + token.value);
+            // Optionally save this token to Firestore for the user if authenticated
+          });
+
+          PushNotifications.addListener('registrationError', (error: any) => {
+            console.error('Error on registration: ' + JSON.stringify(error));
+          });
+
+          PushNotifications.addListener('pushNotificationReceived', (notification) => {
+            console.log('Push received: ' + JSON.stringify(notification));
+            // Show local notification or toast if app is in foreground
+            showToast(`नई सूचना: ${notification.title}`);
+          });
+
+          PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
+            console.log('Push action performed: ' + JSON.stringify(notification));
+            // Handle navigation or action when user taps notification
+          });
+
+        } catch (error) {
+          console.error("Push notification setup failed:", error);
+        }
+      }
+    };
+
     performAppUpdate();
+    setupPushNotifications();
   }, []);
 
   const showToast = (message: string) => {
@@ -688,6 +729,13 @@ function MainApp() {
     
     if (Capacitor.isNativePlatform()) {
       try {
+        // Safety check: Verify if the device actually supports speech recognition
+        const { available } = await SpeechRecognition.available();
+        if (!available) {
+          showToast("आपके फोन में वॉइस सर्च की सुविधा उपलब्ध नहीं है।");
+          return;
+        }
+
         const { speechRecognition } = await SpeechRecognition.checkPermissions();
         if (speechRecognition !== 'granted') {
           const { speechRecognition: newStatus } = await SpeechRecognition.requestPermissions();
