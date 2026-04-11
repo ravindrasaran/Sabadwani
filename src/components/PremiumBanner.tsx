@@ -130,7 +130,8 @@ const PremiumBanner = ({ meles, badhais, dailyThought, notices }: any) => {
 
   useEffect(() => {
     if (!isHovered) {
-      const timer = setInterval(() => {
+      const duration = currentBanner === "flash" ? 15000 : 7000;
+      const timer = setTimeout(() => {
         const availableBanners: ("flash" | "badhai" | "thought" | "notice")[] = [];
         if (flashAlert) availableBanners.push("flash");
         if (activeNotices.length > 0) availableBanners.push("notice");
@@ -163,8 +164,8 @@ const PremiumBanner = ({ meles, badhais, dailyThought, notices }: any) => {
         }
 
         setCurrentBanner(nextBanner);
-      }, 7000);
-      return () => clearInterval(timer);
+      }, duration);
+      return () => clearTimeout(timer);
     }
   }, [greetings, activeNotices, isHovered, flashAlert, currentBanner]);
 

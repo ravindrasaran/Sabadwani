@@ -9,6 +9,10 @@ import NavItem from "./components/NavItem";
 import PremiumBanner from "./components/PremiumBanner";
 import CategoryCard from "./components/CategoryCard";
 import ShabadCard from "./components/ShabadCard";
+import AboutScreen from "./components/AboutScreen";
+import PrivacyScreen from "./components/PrivacyScreen";
+import ContributeScreen from "./components/ContributeScreen";
+import DonateScreen from "./components/DonateScreen";
 import { useWakeLock } from "./hooks/useWakeLock";
 import { useSabadData } from "./hooks/useSabadData";
 import { generateAmavasyaForYear, getBichhudaList, getJD, getTithiName, getSamvat } from "./lib/astro";
@@ -32,8 +36,6 @@ import {
   ShieldCheck,
   HeartHandshake,
   Share2,
-  UploadCloud,
-  Upload,
   Bookmark,
   Users,
   KeyRound,
@@ -255,6 +257,7 @@ function MainApp() {
       ? window.history.state.index 
       : 0
   );
+  const openedDirectlyRef = useRef(false);
 
   const [currentScreen, setCurrentScreen] = useState<Screen>(() => {
     if (typeof window !== 'undefined' && window.history.state && window.history.state.screen) {
@@ -355,13 +358,8 @@ function MainApp() {
           if (category) setSelectedCategory(category);
           setAutoPlayAudio(false);
           
-          const nextIndex = historyIndex.current + 1;
-          window.history.pushState({ screen: listScreen, index: nextIndex }, "", `#${listScreen}`);
-          const finalIndex = nextIndex + 1;
-          window.history.pushState({ screen: targetScreen, index: finalIndex }, "", `#${targetScreen}`);
-          
-          historyIndex.current = finalIndex;
-          setCurrentScreen(targetScreen);
+          openedDirectlyRef.current = true;
+          navigateTo(targetScreen);
           return;
         }
       } catch (e) {
@@ -752,7 +750,7 @@ function MainApp() {
           language: 'hi-IN',
           maxResults: 1,
           prompt: 'सुन रहा हूँ... बोलिए',
-          popup: true,
+          popup: false, // Set to false to prevent native crash on Android 11+
           partialResults: false,
         });
 
@@ -791,13 +789,6 @@ function MainApp() {
     }
 
     try {
-      // Explicitly request microphone permission first (helps in iframes/WebViews)
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        // Stop the tracks immediately, we just needed to trigger the permission prompt
-        stream.getTracks().forEach(track => track.stop());
-      }
-      
       const recognition = new WebSpeechRecognition();
       recognitionRef.current = recognition;
       recognition.lang = 'hi-IN';
@@ -1543,20 +1534,23 @@ function MainApp() {
           shabadId = pathParts[pathParts.length - 1];
         } else {
           const pathParts = url.pathname.split('/').filter(p => p);
-          if (pathParts.includes('shabad') || pathParts.includes('sabad')) {
-            const idx = pathParts.indexOf('shabad') !== -1 ? pathParts.indexOf('shabad') : pathParts.indexOf('sabad');
+          const validSlugs = ['shabad', 'sabad', 'bhajan', 'aarati', 'mantra', 'sakhi'];
+          const foundSlug = validSlugs.find(slug => pathParts.includes(slug));
+          
+          if (foundSlug) {
+            const idx = pathParts.indexOf(foundSlug);
             shabadId = pathParts[idx + 1];
           } else if (pathParts.length > 0) {
             shabadId = pathParts[pathParts.length - 1];
           }
           
-          if (!shabadId || shabadId === 'shabad') {
+          if (!shabadId || validSlugs.includes(shabadId)) {
             const params = new URLSearchParams(url.search);
             shabadId = params.get('id') || params.get('shabad') || shabadId;
           }
         }
         
-        if (shabadId && shabadId !== 'shabad') {
+        if (shabadId && !['shabad', 'sabad', 'bhajan', 'aarati', 'mantra', 'sakhi'].includes(shabadId)) {
           setPendingDeepLinkId(shabadId);
         }
       } catch (e) {
@@ -1600,14 +1594,22 @@ function MainApp() {
   useEffect(() => {
     if (pendingDeepLinkId && isDataLoaded) {
       const allSabads = [...sabads, ...aartis, ...bhajans, ...sakhis, ...mantras];
-      const shabad = allSabads.find(item => item.id === pendingDeepLinkId);
+      const shabad = allSabads.find(item => 
+        item.id === pendingDeepLinkId || 
+        (item as any).shortId === pendingDeepLinkId || 
+        item.id.startsWith(pendingDeepLinkId)
+      );
       
       if (shabad) {
         handleSabadClick(shabad);
         setPendingDeepLinkId(null);
       } else {
         const otherItems = [...meles, ...notices];
-        const otherItem = otherItems.find(item => item.id === pendingDeepLinkId);
+        const otherItem = otherItems.find(item => 
+          item.id === pendingDeepLinkId || 
+          (item as any).shortId === pendingDeepLinkId || 
+          item.id.startsWith(pendingDeepLinkId)
+        );
         if (otherItem) {
           setSelectedSabad(otherItem as any);
           navigateTo("reading");
@@ -1661,13 +1663,32 @@ function MainApp() {
 
   const handleBack = () => {
     vibrate(8);
+    const screen = currentScreen as any;
+    
+    // If we are on a reading screen, always go back to the list screen first
+    if (screen === "reading" || screen === "audio_reading") {
+      let listScreen: Screen = "shabad_list";
+      if (screen === "audio_reading") listScreen = "category_list";
+      navigateTo(listScreen, true);
+      return;
+    }
+
+    if (openedDirectlyRef.current) {
+      openedDirectlyRef.current = false;
+      // Determine the correct list screen based on current screen
+      let listScreen: Screen = "shabad_list";
+      if (screen === "audio_reading") listScreen = "category_list";
+      
+      navigateTo(listScreen, true);
+      return;
+    }
     if (historyIndex.current > 0) {
       window.history.back();
     } else {
       let prevScreen: Screen = "home";
-      if (currentScreen === "reading") prevScreen = "shabad_list";
-      else if (currentScreen === "audio_reading") prevScreen = "category_list";
-      else if (currentScreen === "shabad_list" || currentScreen === "category_list") prevScreen = "home";
+      if (screen === "reading") prevScreen = "shabad_list";
+      else if (screen === "audio_reading") prevScreen = "category_list";
+      else if (screen === "shabad_list" || screen === "category_list") prevScreen = "home";
       
       navigateTo(prevScreen, true);
     }
@@ -1682,9 +1703,18 @@ function MainApp() {
     const introLine = contentType 
       ? `सबदवाणी ऐप से यह ${contentType} ${action}:` 
       : `सबदवाणी ऐप से यह ${action}:`;
+      
+    let slug = "sabad";
+    if (contentType) {
+      if (contentType.includes("भजन")) slug = "bhajan";
+      else if (contentType.includes("आरती")) slug = "aarati";
+      else if (contentType.includes("मंत्र")) slug = "mantra";
+      else if (contentType.includes("साखी")) slug = "sakhi";
+    }
     
     // Generate deep link
-    const deepLink = selectedSabad?.id ? `\n\nसीधे ऐप में खोलें: https://bishnoi.co.in/sabad/${selectedSabad.id}` : "";
+    const shareId = selectedSabad?.id ? ((selectedSabad as any).shortId || selectedSabad.id.substring(0, 8)) : "";
+    const deepLink = shareId ? `\n\nसीधे ऐप में खोलें: https://bishnoi.co.in/${slug}/${shareId}` : "";
     
     const shareText = `${introLine}\n\n${selectedSabad?.title || "सबदवाणी"}\n\n${(selectedSabad?.text || "").substring(0, 200)}...${deepLink}\n\nऐप डाउनलोड करें: ${playStoreLink}`;
     
@@ -2046,7 +2076,7 @@ function MainApp() {
             </div>
 
             {/* Premium Grid Layout for Main Categories - Compact 3-Column Design */}
-            <div className="grid grid-cols-3 gap-1 px-4 mt-0.5 flex-1 overflow-y-auto pb-4 hide-scrollbar">
+            <div className="grid grid-cols-3 gap-3 px-4 mt-2 flex-1 overflow-y-auto pb-4 hide-scrollbar">
               {isLoading ? (
                 [...Array(12)].map((_, i) => <CategorySkeleton key={i} />)
               ) : (
@@ -2811,7 +2841,7 @@ function MainApp() {
 
             {/* Audio Player (Fixed outside swipeable container) */}
             {currentScreen === "audio_reading" && selectedSabad?.audioUrl && (
-              <div className="w-full max-w-md mx-auto px-5 pt-4 shrink-0 z-10 relative">
+              <div className="w-full max-w-md mx-auto px-5 pt-2 shrink-0 z-10 relative">
                 <AudioPlayer 
                   url={selectedSabad.audioUrl} 
                   onEnded={handleAudioEnded} 
@@ -2830,31 +2860,28 @@ function MainApp() {
             )}
 
             {/* Title Card (Static Container, Fading Content) */}
-            <div className="w-full max-w-md mx-auto px-5 pt-4 shrink-0 z-10 relative">
-              <div className="w-full bg-gradient-to-r from-accent to-accent-dark text-white text-center py-3 px-4 rounded-2xl shadow-md border border-ink/20 relative overflow-hidden min-h-[72px] flex flex-col justify-center">
-                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-20"></div>
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={selectedSabad?.id}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.3 }}
-                    className="relative z-10"
-                  >
-                    <h2 className="text-2xl font-semibold">
-                      {selectedSabad?.title && !selectedSabad.title.includes("मन्त्र") && !selectedSabad.title.includes("मंत्र") && !selectedSabad.title.includes("गोत्रचार")
-                        ? `|| ${selectedSabad.title} ||`
-                        : selectedSabad?.title}
+            <div className={`w-full max-w-md mx-auto px-5 ${currentScreen === "audio_reading" && selectedSabad?.audioUrl ? "pt-3" : "pt-5"} pb-2 shrink-0 z-10 relative text-center`}>
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={selectedSabad?.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.3 }}
+                  className="inline-flex flex-col items-center justify-center relative z-10"
+                >
+                  <div className="bg-accent/10 text-accent-dark px-6 py-1 rounded-full border border-accent/20 shadow-sm backdrop-blur-sm">
+                    <h2 className="text-xl md:text-2xl font-bold font-serif tracking-wide">
+                      {selectedSabad?.title ? `॥ ${selectedSabad.title} ॥` : ""}
                     </h2>
-                    {selectedSabad?.author && selectedSabad.author.toLowerCase() !== "admin" && (
-                      <p className="text-xs opacity-80 mt-1">
-                        द्वारा: {selectedSabad.author}
-                      </p>
-                    )}
-                  </motion.div>
-                </AnimatePresence>
-              </div>
+                  </div>
+                  {selectedSabad?.author && selectedSabad.author.toLowerCase() !== "admin" && (
+                    <p className="text-xs text-ink-light font-medium mt-2">
+                      द्वारा: {selectedSabad.author}
+                    </p>
+                  )}
+                </motion.div>
+              </AnimatePresence>
             </div>
 
             {/* Swipeable Container */}
@@ -2941,354 +2968,41 @@ function MainApp() {
         );
 
       case "donate":
-        return (
-          <motion.div
-            key="donate"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="pb-32"
-          >
-            <PremiumHeader title="विशेष सहयोग" onBack={() => navigateTo('home')} icon={HeartHandshake} />
-            
-            <div className="px-4 pt-2 text-center">
-              <p className="text-sm mb-6 text-ink-light px-4 leading-relaxed">
-                इस निःशुल्क और विज्ञापन-मुक्त ऐप को सुचारू रूप से चलाने के लिए आपके सहयोग की आवश्यकता है।
-              </p>
-
-            <div className="bg-white/90 p-5 rounded-[2.5rem] shadow-xl border border-ink/10 flex flex-col items-center max-w-sm mx-auto">
-              <h3 className="text-lg font-bold mb-4 text-ink">
-                UPI द्वारा सहयोग करें
-              </h3>
-
-              {/* QR Code Section */}
-              <div className="bg-white p-3 rounded-2xl shadow-sm border border-ink/10 mb-4 relative group">
-                <div className="absolute inset-0 bg-accent/5 rounded-2xl transform scale-105 -z-10"></div>
-                <img
-                  src={settings.qrCodeUrl || "/logo.png"}
-                  alt="UPI QR Code"
-                  className="w-32 h-32 object-contain"
-                  referrerPolicy="no-referrer"
-                  onError={(e) => { 
-                    e.currentTarget.onerror = null;
-                    e.currentTarget.src = "/logo.png"; 
-                  }}
-                />
-              </div>
-
-              <div className="w-full relative mb-4 mt-2">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-ink/10"></div>
-                </div>
-                <div className="relative flex justify-center text-[10px] uppercase tracking-widest font-bold">
-                  <span className="px-3 bg-white text-ink-light/60">
-                    UPI ID कॉपी करें
-                  </span>
-                </div>
-              </div>
-
-              <p className="text-lg font-mono bg-paper p-3 rounded-xl border border-ink/10 mb-4 w-full text-center font-bold tracking-tight text-ink-light truncate">
-                {settings.upiId}
-              </p>
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(settings.upiId);
-                  showToast("UPI ID कॉपी हो गई है!");
-                }}
-                className="bg-gradient-to-r from-accent to-accent-dark text-white px-8 py-3 rounded-2xl font-bold shadow-lg w-full hover:shadow-xl active:scale-[0.98] transition-all text-sm"
-              >
-                UPI ID कॉपी करें
-              </button>
-            </div>
-            </div>
-          </motion.div>
-        );
+        return <DonateScreen navigateTo={navigateTo} settings={settings} showToast={showToast} />;
 
       case "about":
-        return (
-          <motion.div
-            key="about"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="pb-32"
-          >
-            <PremiumHeader title="हमारे बारे में" onBack={() => navigateTo('home')} icon={Info} />
-            
-            <div className="px-6 pt-2 text-center">
-              <div className="relative inline-block mb-4">
-                <img
-                  src={settings.logoUrl || "/logo.png"}
-                  alt="Logo"
-                  className="w-24 h-24 rounded-full shadow-lg border-4 border-white object-cover"
-                  referrerPolicy="no-referrer"
-                  onError={(e) => { 
-                    e.currentTarget.onerror = null;
-                    e.currentTarget.src = "/logo.png"; 
-                  }}
-                />
-              </div>
-              <div className="bg-white/80 p-6 rounded-3xl shadow-md border border-ink/10 text-left space-y-4 text-lg">
-              <p>
-                <b>सबदवाणी</b> ऐप बिश्नोई समाज और अन्य श्रद्धालुओं के लिए एक
-                निःशुल्क, सामुदायिक पहल है।
-              </p>
-              <p>
-                <b>कॉपीराइट अस्वीकरण (Disclaimer):</b> इस ऐप में संकलित
-                सबदवाणी, भजन और आरती सार्वजनिक डोमेन (Public Domain) और भक्तों
-                के स्वैच्छिक योगदान पर आधारित हैं। यह ऐप पूरी तरह से शैक्षिक और
-                भक्ति (Devotional) उद्देश्यों के लिए बनाया गया है। इसका उद्देश्य
-                किसी भी प्रकार का व्यावसायिक लाभ कमाना नहीं है।
-              </p>
-              <p>
-                यदि आपको किसी सामग्री से संबंधित कोई आपत्ति है, तो कृपया हमसे
-                संपर्क करें।
-              </p>
-            </div>
-            </div>
-          </motion.div>
-        );
+        return <AboutScreen navigateTo={navigateTo} settings={settings} />;
 
       case "privacy":
-        return (
-          <motion.div
-            key="privacy"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="pb-32 bg-paper min-h-screen"
-          >
-            <PremiumHeader title="गोपनीयता नीति" onBack={() => navigateTo('home')} icon={ShieldCheck} />
-            
-            <div className="px-6 pt-2 text-center">
-              <ShieldCheck className="w-20 h-20 mx-auto text-accent mb-4" />
-              <div className="bg-white/80 p-6 rounded-3xl shadow-md border border-ink/10 text-left space-y-4 text-sm md:text-base text-ink">
-                <p className="font-bold text-lg mb-2">गोपनीयता नीति (Privacy Policy)</p>
-                <p className="text-xs text-ink/70 mb-4">अंतिम अपडेट: 8 अप्रैल 2026</p>
-                <p>आपकी गोपनीयता हमारे लिए अत्यंत महत्वपूर्ण है। यह ऐप (सबदवाणी / Shabadwani) Google Play Store की नीतियों का पूर्ण रूप से पालन करता है। यह गोपनीयता नीति बताती है कि हम आपकी जानकारी कैसे एकत्र, उपयोग और सुरक्षित करते हैं।</p>
-                
-                <h3 className="font-bold mt-4 text-accent-dark">1. जानकारी का संग्रह (Data Collection)</h3>
-                <ul className="list-disc pl-5 space-y-1 text-ink/90">
-                  <li><strong>व्यक्तिगत जानकारी:</strong> जब आप ऐप में लॉगिन करते हैं (Google Authentication के माध्यम से), तो हम आपका नाम, ईमेल पता और प्रोफाइल फोटो प्राप्त करते हैं।</li>
-                  <li><strong>ऐप उपयोग डेटा:</strong> हम आपके द्वारा बुकमार्क की गई सामग्री, रीडिंग हिस्ट्री (पढ़ी गई सामग्री), और डिवाइस आईडी एकत्र करते हैं। यह डेटा केवल आपके ऐप अनुभव को बेहतर बनाने, व्यक्तिगत सुझाव देने और ऐप के प्रदर्शन को सुधारने के लिए उपयोग किया जाता है।</li>
-                  <li><strong>यूज़र द्वारा अपलोड किया गया डेटा:</strong> आपके द्वारा अपलोड की गई सामग्री (जैसे भजन, साखी, ऑडियो फाइलें, और तस्वीरें) हमारे सुरक्षित सर्वर पर स्टोर की जाती है।</li>
-                  <li><strong>ऑफ़लाइन कैशिंग (Offline Caching):</strong> बेहतर अनुभव के लिए, ऐप ऑडियो फाइल्स और अन्य सामग्री को आपके डिवाइस पर स्थानीय रूप से कैश (cache) करता है, ताकि आप उन्हें इंटरनेट के बिना भी सुन सकें। यह डेटा केवल आपके डिवाइस पर स्टोर होता है।</li>
-                  <li><strong>डिवाइस और उपयोग डेटा:</strong> ऐप के प्रदर्शन को बेहतर बनाने के लिए क्रैश लॉग्स और सामान्य उपयोग डेटा (Firebase Analytics के माध्यम से) एकत्र किया जा सकता है।</li>
-                </ul>
-
-                <h3 className="font-bold mt-4 text-accent-dark">1.1 डेटा सुरक्षा (Data Security)</h3>
-                <p className="text-ink/90">हम स्पष्ट करते हैं कि आपका कोई भी डेटा किसी भी थर्ड-पार्टी (Third-Party) को विज्ञापन या मार्केटिंग के लिए <strong>बेचा या साझा नहीं किया जाता है</strong>।</p>
-
-                <h3 className="font-bold mt-4 text-accent-dark">2. अनुमतियां (Permissions)</h3>
-                <ul className="list-disc pl-5 space-y-1 text-ink/80">
-                  <li><strong>स्थान (Location):</strong> 'चोघड़िया' और पंचांग जैसी सुविधाओं के लिए आपके डिवाइस के स्थान (Location) का उपयोग किया जाता है। <strong>महत्वपूर्ण:</strong> यह डेटा केवल आपके डिवाइस पर प्रोसेस होता है और हमारे सर्वर पर न तो भेजा जाता है और न ही सेव किया जाता है।</li>
-                  <li><strong>माइक्रोफोन (Microphone):</strong> 'वॉइस सर्च' (Voice Search) सुविधा के लिए आपके माइक्रोफोन का उपयोग किया जाता है। आपकी आवाज़ को केवल सर्च करने के लिए प्रोसेस किया जाता है और इसे हमारे सर्वर पर सेव नहीं किया जाता है।</li>
-                  <li><strong>वाइब्रेशन (Vibration):</strong> 'जाप माला' सुविधा में गिनती पूरी होने पर आपको सूचित करने के लिए वाइब्रेशन का उपयोग किया जाता है।</li>
-                  <li><strong>इंटरनेट (Internet):</strong> ऑडियो चलाने, डेटा सिंक करने और सामग्री डाउनलोड/अपलोड करने के लिए इंटरनेट एक्सेस की आवश्यकता होती है।</li>
-                  <li><strong>बैकग्राउंड ऑडियो और नोटिफिकेशन्स (Background Audio & Notifications):</strong> ऐप को बैकग्राउंड में ऑडियो चलाने (Foreground Service) और लॉक स्क्रीन पर मीडिया कंट्रोल्स दिखाने के लिए अनुमति की आवश्यकता होती है।</li>
-                </ul>
-
-                <h3 className="font-bold mt-4 text-accent-dark">3. थर्ड-पार्टी सेवाएं (Third-Party Services)</h3>
-                <p className="text-ink/90">यह ऐप निम्नलिखित थर्ड-पार्टी सेवाओं का उपयोग करता है, जिनकी अपनी गोपनीयता नीतियां हो सकती हैं:</p>
-                <ul className="list-disc pl-5 space-y-1 text-ink/80">
-                  <li>Google Play Services</li>
-                  <li>Google Analytics for Firebase</li>
-                  <li>Firebase Authentication & Cloud Firestore</li>
-                </ul>
-
-                <h3 className="font-bold mt-4 text-accent-dark">4. जानकारी का उपयोग (Data Usage)</h3>
-                <ul className="list-disc pl-5 space-y-1 text-ink/80">
-                  <li>एकत्र की गई जानकारी का उपयोग केवल ऐप की सेवाएं प्रदान करने, यूज़र अकाउंट प्रबंधित करने और आपके अनुभव को बेहतर बनाने के लिए किया जाता है।</li>
-                  <li>हम आपका व्यक्तिगत डेटा किसी भी तीसरे पक्ष (Third Party) को विज्ञापन या मार्केटिंग के लिए <strong>बेचते या साझा नहीं करते हैं</strong>।</li>
-                </ul>
-
-                <h3 className="font-bold mt-4 text-accent-dark">5. डेटा सुरक्षा और डिलीशन (Data Security & Deletion)</h3>
-                <ul className="list-disc pl-5 space-y-1 text-ink/80">
-                  <li><strong>सुरक्षा:</strong> आपका डेटा सुरक्षित सर्वर (Firebase) पर एन्क्रिप्टेड रूप में स्टोर किया जाता है। हम आपके डेटा की सुरक्षा के लिए व्यावसायिक रूप से स्वीकार्य साधनों का उपयोग करते हैं।</li>
-                  <li><strong>डेटा डिलीशन (Data Deletion):</strong> यदि आप अपना खाता या अपना सारा डेटा डिलीट करना चाहते हैं, तो आप ऐप के अंदर दिए गए विकल्पों का उपयोग कर सकते हैं या नीचे दिए गए ईमेल पर हमसे संपर्क कर सकते हैं। आपके अनुरोध पर आपका सारा डेटा (प्रोफाइल, अपलोड की गई सामग्री) हमारे सर्वर से स्थायी रूप से हटा दिया जाएगा।</li>
-                </ul>
-
-                <h3 className="font-bold mt-4 text-accent-dark">5.1 प्रीमियम फीचर्स और डेटा (Premium Features & Data)</h3>
-                <p className="text-ink/90">ऐप में कुछ प्रीमियम फीचर्स (जैसे 'जाप माला' और 'नोट्स') आपके अनुभव को बेहतर बनाने के लिए दिए गए हैं।</p>
-                <ul className="list-disc pl-5 space-y-1 text-ink/80">
-                  <li><strong>जाप माला (Mala Count):</strong> आपकी माला की गिनती केवल आपके डिवाइस (Local Storage) पर स्टोर की जाती है।</li>
-                  <li><strong>पसंदीदा (Bookmarks):</strong> आपके बुकमार्क आपके अकाउंट से जुड़े होते हैं ताकि आप उन्हें किसी भी डिवाइस पर एक्सेस कर सकें।</li>
-                </ul>
-
-                <h3 className="font-bold mt-4 text-accent-dark">6. बच्चों की गोपनीयता (Children's Privacy)</h3>
-                <p className="text-ink/90">यह ऐप 13 वर्ष से कम उम्र के बच्चों से जानबूझकर व्यक्तिगत जानकारी एकत्र नहीं करता है। यदि हमें पता चलता है कि किसी बच्चे ने हमें व्यक्तिगत जानकारी प्रदान की है, तो हम उसे तुरंत अपने सर्वर से हटा देते हैं।</p>
-
-                <h3 className="font-bold mt-4 text-accent-dark">7. संपर्क करें (Contact Us)</h3>
-                <p className="text-ink/90">यदि इस गोपनीयता नीति के संबंध में आपके कोई प्रश्न या सुझाव हैं, तो कृपया हमसे संपर्क करें:</p>
-                <div className="mt-2 bg-paper p-3 rounded-xl border border-ink/10">
-                  <p className="font-semibold text-accent-dark">Email: vishnoimilan@gmail.com</p>
-                  <p className="font-semibold text-accent-dark">Website: www.bishnoi.co.in</p>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        );
+        return <PrivacyScreen navigateTo={navigateTo} />;
 
       case "contribute":
         return (
-          <motion.div
-            key="contribute"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="pb-32 bg-paper min-h-screen"
-          >
-            <PremiumHeader title="सामग्री जोड़ें" onBack={handleBack} icon={UploadCloud} />
-            
-            <div className="px-6 pt-2">
-              <div className="text-center mb-6">
-                <p className="text-ink-light">भजन, आरती, मंत्र या साखी अपलोड करें</p>
-              </div>
-
-            <form
-              className="space-y-4 bg-white/80 p-6 rounded-3xl shadow-md border border-ink/10"
-              onSubmit={handleContributeSubmit}
-            >
-              <div>
-                <label className="block font-bold mb-1 text-ink">
-                  आपका नाम (Author)
-                </label>
-                <input
-                  value={contribAuthor}
-                  onChange={(e) => setContribAuthor(e.target.value)}
-                  required
-                  type="text"
-                  className="w-full p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none transition-colors"
-                  placeholder="अपना नाम लिखें..."
-                />
-              </div>
-              <div>
-                <label className="block font-bold mb-1 text-ink">
-                  शीर्षक (Title)
-                </label>
-                <input
-                  value={contribTitle}
-                  onChange={(e) => setContribTitle(e.target.value)}
-                  required
-                  type="text"
-                  className="w-full p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none transition-colors"
-                  placeholder="उदा. नया भजन..."
-                />
-              </div>
-              <div>
-                <label className="block font-bold mb-1 text-ink">
-                  प्रकार (Type)
-                </label>
-                <select
-                  value={contribType}
-                  onChange={(e) => setContribType(e.target.value)}
-                  className="w-full p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none transition-colors"
-                >
-                  <option>भजन</option>
-                  <option>आरती</option>
-                  <option>मंत्र</option>
-                  <option>साखी</option>
-                </select>
-              </div>
-              <div>
-                <label className="block font-bold mb-1 text-ink">
-                  ऑडियो लिंक (Audio URL - Optional) या अपलोड करें
-                </label>
-                <div className="flex flex-col gap-2">
-                  <div className="flex gap-2">
-                    <input
-                      value={contribAudio}
-                      onChange={(e) => {
-                        setContribAudio(e.target.value);
-                        if (e.target.value) setContribAudioFile(null);
-                      }}
-                      type="url"
-                      className="flex-1 p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none transition-colors"
-                      placeholder="https://..."
-                    />
-                    <label className="flex items-center justify-center px-4 bg-accent/10 text-accent-dark rounded-xl cursor-pointer hover:bg-accent/20 transition-colors whitespace-nowrap">
-                      <input
-                        type="file"
-                        accept="audio/*,.mp3,.aac,.m4a,.wav,.ogg"
-                        className="hidden"
-                        onChange={(e) => {
-                          handleFileSelect(e, (file) => {
-                            setContribAudioFile(file);
-                            if (file) setContribAudio("");
-                          }, false, setContribAudioError);
-                        }}
-                      />
-                      <Upload className="w-5 h-5" />
-                    </label>
-                  </div>
-                  {contribAudioError && (
-                    <motion.div 
-                      initial={{ opacity: 0, y: -5 }} 
-                      animate={{ opacity: 1, y: 0 }} 
-                      className="mt-2 p-2 bg-red-50 text-red-600 rounded-lg text-xs font-medium flex items-center gap-2 justify-center text-center border border-red-100"
-                    >
-                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                      <span>{contribAudioError}</span>
-                    </motion.div>
-                  )}
-                  {contribAudioFile && !contribAudioError && (
-                    <p className="text-xs text-green-600 font-medium">चयनित: {contribAudioFile.name}</p>
-                  )}
-                  {uploadProgress !== null && (
-                    <div className="w-full bg-ink/10 rounded-full h-1.5 mt-1">
-                      <div className="bg-accent h-1.5 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }}></div>
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div>
-                <label className="block font-bold mb-1 text-ink">
-                  पाठ (Text / Lyrics)
-                </label>
-                <textarea
-                  value={contribText}
-                  onChange={(e) => setContribText(e.target.value)}
-                  required
-                  className="w-full p-3 rounded-xl border border-ink/20 bg-white h-32 focus:border-accent outline-none transition-colors"
-                  placeholder="यहाँ बोल लिखें..."
-                ></textarea>
-              </div>
-              <div>
-                <label className="block font-bold mb-1 text-ink">
-                  सुरक्षा कोड (Captcha): {captchaQuestion}
-                </label>
-                <input
-                  value={captchaAnswer}
-                  onChange={(e) => setCaptchaAnswer(e.target.value)}
-                  required
-                  type="number"
-                  className="w-full p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none transition-colors"
-                  placeholder="उत्तर लिखें..."
-                />
-              </div>
-              {contribError && (
-                <motion.div 
-                  initial={{ opacity: 0, y: -10 }} 
-                  animate={{ opacity: 1, y: 0 }} 
-                  className="mb-4 p-4 bg-red-50 text-red-700 rounded-2xl text-sm flex items-center gap-3 justify-center text-center border border-red-100"
-                >
-                  <AlertCircle className="w-5 h-5 flex-shrink-0" />
-                  <span>{contribError}</span>
-                </motion.div>
-              )}
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className={`w-full bg-gradient-to-r from-accent to-accent-dark text-white font-bold py-3.5 rounded-xl shadow-md mt-4 hover:shadow-lg hover:scale-[1.02] transition-all ${isSubmitting ? 'opacity-70 cursor-not-allowed' : ''}`}
-              >
-                {isSubmitting ? 'सबमिट हो रहा है...' : 'सबमिट करें (Submit)'}
-              </button>
-              <p className="text-xs text-center text-ink-light mt-3">
-                * सभी सबमिशन एडमिन द्वारा रिव्यु किए जाएंगे।
-              </p>
-            </form>
-            </div>
-          </motion.div>
+          <ContributeScreen
+            handleBack={handleBack}
+            contribAuthor={contribAuthor}
+            setContribAuthor={setContribAuthor}
+            contribTitle={contribTitle}
+            setContribTitle={setContribTitle}
+            contribType={contribType}
+            setContribType={setContribType}
+            contribAudio={contribAudio}
+            setContribAudio={setContribAudio}
+            contribAudioFile={contribAudioFile}
+            setContribAudioFile={setContribAudioFile}
+            contribAudioError={contribAudioError}
+            setContribAudioError={setContribAudioError}
+            contribText={contribText}
+            setContribText={setContribText}
+            captchaQuestion={captchaQuestion}
+            captchaAnswer={captchaAnswer}
+            setCaptchaAnswer={setCaptchaAnswer}
+            contribError={contribError}
+            isSubmitting={isSubmitting}
+            uploadProgress={uploadProgress}
+            handleContributeSubmit={handleContributeSubmit}
+            handleFileSelect={handleFileSelect}
+          />
         );
 
       case "choghadiya":

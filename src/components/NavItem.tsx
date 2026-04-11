@@ -14,7 +14,7 @@ function NavItem({
   return (
     <button
       onClick={onClick}
-      className={`flex flex-col items-center justify-center w-[65px] h-12 rounded-2xl transition-all duration-300 touch-manipulation ${isActive ? "text-accent-dark scale-110" : "text-ink-light hover:bg-ink/5"}`}
+      className={`flex flex-col items-center justify-center w-[65px] h-12 rounded-2xl transition-all duration-200 touch-manipulation active:scale-90 active:bg-ink/10 ${isActive ? "text-accent-dark scale-110" : "text-ink-light hover:bg-ink/5"}`}
     >
       <div
         className={`mb-0.5 transition-transform duration-300 ${isActive ? "-translate-y-0.5" : ""}`}

@@ -12,21 +12,21 @@ const ShabadCard: React.FC<ShabadCardProps> = React.memo(({ title, icon: Icon, o
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-4 p-4 mx-2 my-1.5 bg-white/60 rounded-2xl border border-ink/5 hover:bg-white/90 transition-all shadow-sm text-left group"
+      className="flex items-center gap-3.5 py-3 px-4 mx-2 my-1 bg-white/80 rounded-2xl border border-ink/5 hover:bg-white active:scale-[0.98] active:bg-ink/5 transition-all shadow-sm text-left group touch-manipulation"
     >
       {iconType === "play" ? (
-        <div className="bg-accent/10 p-2.5 rounded-full group-hover:bg-accent/20 transition-colors shrink-0">
-          <Icon className="w-5 h-5 text-accent-dark ml-0.5" />
+        <div className="bg-accent/10 p-2 rounded-full group-hover:bg-accent/20 group-active:bg-accent/30 transition-colors shrink-0">
+          <Icon className="w-4 h-4 text-accent-dark ml-0.5" />
         </div>
-      ) : Icon ? (
-        <Icon className="w-6 h-6 text-ink-light shrink-0" />
       ) : (
-        <BookOpenText className="w-6 h-6 text-ink-light shrink-0" />
+        <div className="bg-ink/5 p-2 rounded-xl shrink-0 group-active:bg-ink/10 transition-colors">
+          {Icon ? <Icon className="w-4 h-4 text-ink-light" /> : <BookOpenText className="w-4 h-4 text-ink-light" />}
+        </div>
       )}
-      <span className="text-xl font-semibold leading-tight flex-1 text-ink">
+      <span className="text-base font-bold leading-tight flex-1 text-ink">
         {title}
       </span>
-      <ChevronRight className="w-5 h-5 text-ink-light/40 group-hover:text-ink-light transition-colors shrink-0" />
+      <ChevronRight className="w-4 h-4 text-ink-light/40 group-hover:text-ink-light transition-colors shrink-0" />
     </button>
   );
 });

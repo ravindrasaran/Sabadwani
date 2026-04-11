@@ -60,7 +60,7 @@ export function useSabadData() {
           const data = doc.data();
           let title = normalizeText(data.title);
           title = title.replace(/^\|\|\s*/, "").replace(/\s*\|\|$/, "");
-          return { id: doc.id, ...data, title, text: normalizeText(data.text) } as SabadItem;
+          return { id: doc.id, ...data, title, text: normalizeText(data.text), type: data.type || "सबद" } as SabadItem;
         });
         setSabads(sortItems(fetched));
       } else {
@@ -74,7 +74,7 @@ export function useSabadData() {
           const data = doc.data();
           let title = normalizeText(data.title);
           title = title.replace(/^\|\|\s*/, "").replace(/\s*\|\|$/, "");
-          return { id: doc.id, ...data, title, text: normalizeText(data.text) } as SabadItem;
+          return { id: doc.id, ...data, title, text: normalizeText(data.text), type: data.type || "आरती" } as SabadItem;
         });
         setAartis(sortItems(fetched));
       } else {
@@ -87,7 +87,7 @@ export function useSabadData() {
           const data = doc.data();
           let title = normalizeText(data.title);
           title = title.replace(/^\|\|\s*/, "").replace(/\s*\|\|$/, "");
-          return { id: doc.id, ...data, title, text: normalizeText(data.text) } as SabadItem;
+          return { id: doc.id, ...data, title, text: normalizeText(data.text), type: data.type || "भजन" } as SabadItem;
         });
         setBhajans(sortItems(fetched));
       } else {
@@ -100,7 +100,7 @@ export function useSabadData() {
           const data = doc.data();
           let title = normalizeText(data.title);
           title = title.replace(/^\|\|\s*/, "").replace(/\s*\|\|$/, "");
-          return { id: doc.id, ...data, title, text: normalizeText(data.text) } as SabadItem;
+          return { id: doc.id, ...data, title, text: normalizeText(data.text), type: data.type || "साखी" } as SabadItem;
         });
         setSakhis(sortItems(fetched));
       } else {
@@ -117,7 +117,7 @@ export function useSabadData() {
           if (!title && text) {
             title = text.split('\n')[0].substring(0, 30) + "...";
           }
-          return { id: doc.id, ...data, title, text } as SabadItem;
+          return { id: doc.id, ...data, title, text, type: data.type || "मंत्र" } as SabadItem;
         });
         setMantras(sortItems(fetched));
       } else {
