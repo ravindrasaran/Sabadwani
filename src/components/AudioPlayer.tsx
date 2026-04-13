@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "motion/react";
 import { Play, Pause, ChevronLeft, ChevronRight, Loader2, AlertCircle, X } from "lucide-react";
-import { globalAudio, setGlobalAudioCallbacks, updateMediaSessionMetadata, updateMediaSessionState, updateMediaSessionPosition } from "../lib/audioGlobals";
+import { globalAudio, setGlobalAudioCallbacks, updateMediaSessionMetadata, updateMediaSessionState, updateMediaSessionPosition, setupGlobalMediaSessionListener } from "../lib/audioGlobals";
 import { checkIsOnline, vibrate } from "../lib/utils";
 
 const logger = {
@@ -57,6 +57,7 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
       artwork: logoUrl || '/logo.png'
     };
 
+    setupGlobalMediaSessionListener();
     updateMediaSessionMetadata(metadata);
     updateMediaSessionState(globalAudio.paused ? 'paused' : 'playing');
   }, [url, title, logoUrl]);
@@ -133,7 +134,7 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
     const handleEndedEvent = () => {
       setIsPlaying(false);
       setProgress(0);
-      updateMediaSessionState('paused');
+      updateMediaSessionState('none');
       try {
         if (callbacksRef.current.onEnded) callbacksRef.current.onEnded();
       } catch (e) {
@@ -160,12 +161,8 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
       globalAudio.removeEventListener('pause', handlePauseEvent);
       globalAudio.removeEventListener('ended', handleEndedEvent);
       
-      // If this is the full player being unmounted, we might want to keep the mini player
-      // But if the whole audio system is being stopped, we should clear it.
-      // For now, let's just ensure state is paused if we're not playing anymore.
-      if (globalAudio.paused) {
-        updateMediaSessionState('paused');
-      }
+      // We no longer call clearMediaSession here because App.tsx manages the 
+      // global state of the media session based on player visibility.
     };
   }, [autoPlay, url]);
 
@@ -179,6 +176,7 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
         globalAudio.pause();
         globalAudio.src = url;
         globalAudio.load();
+        
         if (autoPlay) {
           playAttempted.current = true;
           
@@ -187,21 +185,24 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
             
             if (globalAudio) {
               setIsPlaying(true);
-              const playPromise = globalAudio.play();
-              if (playPromise !== undefined) {
-                playPromise.catch(async (e) => {
-                  logger.error("AutoPlay failed:", e);
-                  setIsBuffering(false);
-                  setIsPlaying(false);
-                  
-                  let isOnline = await checkIsOnline();
-                  if (!isOnline) {
-                    setLocalError("इंटरनेट कनेक्शन उपलब्ध नहीं है। कृपया अपना नेटवर्क जांचें और पुनः प्रयास करें।");
-                  } else {
-                    setLocalError("ऑडियो चलाने में समस्या आ रही है।");
-                  }
-                });
-              }
+              // Small delay to ensure browser is ready
+              setTimeout(() => {
+                const playPromise = globalAudio.play();
+                if (playPromise !== undefined) {
+                  playPromise.catch(async (e) => {
+                    logger.error("AutoPlay failed:", e);
+                    setIsBuffering(false);
+                    setIsPlaying(false);
+                    
+                    let isOnline = await checkIsOnline();
+                    if (!isOnline) {
+                      setLocalError("इंटरनेट कनेक्शन उपलब्ध नहीं है। कृपया अपना नेटवर्क जांचें और पुनः प्रयास करें।");
+                    } else {
+                      setLocalError("ऑडियो चलाने में समस्या आ रही है।");
+                    }
+                  });
+                }
+              }, 100);
             }
           };
           
@@ -212,7 +213,13 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
         }
       } else {
         // If URL is the same, just sync state
-        setIsPlaying(!globalAudio.paused);
+        const isActuallyPlaying = !globalAudio.paused;
+        setIsPlaying(isActuallyPlaying);
+        
+        if (autoPlay && !isActuallyPlaying) {
+          globalAudio.play().catch(() => {});
+        }
+        
         if (globalAudio.duration > 0) {
           setProgress((globalAudio.currentTime / globalAudio.duration) * 100);
         }
@@ -237,7 +244,10 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
       setIsPlaying(true);
       
       // Ensure we have a valid source
-      if ((!globalAudio.src || globalAudio.src === window.location.href) && url) {
+      const currentSrc = globalAudio.src;
+      const targetSrc = new URL(url, window.location.origin).href;
+      
+      if (!currentSrc || currentSrc === window.location.href || currentSrc !== targetSrc) {
         globalAudio.src = url;
         globalAudio.load();
       }
@@ -267,9 +277,9 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
 
   // Callbacks sync logic
   useEffect(() => {
-    callbacksRef.current = { onEnded, onPlay, onPause, onNext, onPrev, showToast, togglePlay };
+    callbacksRef.current = { onEnded, onPlay, onPause, onNext, onPrev, showToast, togglePlay, onClose };
     setGlobalAudioCallbacks(callbacksRef.current);
-  }, [onEnded, onPlay, onPause, onNext, onPrev, showToast, togglePlay]);
+  }, [onEnded, onPlay, onPause, onNext, onPrev, showToast, togglePlay, onClose]);
 
   if (variant === 'mini') {
     return (

@@ -161,6 +161,92 @@ const niyamList = [
 
 // --- Components ---
 
+const VoiceSearchOverlay = ({ isListening, transcript, status, volume, onClose }: { isListening: boolean; transcript: string; status: string; volume: number; onClose: () => void }) => {
+  return (
+    <AnimatePresence>
+      {isListening && (
+        <motion.div 
+          initial={{ opacity: 0 }} 
+          animate={{ opacity: 1 }} 
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center p-6"
+        >
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            className="bg-white w-full max-w-sm rounded-[40px] p-10 flex flex-col items-center shadow-2xl relative overflow-hidden"
+          >
+            {/* Animated Background Pulse */}
+            <motion.div 
+              animate={{ 
+                scale: isListening ? [1, 1.2 + (volume/100), 1] : 1, 
+                opacity: isListening ? [0.05, 0.15, 0.05] : 0.05 
+              }}
+              transition={{ repeat: Infinity, duration: 2 }}
+              className="absolute inset-0 bg-accent rounded-full -z-10"
+            />
+
+            <div className="relative mb-10">
+              <motion.div 
+                animate={{ scale: isListening ? [1, 1.05 + (volume/200), 1] : 1 }}
+                transition={{ repeat: Infinity, duration: 1.5 }}
+                className="w-28 h-28 bg-accent/10 rounded-full flex items-center justify-center border-4 border-accent/20"
+              >
+                <Mic className="w-14 h-14 text-accent" />
+              </motion.div>
+              
+              {/* Real-time Waveform animation based on volume */}
+              <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 flex gap-1.5 items-end h-12">
+                {[0, 1, 2, 3, 4, 5, 6].map(i => {
+                  // Create a bell curve effect for the bars
+                  const factor = 1 - Math.abs(i - 3) / 4;
+                  const height = 6 + (volume * 0.4 * factor);
+                  return (
+                    <motion.div 
+                      key={i}
+                      animate={{ height: isListening ? height : 6 }}
+                      transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                      className="w-2 bg-accent rounded-full"
+                    />
+                  );
+                })}
+              </div>
+            </div>
+            
+            <h2 className="text-2xl font-bold text-ink mb-3">वॉइस सर्च</h2>
+            <p className="text-ink-light text-center mb-8 leading-relaxed font-medium">
+              {status}
+            </p>
+            
+            <motion.div 
+              className="w-full min-h-[120px] bg-paper/50 rounded-3xl p-6 mb-10 text-center italic text-ink border border-ink/5 flex items-center justify-center shadow-inner"
+            >
+              {transcript ? (
+                <motion.span initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="text-xl font-bold text-accent-dark">
+                  "{transcript}"
+                </motion.span>
+              ) : (
+                <div className="flex flex-col items-center gap-2">
+                  <span className="text-ink/30">बोलना शुरू करें...</span>
+                  {volume > 5 && <span className="text-[10px] text-accent/40 uppercase tracking-widest font-bold">आवाज़ मिल रही है</span>}
+                </div>
+              )}
+            </motion.div>
+            
+            <button 
+              onClick={onClose}
+              className="w-full py-4 bg-ink text-white rounded-2xl font-bold hover:bg-ink-light transition-all active:scale-95 shadow-lg"
+            >
+              रद्द करें
+            </button>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
+
 function MainApp() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const paymentIntentPending = useRef(false);
@@ -329,6 +415,18 @@ function MainApp() {
   });
 
   useWakeLock(currentScreen, isAudioActive);
+
+  // Global safety: Manage media session based on player visibility
+  // This ensures lock screen controls EXACTLY match the mini player's presence
+  useEffect(() => {
+    const isPlayerVisible = (isAudioActive && !isMiniPlayerDismissed) || currentScreen === "audio_reading";
+    
+    if (isPlayerVisible && selectedSabad?.audioUrl) {
+      setupGlobalMediaSessionListener();
+    } else {
+      clearMediaSession();
+    }
+  }, [isAudioActive, currentScreen, isMiniPlayerDismissed, selectedSabad]);
 
   useEffect(() => {
     setIsMiniPlayerDismissed(false);
@@ -700,6 +798,11 @@ function MainApp() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [isVoiceSearchSupported, setIsVoiceSearchSupported] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState("");
+  const [voiceStatus, setVoiceStatus] = useState("तैयार हो रहा है...");
+  const [voiceVolume, setVoiceVolume] = useState(0);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioStreamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
     const checkVoiceSupport = async () => {
@@ -725,9 +828,32 @@ function MainApp() {
       e.stopPropagation();
     }
     
+    setVoiceTranscript("");
+    setVoiceVolume(0);
+    
+    if (isListening) {
+      if (Capacitor.isNativePlatform()) {
+        try { await SpeechRecognition.stop(); } catch (err) {}
+      } else if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch (err) {}
+      }
+      
+      // Cleanup audio context
+      if (audioContextRef.current) {
+        audioContextRef.current.close().catch(() => {});
+        audioContextRef.current = null;
+      }
+      if (audioStreamRef.current) {
+        audioStreamRef.current.getTracks().forEach(t => t.stop());
+        audioStreamRef.current = null;
+      }
+
+      setIsListening(false);
+      return;
+    }
+    
     if (Capacitor.isNativePlatform()) {
       try {
-        // Safety check: Verify if the device actually supports speech recognition
         const { available } = await SpeechRecognition.available();
         if (!available) {
           showToast("आपके फोन में वॉइस सर्च की सुविधा उपलब्ध नहीं है।");
@@ -746,104 +872,220 @@ function MainApp() {
         setIsListening(true);
         vibrate(10);
         
+        const partialListener = await SpeechRecognition.addListener('partialResults', (data: any) => {
+          if (data.matches && data.matches.length > 0) {
+            const text = data.matches[0].replace(/[.,।?!]/g, '').trim();
+            console.log("Native partial transcript:", text);
+            if (text) {
+              setVoiceTranscript(text);
+              setSearchQuery(text);
+              
+              // If we are not on the search screen, navigate to it
+              if (currentScreen !== 'search') {
+                navigateTo('search');
+              }
+            }
+          }
+        });
+
         const result = await SpeechRecognition.start({
           language: 'hi-IN',
           maxResults: 1,
           prompt: 'सुन रहा हूँ... बोलिए',
-          popup: false, // Set to false to prevent native crash on Android 11+
-          partialResults: false,
+          popup: false,
+          partialResults: true,
         });
 
+        console.log("Native final result:", result);
         if (result.matches && result.matches.length > 0) {
-          let transcript = result.matches[0];
-          transcript = transcript.replace(/[.,।?!]/g, '').trim();
-          setSearchQuery(transcript);
+          const finalTranscript = result.matches[0].replace(/[.,।?!]/g, '').trim();
+          if (finalTranscript) {
+            setVoiceTranscript(finalTranscript);
+            setSearchQuery(finalTranscript);
+            vibrate(10);
+            
+            // Short delay before closing overlay to let user see final text
+            setTimeout(() => setIsListening(false), 1500);
+          }
+        } else {
+          // If no matches but we had a transcript from partial results, just close after delay
+          setTimeout(() => setIsListening(false), 2000);
         }
+        
+        partialListener.remove();
       } catch (e: any) {
         console.error("Native voice search error:", e);
-        if (e.message && e.message.includes('No match')) {
-           showToast("कोई आवाज़ सुनाई नहीं दी।");
-        } else {
-           showToast("वॉइस सर्च में त्रुटि हुई।");
-        }
-      } finally {
         setIsListening(false);
+        showToast("वॉइस सर्च में त्रुटि हुई।");
       }
       return;
     }
 
-    const WebSpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const WebSpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
     if (!WebSpeechRecognition) {
       showToast("क्षमा करें, आपका ब्राउज़र वॉइस सर्च को सपोर्ट नहीं करता है।");
       return;
     }
 
-    if (isListening) {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch (err) {}
+    // Aggressive cleanup of existing recognition instance
+    if (recognitionRef.current) {
+      try {
+        const oldRec = recognitionRef.current;
+        oldRec.onstart = null;
+        oldRec.onresult = null;
+        oldRec.onerror = null;
+        oldRec.onend = null;
+        oldRec.abort();
+      } catch (e) {
+        console.warn("Error cleaning up old recognition:", e);
       }
-      setIsListening(false);
-      return;
+      recognitionRef.current = null;
     }
 
-    try {
-      const recognition = new WebSpeechRecognition();
-      recognitionRef.current = recognition;
-      recognition.lang = 'hi-IN';
-      recognition.continuous = false;
-      recognition.interimResults = false;
-      recognition.maxAlternatives = 1;
-
-      recognition.onstart = () => {
-        setIsListening(true);
-        showToast("सुन रहा हूँ... बोलिए");
-        vibrate(10);
-      };
-
-      recognition.onresult = (event: any) => {
-        if (event.results && event.results.length > 0) {
-          let transcript = event.results[0][0].transcript;
-          transcript = transcript.replace(/[.,।?!]/g, '').trim();
-          setSearchQuery(transcript);
-        }
-        setIsListening(false);
-      };
-
-      recognition.onerror = (event: any) => {
-        setIsListening(false);
-        if (event.error === 'aborted') {
-          console.log("Voice search stopped.");
+    // Small delay to allow the browser to release the microphone/session
+    setTimeout(async () => {
+      try {
+        // Start volume tracking first to verify mic access
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          audioStreamRef.current = stream;
+          const AudioCtx = (window.AudioContext || (window as any).webkitAudioContext);
+          const audioContext = new AudioCtx();
+          audioContextRef.current = audioContext;
+          
+          const source = audioContext.createMediaStreamSource(stream);
+          const analyser = audioContext.createAnalyser();
+          analyser.fftSize = 256;
+          source.connect(analyser);
+          
+          const bufferLength = analyser.frequencyBinCount;
+          const dataArray = new Uint8Array(bufferLength);
+          
+          const updateVolume = () => {
+            if (!audioContextRef.current || audioContext.state === 'closed') return;
+            analyser.getByteFrequencyData(dataArray);
+            let sum = 0;
+            for (let i = 0; i < bufferLength; i++) {
+              sum += dataArray[i];
+            }
+            const average = sum / bufferLength;
+            setVoiceVolume(average);
+            requestAnimationFrame(updateVolume);
+          };
+          updateVolume();
+        } catch (err) {
+          console.warn("Volume tracking failed or mic denied:", err);
+          showToast("माइक्रोफ़ोन की अनुमति नहीं मिली।");
           return;
         }
+
+        const recognition = new WebSpeechRecognition();
+        recognitionRef.current = recognition;
         
-        console.error("Voice search error:", event.error);
-        if (event.error === 'not-allowed') {
-          showToast("माइक्रोफ़ोन की अनुमति नहीं मिली। कृपया ब्राउज़र सेटिंग्स चेक करें।");
-        } else if (event.error === 'no-speech') {
-          showToast("कोई आवाज़ सुनाई नहीं दी। कृपया फिर से प्रयास करें।");
-        } else if (event.error === 'network') {
-          showToast("वॉइस सर्च के लिए इंटरनेट कनेक्शन की आवश्यकता है।");
-        } else {
-          showToast(`आवाज़ पहचानने में समस्या हुई (${event.error})।`);
-        }
-      };
+        recognition.lang = 'hi-IN'; 
+        recognition.continuous = false; // Better for search, stops when user stops speaking
+        recognition.interimResults = true;
+        recognition.maxAlternatives = 1;
 
-      recognition.onend = () => {
+        recognition.onstart = () => {
+          setIsListening(true);
+          setVoiceTranscript("");
+          setVoiceStatus("सुन रहा हूँ... बोलिए");
+          vibrate(10);
+          console.log("Web Speech recognition started");
+        };
+
+        recognition.onresult = (event: any) => {
+          setVoiceStatus("पहचान रहा हूँ...");
+          let interimTranscript = '';
+          let finalTranscript = '';
+
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+              finalTranscript += event.results[i][0].transcript;
+            } else {
+              interimTranscript += event.results[i][0].transcript;
+            }
+          }
+
+          const currentTranscript = (finalTranscript || interimTranscript).replace(/[.,।?!]/g, '').trim();
+          console.log("Web transcript update:", currentTranscript);
+          
+          if (currentTranscript) {
+            setVoiceTranscript(currentTranscript);
+            setSearchQuery(currentTranscript);
+            
+            if (currentScreen !== 'search') {
+              navigateTo('search');
+            }
+          }
+
+          if (finalTranscript) {
+            vibrate(5);
+            setVoiceStatus("मिल गया!");
+            // Auto-stop after a short delay when we have a final result
+            setTimeout(() => {
+              setIsListening(false);
+              recognition.stop();
+            }, 1500);
+          }
+        };
+
+        recognition.onspeechend = () => {
+          console.log("Speech ended detected");
+        };
+
+        recognition.onerror = (event: any) => {
+          if (event.error === 'aborted') return;
+
+          console.error("Speech Recognition Error:", event.error);
+          setIsListening(false);
+          
+          const errorMessages: Record<string, string> = {
+            'no-speech': "कोई आवाज़ सुनाई नहीं दी। कृपया थोड़ा तेज़ बोलें।",
+            'audio-capture': "माइक्रोफ़ोन नहीं मिला।",
+            'not-allowed': "माइक्रोफ़ोन की अनुमति नहीं मिली।",
+            'network': "इंटरनेट कनेक्शन की समस्या है।",
+            'not-supported-language': "यह भाषा सपोर्टेड नहीं है।",
+            'service-not-allowed': "वॉइस सर्विस की अनुमति नहीं है।"
+          };
+
+          showToast(errorMessages[event.error] || `वॉइस सर्च में समस्या हुई (${event.error})`);
+          
+          // Cleanup audio
+          if (audioContextRef.current) {
+            audioContextRef.current.close().catch(() => {});
+            audioContextRef.current = null;
+          }
+          if (audioStreamRef.current) {
+            audioStreamRef.current.getTracks().forEach(t => t.stop());
+            audioStreamRef.current = null;
+          }
+        };
+
+        recognition.onend = () => {
+          console.log("Speech recognition session ended");
+          setIsListening(false);
+          recognitionRef.current = null;
+          
+          // Cleanup audio
+          if (audioContextRef.current) {
+            audioContextRef.current.close().catch(() => {});
+            audioContextRef.current = null;
+          }
+          if (audioStreamRef.current) {
+            audioStreamRef.current.getTracks().forEach(t => t.stop());
+            audioStreamRef.current = null;
+          }
+        };
+
+        recognition.start();
+      } catch (e: any) {
+        console.error("Web Speech Start Error:", e);
         setIsListening(false);
-      };
-
-      recognition.start();
-    } catch (e: any) {
-      console.error("Speech recognition start error:", e);
-      setIsListening(false);
-      if (e.name === 'NotAllowedError' || e.name === 'SecurityError') {
-        showToast("माइक्रोफ़ोन की अनुमति नहीं मिली। कृपया ब्राउज़र सेटिंग्स चेक करें।");
-      } else {
-        showToast("वॉइस सर्च शुरू करने में त्रुटि हुई।");
+        showToast("वॉइस सर्च शुरू नहीं हो सका।");
       }
-    }
+    }, 200);
   };
 
   const [malaCount, setMalaCount] = useState(() => {
@@ -1507,9 +1749,13 @@ function MainApp() {
       setSelectedYear(new Date().getFullYear());
     }
     
+    // Check if we are already on this screen
+    if (currentScreen === screen) return;
+
+    // If we are replacing, or if this screen is the same as the previous one in history, replace
     if (replace) {
       window.history.replaceState({ screen, index: historyIndex.current }, "", `#${screen}`);
-    } else if (currentScreen !== screen) {
+    } else {
       const newIndex = historyIndex.current + 1;
       window.history.pushState({ screen, index: newIndex }, "", `#${screen}`);
       historyIndex.current = newIndex;
@@ -1663,34 +1909,40 @@ function MainApp() {
 
   const handleBack = () => {
     vibrate(8);
-    const screen = currentScreen as any;
     
-    // If we are on a reading screen, always go back to the list screen first
-    if (screen === "reading" || screen === "audio_reading") {
-      let listScreen: Screen = "shabad_list";
-      if (screen === "audio_reading") listScreen = "category_list";
-      navigateTo(listScreen, true);
-      return;
+    // 1. If we are on a reading screen, we MUST go to the list screen.
+    if (currentScreen === "reading" || currentScreen === "audio_reading") {
+        // Determine the correct list screen
+        let listScreen: Screen = "shabad_list";
+        if (currentScreen === "audio_reading") listScreen = "category_list";
+        
+        // If it was opened directly, we need to replace the current state with the list screen
+        if (openedDirectlyRef.current) {
+            openedDirectlyRef.current = false;
+            navigateTo(listScreen, true); // Replace with list screen
+        } else {
+            // Normal flow: try to go back in history
+            if (historyIndex.current > 0) {
+                window.history.back();
+            } else {
+                // Fallback
+                navigateTo(listScreen, true);
+            }
+        }
+        return;
     }
 
-    if (openedDirectlyRef.current) {
-      openedDirectlyRef.current = false;
-      // Determine the correct list screen based on current screen
-      let listScreen: Screen = "shabad_list";
-      if (screen === "audio_reading") listScreen = "category_list";
-      
-      navigateTo(listScreen, true);
-      return;
+    // 2. If we are on a list screen, we MUST go to home.
+    if (currentScreen === "shabad_list" || currentScreen === "category_list") {
+        navigateTo("home", true); // Replace with home
+        return;
     }
+
+    // 3. Default back for other screens
     if (historyIndex.current > 0) {
       window.history.back();
     } else {
-      let prevScreen: Screen = "home";
-      if (screen === "reading") prevScreen = "shabad_list";
-      else if (screen === "audio_reading") prevScreen = "category_list";
-      else if (screen === "shabad_list" || screen === "category_list") prevScreen = "home";
-      
-      navigateTo(prevScreen, true);
+      navigateTo("home", true);
     }
   };
 
@@ -2183,21 +2435,59 @@ function MainApp() {
         );
 
       case "search":
-        const searchSkeleton = getSearchSkeleton(searchQuery);
         const matchSearch = (title: string, text?: string) => {
           if (!searchQuery) return false;
-          // Exact match first (for Hindi typing)
-          if (title.toLowerCase().includes(searchQuery.toLowerCase())) return true;
-          if (text && text.toLowerCase().includes(searchQuery.toLowerCase())) return true;
           
-          // Hinglish/Phonetic match
-          if (searchSkeleton.length < 2) return false; // Don't fuzzy match on single letters
-          const titleSkeleton = getSearchSkeleton(title);
-          if (titleSkeleton.includes(searchSkeleton)) return true;
-          if (text) {
-             const textSkeleton = getSearchSkeleton(text);
-             if (textSkeleton.includes(searchSkeleton)) return true;
+          // Clean query: remove common prefixes and trim
+          const query = searchQuery.toLowerCase()
+            .replace(/^(search for|search|find|खोजें|खोजो|ढूंढो|दिखाओ|सुनाओ|दिखाएं)\s+/i, '')
+            .trim();
+            
+          const targetTitle = title.toLowerCase().trim();
+          const targetText = text ? text.toLowerCase().trim() : "";
+
+          // 1. Exact or partial string match
+          if (targetTitle.includes(query) || query.includes(targetTitle)) return true;
+          if (targetText && (targetText.includes(query) || query.includes(targetText))) return true;
+          
+          // 2. Hinglish/Phonetic match
+          const searchSkeleton = getSearchSkeleton(query);
+          const titleSkeleton = getSearchSkeleton(targetTitle);
+          
+          if (searchSkeleton.length >= 1) {
+            if (titleSkeleton.includes(searchSkeleton) || searchSkeleton.includes(titleSkeleton)) return true;
+            if (targetText) {
+               const textSkeleton = getSearchSkeleton(targetText);
+               if (textSkeleton.includes(searchSkeleton) || searchSkeleton.includes(textSkeleton)) return true;
+            }
           }
+
+          // 3. Word-based match (split query into words)
+          // Allow single characters if they are digits
+          const queryWords = query.split(/\s+/).filter(w => w.length >= 2 || /\d/.test(w));
+          for (const word of queryWords) {
+            // Check if word is in title
+            if (targetTitle.includes(word)) return true;
+            
+            // Check if word skeleton is in title skeleton
+            const wordSkeleton = getSearchSkeleton(word);
+            if (wordSkeleton.length >= 1 && titleSkeleton.includes(wordSkeleton)) return true;
+          }
+
+          // 4. Number match (very important for "Shabad 1", "Shabad 2" etc)
+          const queryNumbers = query.match(/\d+/g);
+          const titleNumbers = targetTitle.match(/\d+/g);
+          if (queryNumbers && titleNumbers) {
+            for (const qn of queryNumbers) {
+              if (titleNumbers.some(tn => parseInt(tn) === parseInt(qn))) {
+                // If numbers match, and there's some other word match or the query is just the number
+                if (queryWords.length <= 1 || queryWords.some(w => !/\d/.test(w) && titleSkeleton.includes(getSearchSkeleton(w)))) {
+                  return true;
+                }
+              }
+            }
+          }
+
           return false;
         };
 
@@ -2207,6 +2497,8 @@ function MainApp() {
         const filteredSakhis = searchQuery ? sakhis.filter(m => matchSearch(m.title, m.text)) : [];
         const filteredMantras = searchQuery ? mantras.filter(m => matchSearch(m.title, m.text)) : [];
         const filteredMeles = searchQuery ? meles.filter(m => matchSearch(m.name, m.location)) : [];
+        const filteredThoughts = searchQuery ? thoughts.filter(t => matchSearch("", t.text)) : [];
+        const filteredNotices = searchQuery ? notices.filter(n => matchSearch(n.title, n.text)) : [];
         
         return (
           <motion.div key="search" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="pb-32 bg-paper min-h-screen">
@@ -2220,24 +2512,42 @@ function MainApp() {
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder="शब्द, भजन, आरती, साखी या मेले खोजें..." 
-                  className={`w-full pl-12 py-3 rounded-2xl border border-ink/20 bg-white focus:border-accent outline-none shadow-sm ${isVoiceSearchSupported ? 'pr-14' : 'pr-4'}`}
+                  className={`w-full pl-12 py-3 rounded-2xl border border-ink/20 bg-white focus:border-accent outline-none shadow-sm ${isVoiceSearchSupported ? 'pr-20' : 'pr-12'}`}
                 />
-                {isVoiceSearchSupported && (
-                  <button 
-                    onClick={startVoiceSearch}
-                    className={`absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full transition-all ${isListening ? 'bg-accent/20 text-accent animate-pulse' : 'text-ink-light hover:bg-ink/5'}`}
-                  >
-                    <Mic className="w-5 h-5" />
-                  </button>
-                )}
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                  {searchQuery && (
+                    <button 
+                      onClick={() => setSearchQuery("")}
+                      className="p-2 text-ink-light hover:text-accent transition-colors"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  )}
+                  {isVoiceSearchSupported && (
+                    <button 
+                      onClick={startVoiceSearch}
+                      className={`p-2 rounded-full transition-all ${isListening ? 'bg-accent/20 text-accent animate-pulse' : 'text-ink-light hover:bg-ink/5'}`}
+                    >
+                      <Mic className="w-5 h-5" />
+                    </button>
+                  )}
+                </div>
               </div>
 
             {isLoading ? (
               <div className="space-y-4">
                 {Array.from({ length: 5 }).map((_, i) => <ShabadSkeleton key={i} />)}
               </div>
-            ) : searchQuery && (
-              <div className="space-y-6">
+            ) : (
+              <div className="space-y-8 pb-10">
+                {searchQuery && (
+                  <div className="bg-accent/5 p-3 rounded-xl border border-accent/10 text-center mb-6">
+                    <p className="text-xs text-ink-light mb-1">खोज परिणाम:</p>
+                    <p className="font-bold text-accent-dark">"{searchQuery}"</p>
+                  </div>
+                )}
+                {searchQuery && (
+                  <div className="space-y-6">
                 {filteredSabads.length > 0 && (
                   <div>
                     <h3 className="font-bold text-lg mb-3 text-accent-dark">सबदवाणी ({filteredSabads.length})</h3>
@@ -2316,12 +2626,50 @@ function MainApp() {
                     </div>
                   </div>
                 )}
-                {filteredSabads.length === 0 && filteredAartis.length === 0 && filteredBhajans.length === 0 && filteredSakhis.length === 0 && filteredMantras.length === 0 && filteredMeles.length === 0 && (
-                  <div className="text-center py-12 text-ink-light">
-                    <Search className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                    <p>कोई परिणाम नहीं मिला</p>
+                {filteredNotices.length > 0 && (
+                  <div>
+                    <h3 className="font-bold text-lg mb-3 text-accent-dark">सूचनाएं ({filteredNotices.length})</h3>
+                    <div className="space-y-3">
+                      {filteredNotices.map((n) => (
+                        <div key={n.id} className="bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
+                          <h4 className="font-bold text-ink">{n.title}</h4>
+                          <p className="text-sm text-ink-light mt-1 break-words">{n.text}</p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
+                {filteredThoughts.length > 0 && (
+                  <div>
+                    <h3 className="font-bold text-lg mb-3 text-accent-dark">अनमोल विचार ({filteredThoughts.length})</h3>
+                    <div className="space-y-3">
+                      {filteredThoughts.map((t) => (
+                        <div key={t.id} className="bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
+                          <p className="text-ink break-words italic">"{t.text}"</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {filteredSabads.length === 0 && filteredAartis.length === 0 && filteredBhajans.length === 0 && filteredSakhis.length === 0 && filteredMantras.length === 0 && filteredMeles.length === 0 && filteredNotices.length === 0 && filteredThoughts.length === 0 && (
+                  <div className="text-center py-12 text-ink-light">
+                    <Search className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                    <p className="mb-4">कोई परिणाम नहीं मिला</p>
+                    <div className="flex flex-wrap justify-center gap-2 mt-4">
+                      {["शब्द 1", "आरती", "भजन", "साखी", "मेला"].map(tag => (
+                        <button 
+                          key={tag} 
+                          onClick={() => setSearchQuery(tag)}
+                          className="text-xs bg-ink/5 px-3 py-1.5 rounded-full hover:bg-accent/10 hover:text-accent transition-colors"
+                        >
+                          "{tag}"
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
               </div>
             )}
             </div>
@@ -3565,6 +3913,33 @@ function MainApp() {
         message={confirmDialog?.message || ""}
         onConfirm={confirmDialog?.onConfirm || (() => {})}
         onCancel={() => setConfirmDialog(null)}
+      />
+
+      {/* Premium Voice Search Overlay */}
+      <VoiceSearchOverlay 
+        isListening={isListening} 
+        transcript={voiceTranscript} 
+        status={voiceStatus}
+        volume={voiceVolume}
+        onClose={() => {
+          if (Capacitor.isNativePlatform()) {
+            SpeechRecognition.stop().catch(() => {});
+          } else if (recognitionRef.current) {
+            recognitionRef.current.stop();
+          }
+          
+          // Cleanup audio
+          if (audioContextRef.current) {
+            audioContextRef.current.close().catch(() => {});
+            audioContextRef.current = null;
+          }
+          if (audioStreamRef.current) {
+            audioStreamRef.current.getTracks().forEach(t => t.stop());
+            audioStreamRef.current = null;
+          }
+
+          setIsListening(false);
+        }} 
       />
 
     </div>

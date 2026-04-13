@@ -50,10 +50,16 @@ export const updateMediaSessionState = async (state: 'playing' | 'paused' | 'non
 };
 
 export const clearMediaSession = async () => {
+  if (globalAudio) {
+    globalAudio.pause();
+    // Forcefully clear the source to tell the browser this media is finished
+    globalAudio.src = "";
+    globalAudio.load();
+  }
+
   if (Capacitor.isNativePlatform()) {
     try {
       await MediaSession.setPlaybackState({ playbackState: 'none' });
-      // We can't easily clear metadata in the current plugin version without setting empty values
       await MediaSession.setMetadata({
         title: '',
         artist: '',
@@ -62,9 +68,23 @@ export const clearMediaSession = async () => {
       });
     } catch (e) {}
   } else if ('mediaSession' in navigator) {
+    // Setting playbackState to 'none' and metadata to null is the standard way to clear
     navigator.mediaSession.playbackState = 'none';
     navigator.mediaSession.metadata = null;
+    
+    // Explicitly remove all action handlers
+    const actions: MediaSessionAction[] = [
+      'play', 'pause', 'seekbackward', 'seekforward', 'previoustrack', 'nexttrack', 'seekto', 'stop'
+    ];
+    actions.forEach(action => {
+      try {
+        navigator.mediaSession.setActionHandler(action, null);
+      } catch (e) {}
+    });
   }
+  
+  // Reset the setup flag so it can be re-initialized when a new player starts
+  isMediaSessionSetup = false;
 };
 
 let lastPositionUpdate = 0;
@@ -113,7 +133,6 @@ export const setupGlobalMediaSessionListener = async () => {
           updateMediaSessionState('playing');
         }).catch((e) => {
           console.error("CapacitorMediaSession: Play error", e);
-          // Fallback to callback if direct play fails
           globalAudioCallbacks?.togglePlay?.('play');
         });
       } else {
@@ -125,8 +144,15 @@ export const setupGlobalMediaSessionListener = async () => {
         globalAudio.pause();
         updateMediaSessionState('paused');
       }
-      // Always notify the callback as well
       globalAudioCallbacks?.togglePlay?.('pause');
+    }),
+    stop: () => safeCallback(() => {
+      if (globalAudio) {
+        globalAudio.pause();
+        globalAudio.currentTime = 0;
+        updateMediaSessionState('none');
+      }
+      globalAudioCallbacks?.onClose?.();
     }),
     nexttrack: () => safeCallback(() => globalAudioCallbacks?.onNext?.()),
     previoustrack: () => safeCallback(() => globalAudioCallbacks?.onPrev?.()),
