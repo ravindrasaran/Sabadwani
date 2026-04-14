@@ -50,9 +50,9 @@ import {
   Clock,
   User,
   Hand,
-  Mic,
   ChevronsDown,
   Pause,
+  MapPinOff,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useGesture } from "@use-gesture/react";
@@ -64,7 +64,6 @@ import { SplashScreen } from '@capacitor/splash-screen';
 import { AppUpdate } from '@capawesome/capacitor-app-update';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { PushNotifications } from '@capacitor/push-notifications';
-import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import { format, addDays } from "date-fns";
 import { hi } from "date-fns/locale";
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
@@ -94,8 +93,7 @@ class ErrorBoundary extends React.Component<{ children: ReactNode }, { hasError:
     return { hasError: true, error };
   }
 
-  componentDidCatch() {
-  }
+
 
   render() {
     if (this.state.hasError) {
@@ -160,92 +158,6 @@ const niyamList = [
 ];
 
 // --- Components ---
-
-const VoiceSearchOverlay = ({ isListening, transcript, status, volume, onClose }: { isListening: boolean; transcript: string; status: string; volume: number; onClose: () => void }) => {
-  return (
-    <AnimatePresence>
-      {isListening && (
-        <motion.div 
-          initial={{ opacity: 0 }} 
-          animate={{ opacity: 1 }} 
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center p-6"
-        >
-          <motion.div 
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.9, opacity: 0 }}
-            className="bg-white w-full max-w-sm rounded-[40px] p-10 flex flex-col items-center shadow-2xl relative overflow-hidden"
-          >
-            {/* Animated Background Pulse */}
-            <motion.div 
-              animate={{ 
-                scale: isListening ? [1, 1.2 + (volume/100), 1] : 1, 
-                opacity: isListening ? [0.05, 0.15, 0.05] : 0.05 
-              }}
-              transition={{ repeat: Infinity, duration: 2 }}
-              className="absolute inset-0 bg-accent rounded-full -z-10"
-            />
-
-            <div className="relative mb-10">
-              <motion.div 
-                animate={{ scale: isListening ? [1, 1.05 + (volume/200), 1] : 1 }}
-                transition={{ repeat: Infinity, duration: 1.5 }}
-                className="w-28 h-28 bg-accent/10 rounded-full flex items-center justify-center border-4 border-accent/20"
-              >
-                <Mic className="w-14 h-14 text-accent" />
-              </motion.div>
-              
-              {/* Real-time Waveform animation based on volume */}
-              <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 flex gap-1.5 items-end h-12">
-                {[0, 1, 2, 3, 4, 5, 6].map(i => {
-                  // Create a bell curve effect for the bars
-                  const factor = 1 - Math.abs(i - 3) / 4;
-                  const height = 6 + (volume * 0.4 * factor);
-                  return (
-                    <motion.div 
-                      key={i}
-                      animate={{ height: isListening ? height : 6 }}
-                      transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                      className="w-2 bg-accent rounded-full"
-                    />
-                  );
-                })}
-              </div>
-            </div>
-            
-            <h2 className="text-2xl font-bold text-ink mb-3">वॉइस सर्च</h2>
-            <p className="text-ink-light text-center mb-8 leading-relaxed font-medium">
-              {status}
-            </p>
-            
-            <motion.div 
-              className="w-full min-h-[120px] bg-paper/50 rounded-3xl p-6 mb-10 text-center italic text-ink border border-ink/5 flex items-center justify-center shadow-inner"
-            >
-              {transcript ? (
-                <motion.span initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="text-xl font-bold text-accent-dark">
-                  "{transcript}"
-                </motion.span>
-              ) : (
-                <div className="flex flex-col items-center gap-2">
-                  <span className="text-ink/30">बोलना शुरू करें...</span>
-                  {volume > 5 && <span className="text-[10px] text-accent/40 uppercase tracking-widest font-bold">आवाज़ मिल रही है</span>}
-                </div>
-              )}
-            </motion.div>
-            
-            <button 
-              onClick={onClose}
-              className="w-full py-4 bg-ink text-white rounded-2xl font-bold hover:bg-ink-light transition-all active:scale-95 shadow-lg"
-            >
-              रद्द करें
-            </button>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
-};
 
 function MainApp() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -372,9 +284,7 @@ function MainApp() {
   }, []);
   const [isAudioActive, setIsAudioActive] = useState(false);
 
-  useEffect(() => {
-    // Only destroy if explicitly needed, don't destroy on every state change
-  }, []);
+
 
   useEffect(() => {
     if (Capacitor.isNativePlatform()) {
@@ -407,6 +317,7 @@ function MainApp() {
   }, []);
 
   const [selectedSabad, setSelectedSabad] = useState<SabadItem | null>(null);
+  const [playingSabad, setPlayingSabad] = useState<SabadItem | null>(null);
   const [isMiniPlayerDismissed, setIsMiniPlayerDismissed] = useState(false);
   const [fontSize, setFontSize] = useState(20);
   const [slideDir, setSlideDir] = useState(1);
@@ -419,14 +330,14 @@ function MainApp() {
   // Global safety: Manage media session based on player visibility
   // This ensures lock screen controls EXACTLY match the mini player's presence
   useEffect(() => {
-    const isPlayerVisible = (isAudioActive && !isMiniPlayerDismissed) || currentScreen === "audio_reading";
+    const isPlayerVisible = (isAudioActive && !isMiniPlayerDismissed) || (currentScreen === "audio_reading" && selectedSabad?.audioUrl);
     
-    if (isPlayerVisible && selectedSabad?.audioUrl) {
+    if (isPlayerVisible && (playingSabad?.audioUrl || selectedSabad?.audioUrl)) {
       setupGlobalMediaSessionListener();
     } else {
       clearMediaSession();
     }
-  }, [isAudioActive, currentScreen, isMiniPlayerDismissed, selectedSabad]);
+  }, [isAudioActive, currentScreen, isMiniPlayerDismissed, playingSabad, selectedSabad]);
 
   useEffect(() => {
     setIsMiniPlayerDismissed(false);
@@ -673,10 +584,8 @@ function MainApp() {
     if (!db) return;
     try {
       // Let Firestore handle offline queue, don't await
-      updateDoc(doc(db, "notifications", id), { read: true }).catch(() => {
-      });
-    } catch (e) {
-    }
+      updateDoc(doc(db, "notifications", id), { read: true }).catch(() => {});
+    } catch (e) {}
   };
 
   const markAllRead = async () => {
@@ -796,297 +705,6 @@ function MainApp() {
 
   // --- Premium Features State ---
   const [searchQuery, setSearchQuery] = useState("");
-  const [isListening, setIsListening] = useState(false);
-  const [isVoiceSearchSupported, setIsVoiceSearchSupported] = useState(false);
-  const [voiceTranscript, setVoiceTranscript] = useState("");
-  const [voiceStatus, setVoiceStatus] = useState("तैयार हो रहा है...");
-  const [voiceVolume, setVoiceVolume] = useState(0);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const audioStreamRef = useRef<MediaStream | null>(null);
-
-  useEffect(() => {
-    const checkVoiceSupport = async () => {
-      if (Capacitor.isNativePlatform()) {
-        try {
-          const { available } = await SpeechRecognition.available();
-          setIsVoiceSearchSupported(available);
-        } catch (e) {
-          setIsVoiceSearchSupported(false);
-        }
-      } else {
-        setIsVoiceSearchSupported(typeof window !== 'undefined' && !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition));
-      }
-    };
-    checkVoiceSupport();
-  }, []);
-
-  const recognitionRef = useRef<any>(null);
-
-  const startVoiceSearch = async (e?: React.MouseEvent) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    
-    setVoiceTranscript("");
-    setVoiceVolume(0);
-    
-    if (isListening) {
-      if (Capacitor.isNativePlatform()) {
-        try { await SpeechRecognition.stop(); } catch (err) {}
-      } else if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch (err) {}
-      }
-      
-      // Cleanup audio context
-      if (audioContextRef.current) {
-        audioContextRef.current.close().catch(() => {});
-        audioContextRef.current = null;
-      }
-      if (audioStreamRef.current) {
-        audioStreamRef.current.getTracks().forEach(t => t.stop());
-        audioStreamRef.current = null;
-      }
-
-      setIsListening(false);
-      return;
-    }
-    
-    if (Capacitor.isNativePlatform()) {
-      try {
-        const { available } = await SpeechRecognition.available();
-        if (!available) {
-          showToast("आपके फोन में वॉइस सर्च की सुविधा उपलब्ध नहीं है।");
-          return;
-        }
-
-        const { speechRecognition } = await SpeechRecognition.checkPermissions();
-        if (speechRecognition !== 'granted') {
-          const { speechRecognition: newStatus } = await SpeechRecognition.requestPermissions();
-          if (newStatus !== 'granted') {
-            showToast("माइक्रोफ़ोन की अनुमति नहीं मिली।");
-            return;
-          }
-        }
-
-        setIsListening(true);
-        vibrate(10);
-        
-        const partialListener = await SpeechRecognition.addListener('partialResults', (data: any) => {
-          if (data.matches && data.matches.length > 0) {
-            const text = data.matches[0].replace(/[.,।?!]/g, '').trim();
-            console.log("Native partial transcript:", text);
-            if (text) {
-              setVoiceTranscript(text);
-              setSearchQuery(text);
-              
-              // If we are not on the search screen, navigate to it
-              if (currentScreen !== 'search') {
-                navigateTo('search');
-              }
-            }
-          }
-        });
-
-        const result = await SpeechRecognition.start({
-          language: 'hi-IN',
-          maxResults: 1,
-          prompt: 'सुन रहा हूँ... बोलिए',
-          popup: false,
-          partialResults: true,
-        });
-
-        console.log("Native final result:", result);
-        if (result.matches && result.matches.length > 0) {
-          const finalTranscript = result.matches[0].replace(/[.,।?!]/g, '').trim();
-          if (finalTranscript) {
-            setVoiceTranscript(finalTranscript);
-            setSearchQuery(finalTranscript);
-            vibrate(10);
-            
-            // Short delay before closing overlay to let user see final text
-            setTimeout(() => setIsListening(false), 1500);
-          }
-        } else {
-          // If no matches but we had a transcript from partial results, just close after delay
-          setTimeout(() => setIsListening(false), 2000);
-        }
-        
-        partialListener.remove();
-      } catch (e: any) {
-        console.error("Native voice search error:", e);
-        setIsListening(false);
-        showToast("वॉइस सर्च में त्रुटि हुई।");
-      }
-      return;
-    }
-
-    const WebSpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
-    if (!WebSpeechRecognition) {
-      showToast("क्षमा करें, आपका ब्राउज़र वॉइस सर्च को सपोर्ट नहीं करता है।");
-      return;
-    }
-
-    // Aggressive cleanup of existing recognition instance
-    if (recognitionRef.current) {
-      try {
-        const oldRec = recognitionRef.current;
-        oldRec.onstart = null;
-        oldRec.onresult = null;
-        oldRec.onerror = null;
-        oldRec.onend = null;
-        oldRec.abort();
-      } catch (e) {
-        console.warn("Error cleaning up old recognition:", e);
-      }
-      recognitionRef.current = null;
-    }
-
-    // Small delay to allow the browser to release the microphone/session
-    setTimeout(async () => {
-      try {
-        // Start volume tracking first to verify mic access
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          audioStreamRef.current = stream;
-          const AudioCtx = (window.AudioContext || (window as any).webkitAudioContext);
-          const audioContext = new AudioCtx();
-          audioContextRef.current = audioContext;
-          
-          const source = audioContext.createMediaStreamSource(stream);
-          const analyser = audioContext.createAnalyser();
-          analyser.fftSize = 256;
-          source.connect(analyser);
-          
-          const bufferLength = analyser.frequencyBinCount;
-          const dataArray = new Uint8Array(bufferLength);
-          
-          const updateVolume = () => {
-            if (!audioContextRef.current || audioContext.state === 'closed') return;
-            analyser.getByteFrequencyData(dataArray);
-            let sum = 0;
-            for (let i = 0; i < bufferLength; i++) {
-              sum += dataArray[i];
-            }
-            const average = sum / bufferLength;
-            setVoiceVolume(average);
-            requestAnimationFrame(updateVolume);
-          };
-          updateVolume();
-        } catch (err) {
-          console.warn("Volume tracking failed or mic denied:", err);
-          showToast("माइक्रोफ़ोन की अनुमति नहीं मिली।");
-          return;
-        }
-
-        const recognition = new WebSpeechRecognition();
-        recognitionRef.current = recognition;
-        
-        recognition.lang = 'hi-IN'; 
-        recognition.continuous = false; // Better for search, stops when user stops speaking
-        recognition.interimResults = true;
-        recognition.maxAlternatives = 1;
-
-        recognition.onstart = () => {
-          setIsListening(true);
-          setVoiceTranscript("");
-          setVoiceStatus("सुन रहा हूँ... बोलिए");
-          vibrate(10);
-          console.log("Web Speech recognition started");
-        };
-
-        recognition.onresult = (event: any) => {
-          setVoiceStatus("पहचान रहा हूँ...");
-          let interimTranscript = '';
-          let finalTranscript = '';
-
-          for (let i = event.resultIndex; i < event.results.length; ++i) {
-            if (event.results[i].isFinal) {
-              finalTranscript += event.results[i][0].transcript;
-            } else {
-              interimTranscript += event.results[i][0].transcript;
-            }
-          }
-
-          const currentTranscript = (finalTranscript || interimTranscript).replace(/[.,।?!]/g, '').trim();
-          console.log("Web transcript update:", currentTranscript);
-          
-          if (currentTranscript) {
-            setVoiceTranscript(currentTranscript);
-            setSearchQuery(currentTranscript);
-            
-            if (currentScreen !== 'search') {
-              navigateTo('search');
-            }
-          }
-
-          if (finalTranscript) {
-            vibrate(5);
-            setVoiceStatus("मिल गया!");
-            // Auto-stop after a short delay when we have a final result
-            setTimeout(() => {
-              setIsListening(false);
-              recognition.stop();
-            }, 1500);
-          }
-        };
-
-        recognition.onspeechend = () => {
-          console.log("Speech ended detected");
-        };
-
-        recognition.onerror = (event: any) => {
-          if (event.error === 'aborted') return;
-
-          console.error("Speech Recognition Error:", event.error);
-          setIsListening(false);
-          
-          const errorMessages: Record<string, string> = {
-            'no-speech': "कोई आवाज़ सुनाई नहीं दी। कृपया थोड़ा तेज़ बोलें।",
-            'audio-capture': "माइक्रोफ़ोन नहीं मिला।",
-            'not-allowed': "माइक्रोफ़ोन की अनुमति नहीं मिली।",
-            'network': "इंटरनेट कनेक्शन की समस्या है।",
-            'not-supported-language': "यह भाषा सपोर्टेड नहीं है।",
-            'service-not-allowed': "वॉइस सर्विस की अनुमति नहीं है।"
-          };
-
-          showToast(errorMessages[event.error] || `वॉइस सर्च में समस्या हुई (${event.error})`);
-          
-          // Cleanup audio
-          if (audioContextRef.current) {
-            audioContextRef.current.close().catch(() => {});
-            audioContextRef.current = null;
-          }
-          if (audioStreamRef.current) {
-            audioStreamRef.current.getTracks().forEach(t => t.stop());
-            audioStreamRef.current = null;
-          }
-        };
-
-        recognition.onend = () => {
-          console.log("Speech recognition session ended");
-          setIsListening(false);
-          recognitionRef.current = null;
-          
-          // Cleanup audio
-          if (audioContextRef.current) {
-            audioContextRef.current.close().catch(() => {});
-            audioContextRef.current = null;
-          }
-          if (audioStreamRef.current) {
-            audioStreamRef.current.getTracks().forEach(t => t.stop());
-            audioStreamRef.current = null;
-          }
-        };
-
-        recognition.start();
-      } catch (e: any) {
-        console.error("Web Speech Start Error:", e);
-        setIsListening(false);
-        showToast("वॉइस सर्च शुरू नहीं हो सका।");
-      }
-    }, 200);
-  };
 
   const [malaCount, setMalaCount] = useState(() => {
     const saved = localStorage.getItem("malaCount");
@@ -1397,48 +1015,11 @@ function MainApp() {
 
   const handleGetLocation = () => {
     setChoghadiyaLoading(true);
-    
-    const fallbackToIP = async (originalError?: any) => {
-      try {
-        const res = await fetch("https://ipapi.co/json/");
-        const data = await res.json();
-        if (data.city) {
-          const resolvedName = [data.city, data.region, data.country_name === "India" ? "" : data.country_name]
-            .filter(Boolean)
-            .join(", ");
-          setChoghadiyaLocation(resolvedName);
-          calculateChoghadiya(resolvedName, choghadiyaDate, { lat: data.latitude, lon: data.longitude });
-          return;
-        }
-      } catch (e) {
-        // ipapi.co fallback failed, trying ipinfo.io
-        try {
-          const res2 = await fetch("https://ipinfo.io/json");
-          const data2 = await res2.json();
-          if (data2.city) {
-            const resolvedName = [data2.city, data2.region, data2.country === "IN" ? "" : data2.country]
-              .filter(Boolean)
-              .join(", ");
-            setChoghadiyaLocation(resolvedName);
-            const [lat, lon] = (data2.loc || "").split(",").map(Number);
-            calculateChoghadiya(resolvedName, choghadiyaDate, lat && lon ? { lat, lon } : undefined);
-            return;
-          }
-        } catch (e2) {
-          // ipinfo.io fallback failed
-        }
-      }
-
-      if (originalError && originalError.code === originalError.PERMISSION_DENIED) {
-        setChoghadiyaError("लोकेशन की अनुमति नहीं मिली। कृपया सेटिंग्स में जाकर अनुमति दें या शहर का नाम लिखें।");
-      } else {
-        setChoghadiyaError("लोकेशन प्राप्त करने में त्रुटि। कृपया शहर का नाम लिखें।");
-      }
-      setChoghadiyaLoading(false);
-    };
+    setChoghadiyaError("");
 
     if (!navigator.geolocation) {
-      fallbackToIP();
+      setChoghadiyaError("आपके डिवाइस में लोकेशन की सुविधा उपलब्ध नहीं है। कृपया शहर का नाम लिखकर खोजें।");
+      setChoghadiyaLoading(false);
       return;
     }
 
@@ -1460,11 +1041,21 @@ function MainApp() {
           setChoghadiyaLocation(resolvedName);
           calculateChoghadiya(resolvedName, choghadiyaDate, { lat: latitude, lon: longitude });
         } catch (error) {
-          fallbackToIP(error);
+          setChoghadiyaError("लोकेशन का नाम प्राप्त करने में त्रुटि। कृपया शहर का नाम लिखकर खोजें।");
+          setChoghadiyaLoading(false);
         }
       },
       (error) => {
-        fallbackToIP(error);
+        if (error.code === error.PERMISSION_DENIED) {
+          setChoghadiyaError("लोकेशन की अनुमति नहीं मिली। कृपया अपने डिवाइस की सेटिंग्स में जाकर लोकेशन (GPS) चालू करें।");
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
+          setChoghadiyaError("लोकेशन प्राप्त नहीं की जा सकी। कृपया अपना GPS/लोकेशन चालू करें।");
+        } else if (error.code === error.TIMEOUT) {
+          setChoghadiyaError("लोकेशन प्राप्त करने में समय सीमा समाप्त हो गई। कृपया पुनः प्रयास करें।");
+        } else {
+          setChoghadiyaError("लोकेशन प्राप्त करने में अज्ञात त्रुटि। कृपया शहर का नाम लिखकर खोजें।");
+        }
+        setChoghadiyaLoading(false);
       },
       { timeout: 10000, maximumAge: 60000 }
     );
@@ -1714,9 +1305,88 @@ function MainApp() {
     }
   };
 
+  const handleAudioSwipe = (direction: "left" | "right") => {
+    try {
+      // If nothing is playing, fallback to regular swipe
+      if (!playingSabad) {
+        handleSwipe(direction);
+        return;
+      }
+      
+      let currentList: SabadItem[] = [];
+      if (playingSabad.type === "शब्द") currentList = sabads;
+      else if (playingSabad.type === "आरती") currentList = aartis;
+      else if (playingSabad.type === "भजन") currentList = bhajans;
+      else if (playingSabad.type === "साखी") currentList = sakhis;
+      else if (playingSabad.type === "मंत्र") currentList = mantras;
+      
+      // Fallback if type is missing
+      if (!currentList || currentList.length === 0) {
+        if (selectedCategory === "aarti") currentList = aartis;
+        else if (selectedCategory === "bhajan") currentList = bhajans;
+        else if (selectedCategory === "sakhi") currentList = sakhis;
+        else if (selectedCategory === "mantra") currentList = mantras;
+        else currentList = sabads;
+      }
+
+      if (!currentList || currentList.length === 0) return;
+
+      const currentIndex = currentList.findIndex(
+        (item) => item && item.id === playingSabad.id,
+      );
+
+      if (currentIndex === -1) return;
+
+      let nextIndex = currentIndex;
+      let prevIndex = currentIndex;
+
+      const isSabadsList = currentList === sabads;
+
+      if (direction === "left") {
+        if (isSabadsList && currentIndex === 65) { // 66th sabad (index 65)
+          nextIndex = 67; // Skip 67th (index 66) to 68th (index 67)
+        } else if (isSabadsList && currentIndex === 119) { // 120th sabad (index 119)
+          nextIndex = 66; // Loop to 67th (index 66)
+        } else if (currentIndex < currentList.length - 1) {
+          nextIndex = currentIndex + 1;
+        } else {
+          return; // End of list
+        }
+        const nextItem = currentList[nextIndex];
+        if (nextItem) {
+          setPlayingSabad(nextItem);
+          if ((currentScreen === "audio_reading" || currentScreen === "reading") && selectedSabad?.id === playingSabad.id) {
+            setSlideDir(1);
+            setSelectedSabad(nextItem);
+          }
+        }
+      } else if (direction === "right") {
+        if (isSabadsList && currentIndex === 67) { // 68th sabad (index 67)
+          prevIndex = 65; // Back to 66th (index 65)
+        } else if (isSabadsList && currentIndex === 66) { // 67th sabad (index 66)
+          prevIndex = 119; // Back to 120th (index 119)
+        } else if (currentIndex > 0) {
+          prevIndex = currentIndex - 1;
+        } else {
+          return; // Start of list
+        }
+        const prevItem = currentList[prevIndex];
+        if (prevItem) {
+          setPlayingSabad(prevItem);
+          if ((currentScreen === "audio_reading" || currentScreen === "reading") && selectedSabad?.id === playingSabad.id) {
+            setSlideDir(-1);
+            setSelectedSabad(prevItem);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Audio swipe error:", err);
+    }
+  };
+
   const handleAudioEnded = () => {
     setAutoPlayAudio(true);
-    handleSwipe("left");
+    handleAudioSwipe("left");
   };
 
   const bindGestures = useGesture(
@@ -2435,59 +2105,21 @@ function MainApp() {
         );
 
       case "search":
+        const searchSkeleton = getSearchSkeleton(searchQuery);
         const matchSearch = (title: string, text?: string) => {
           if (!searchQuery) return false;
+          // Exact match first (for Hindi typing)
+          if (title.toLowerCase().includes(searchQuery.toLowerCase())) return true;
+          if (text && text.toLowerCase().includes(searchQuery.toLowerCase())) return true;
           
-          // Clean query: remove common prefixes and trim
-          const query = searchQuery.toLowerCase()
-            .replace(/^(search for|search|find|खोजें|खोजो|ढूंढो|दिखाओ|सुनाओ|दिखाएं)\s+/i, '')
-            .trim();
-            
-          const targetTitle = title.toLowerCase().trim();
-          const targetText = text ? text.toLowerCase().trim() : "";
-
-          // 1. Exact or partial string match
-          if (targetTitle.includes(query) || query.includes(targetTitle)) return true;
-          if (targetText && (targetText.includes(query) || query.includes(targetText))) return true;
-          
-          // 2. Hinglish/Phonetic match
-          const searchSkeleton = getSearchSkeleton(query);
-          const titleSkeleton = getSearchSkeleton(targetTitle);
-          
-          if (searchSkeleton.length >= 1) {
-            if (titleSkeleton.includes(searchSkeleton) || searchSkeleton.includes(titleSkeleton)) return true;
-            if (targetText) {
-               const textSkeleton = getSearchSkeleton(targetText);
-               if (textSkeleton.includes(searchSkeleton) || searchSkeleton.includes(textSkeleton)) return true;
-            }
+          // Hinglish/Phonetic match
+          if (searchSkeleton.length < 2) return false; // Don't fuzzy match on single letters
+          const titleSkeleton = getSearchSkeleton(title);
+          if (titleSkeleton.includes(searchSkeleton)) return true;
+          if (text) {
+             const textSkeleton = getSearchSkeleton(text);
+             if (textSkeleton.includes(searchSkeleton)) return true;
           }
-
-          // 3. Word-based match (split query into words)
-          // Allow single characters if they are digits
-          const queryWords = query.split(/\s+/).filter(w => w.length >= 2 || /\d/.test(w));
-          for (const word of queryWords) {
-            // Check if word is in title
-            if (targetTitle.includes(word)) return true;
-            
-            // Check if word skeleton is in title skeleton
-            const wordSkeleton = getSearchSkeleton(word);
-            if (wordSkeleton.length >= 1 && titleSkeleton.includes(wordSkeleton)) return true;
-          }
-
-          // 4. Number match (very important for "Shabad 1", "Shabad 2" etc)
-          const queryNumbers = query.match(/\d+/g);
-          const titleNumbers = targetTitle.match(/\d+/g);
-          if (queryNumbers && titleNumbers) {
-            for (const qn of queryNumbers) {
-              if (titleNumbers.some(tn => parseInt(tn) === parseInt(qn))) {
-                // If numbers match, and there's some other word match or the query is just the number
-                if (queryWords.length <= 1 || queryWords.some(w => !/\d/.test(w) && titleSkeleton.includes(getSearchSkeleton(w)))) {
-                  return true;
-                }
-              }
-            }
-          }
-
           return false;
         };
 
@@ -2497,8 +2129,6 @@ function MainApp() {
         const filteredSakhis = searchQuery ? sakhis.filter(m => matchSearch(m.title, m.text)) : [];
         const filteredMantras = searchQuery ? mantras.filter(m => matchSearch(m.title, m.text)) : [];
         const filteredMeles = searchQuery ? meles.filter(m => matchSearch(m.name, m.location)) : [];
-        const filteredThoughts = searchQuery ? thoughts.filter(t => matchSearch("", t.text)) : [];
-        const filteredNotices = searchQuery ? notices.filter(n => matchSearch(n.title, n.text)) : [];
         
         return (
           <motion.div key="search" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="pb-32 bg-paper min-h-screen">
@@ -2512,42 +2142,16 @@ function MainApp() {
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder="शब्द, भजन, आरती, साखी या मेले खोजें..." 
-                  className={`w-full pl-12 py-3 rounded-2xl border border-ink/20 bg-white focus:border-accent outline-none shadow-sm ${isVoiceSearchSupported ? 'pr-20' : 'pr-12'}`}
+                  className="w-full pl-12 py-3 rounded-2xl border border-ink/20 bg-white focus:border-accent outline-none shadow-sm pr-4"
                 />
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                  {searchQuery && (
-                    <button 
-                      onClick={() => setSearchQuery("")}
-                      className="p-2 text-ink-light hover:text-accent transition-colors"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
-                  )}
-                  {isVoiceSearchSupported && (
-                    <button 
-                      onClick={startVoiceSearch}
-                      className={`p-2 rounded-full transition-all ${isListening ? 'bg-accent/20 text-accent animate-pulse' : 'text-ink-light hover:bg-ink/5'}`}
-                    >
-                      <Mic className="w-5 h-5" />
-                    </button>
-                  )}
-                </div>
               </div>
 
             {isLoading ? (
               <div className="space-y-4">
                 {Array.from({ length: 5 }).map((_, i) => <ShabadSkeleton key={i} />)}
               </div>
-            ) : (
-              <div className="space-y-8 pb-10">
-                {searchQuery && (
-                  <div className="bg-accent/5 p-3 rounded-xl border border-accent/10 text-center mb-6">
-                    <p className="text-xs text-ink-light mb-1">खोज परिणाम:</p>
-                    <p className="font-bold text-accent-dark">"{searchQuery}"</p>
-                  </div>
-                )}
-                {searchQuery && (
-                  <div className="space-y-6">
+            ) : searchQuery && (
+              <div className="space-y-6">
                 {filteredSabads.length > 0 && (
                   <div>
                     <h3 className="font-bold text-lg mb-3 text-accent-dark">सबदवाणी ({filteredSabads.length})</h3>
@@ -2626,50 +2230,12 @@ function MainApp() {
                     </div>
                   </div>
                 )}
-                {filteredNotices.length > 0 && (
-                  <div>
-                    <h3 className="font-bold text-lg mb-3 text-accent-dark">सूचनाएं ({filteredNotices.length})</h3>
-                    <div className="space-y-3">
-                      {filteredNotices.map((n) => (
-                        <div key={n.id} className="bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
-                          <h4 className="font-bold text-ink">{n.title}</h4>
-                          <p className="text-sm text-ink-light mt-1 break-words">{n.text}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {filteredThoughts.length > 0 && (
-                  <div>
-                    <h3 className="font-bold text-lg mb-3 text-accent-dark">अनमोल विचार ({filteredThoughts.length})</h3>
-                    <div className="space-y-3">
-                      {filteredThoughts.map((t) => (
-                        <div key={t.id} className="bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
-                          <p className="text-ink break-words italic">"{t.text}"</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {filteredSabads.length === 0 && filteredAartis.length === 0 && filteredBhajans.length === 0 && filteredSakhis.length === 0 && filteredMantras.length === 0 && filteredMeles.length === 0 && filteredNotices.length === 0 && filteredThoughts.length === 0 && (
+                {filteredSabads.length === 0 && filteredAartis.length === 0 && filteredBhajans.length === 0 && filteredSakhis.length === 0 && filteredMantras.length === 0 && filteredMeles.length === 0 && (
                   <div className="text-center py-12 text-ink-light">
                     <Search className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                    <p className="mb-4">कोई परिणाम नहीं मिला</p>
-                    <div className="flex flex-wrap justify-center gap-2 mt-4">
-                      {["शब्द 1", "आरती", "भजन", "साखी", "मेला"].map(tag => (
-                        <button 
-                          key={tag} 
-                          onClick={() => setSearchQuery(tag)}
-                          className="text-xs bg-ink/5 px-3 py-1.5 rounded-full hover:bg-accent/10 hover:text-accent transition-colors"
-                        >
-                          "{tag}"
-                        </button>
-                      ))}
-                    </div>
+                    <p>कोई परिणाम नहीं मिला</p>
                   </div>
                 )}
-              </div>
-            )}
               </div>
             )}
             </div>
@@ -3045,60 +2611,60 @@ function MainApp() {
               </motion.div>
             )}
 
-            <div className={`sticky top-[50px] z-10 px-1.5 py-2 flex items-center justify-between gap-1 shadow-sm border-b transition-colors duration-300 overflow-x-auto ${
+            <div className={`sticky top-[50px] z-10 px-1.5 sm:px-2 py-2 sm:py-2.5 flex items-center justify-between gap-1 sm:gap-1.5 shadow-sm border-b transition-colors duration-300 overflow-x-auto ${
               readingTheme === 'dark' ? 'bg-[#1a1a1a]/95 border-white/10 text-white' : 
               readingTheme === 'sepia' ? 'bg-[#f4ecd8]/95 border-[#5c4b37]/10 text-[#5c4b37]' : 
               'bg-paper/95 border-ink/10 text-ink'
             } backdrop-blur-md [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]`}>
               <button
                 onClick={handleBack}
-                className={`p-1.5 -ml-0.5 rounded-full shrink-0 transition-all touch-manipulation active:scale-90 ${
+                className={`p-1.5 sm:p-2 -ml-0.5 sm:-ml-1 rounded-full shrink-0 transition-all touch-manipulation active:scale-90 ${
                   readingTheme === 'dark' ? 'hover:bg-white/10 active:bg-white/20' : 
                   readingTheme === 'sepia' ? 'hover:bg-[#5c4b37]/10 active:bg-[#5c4b37]/20' : 
                   'hover:bg-ink/10 active:bg-ink/20'
                 }`}
               >
-                <ChevronLeft className="w-5 h-5" />
+                <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6" />
               </button>
 
               {/* Position Indicator */}
               {readingIndex !== -1 && totalCount > 0 && (
-                <div className={`flex flex-col items-center justify-center text-[10px] font-bold px-2 py-1 rounded-xl tracking-wide shrink-0 leading-tight ${
+                <div className={`flex flex-col items-center justify-center text-[9px] sm:text-[10px] md:text-xs font-bold px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl tracking-wide shrink-0 leading-tight ${
                   readingTheme === 'dark' ? 'bg-white/10 text-white/80' : 
                   readingTheme === 'sepia' ? 'bg-[#5c4b37]/10 text-[#5c4b37]/80' : 
                   'bg-ink/5 text-ink-light'
                 }`}>
-                  <span>{readingIndex + 1}/{totalCount}</span>
-                  <span className="text-[9px] opacity-90 mt-0.5">{categoryLabel}</span>
+                  <span>{readingIndex + 1} / {totalCount}</span>
+                  <span className="text-[8px] sm:text-[9px] md:text-[10px] opacity-90 mt-0.5">{categoryLabel}</span>
                 </div>
               )}
 
               {/* Theme Switcher */}
-              <div className={`flex items-center gap-0.5 shrink-0 rounded-full px-1 py-1 ${
+              <div className={`flex items-center gap-0.5 sm:gap-1 shrink-0 rounded-full px-1 sm:px-1.5 py-1 sm:py-1.5 ${
                 readingTheme === 'dark' ? 'bg-white/10' : 
                 readingTheme === 'sepia' ? 'bg-[#5c4b37]/10' : 
                 'bg-ink/5'
               }`}>
-                <button onClick={() => { vibrate(5); setReadingTheme('light'); }} className={`p-1 rounded-full touch-manipulation active:scale-90 ${readingTheme === 'light' ? 'bg-white shadow-sm' : 'opacity-50'}`}>
-                  <div className="w-3.5 h-3.5 rounded-full bg-white border border-gray-300"></div>
+                <button onClick={() => { vibrate(5); setReadingTheme('light'); }} className={`p-1 sm:p-1.5 rounded-full touch-manipulation active:scale-90 ${readingTheme === 'light' ? 'bg-white shadow-sm' : 'opacity-50 hover:opacity-80'}`}>
+                  <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-white border border-gray-300"></div>
                 </button>
-                <button onClick={() => { vibrate(5); setReadingTheme('sepia'); }} className={`p-1 rounded-full touch-manipulation active:scale-90 ${readingTheme === 'sepia' ? 'bg-[#f4ecd8] shadow-sm' : 'opacity-50'}`}>
-                  <div className="w-3.5 h-3.5 rounded-full bg-[#f4ecd8] border border-[#d4c4a8]"></div>
+                <button onClick={() => { vibrate(5); setReadingTheme('sepia'); }} className={`p-1 sm:p-1.5 rounded-full touch-manipulation active:scale-90 ${readingTheme === 'sepia' ? 'bg-[#f4ecd8] shadow-sm' : 'opacity-50 hover:opacity-80'}`}>
+                  <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-[#f4ecd8] border border-[#d4c4a8]"></div>
                 </button>
-                <button onClick={() => { vibrate(5); setReadingTheme('dark'); }} className={`p-1 rounded-full touch-manipulation active:scale-90 ${readingTheme === 'dark' ? 'bg-[#1a1a1a] shadow-sm' : 'opacity-50'}`}>
-                  <div className="w-3.5 h-3.5 rounded-full bg-[#1a1a1a] border border-gray-600"></div>
+                <button onClick={() => { vibrate(5); setReadingTheme('dark'); }} className={`p-1 sm:p-1.5 rounded-full touch-manipulation active:scale-90 ${readingTheme === 'dark' ? 'bg-[#1a1a1a] shadow-sm' : 'opacity-50 hover:opacity-80'}`}>
+                  <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-[#1a1a1a] border border-gray-600"></div>
                 </button>
               </div>
 
               {/* Font Size Controls */}
-              <div className={`flex items-center gap-0.5 font-bold shrink-0 rounded-full px-1 py-1 ${
+              <div className={`flex items-center gap-0.5 sm:gap-1 font-bold shrink-0 rounded-full px-1 sm:px-1.5 py-1 sm:py-1.5 ${
                 readingTheme === 'dark' ? 'bg-white/10' : 
                 readingTheme === 'sepia' ? 'bg-[#5c4b37]/10' : 
                 'bg-ink/5'
               }`}>
                 <button
                   onClick={() => { vibrate(5); setFontSize((f) => Math.max(f - 2, 12)); }}
-                  className={`p-1 rounded-full text-xs transition-colors touch-manipulation active:scale-90 ${
+                  className={`p-1 sm:p-1.5 rounded-full text-[10px] sm:text-xs transition-colors touch-manipulation active:scale-90 ${
                     readingTheme === 'dark' ? 'hover:bg-white/10' : 
                     readingTheme === 'sepia' ? 'hover:bg-[#5c4b37]/10' : 
                     'hover:bg-ink/10'
@@ -3106,14 +2672,14 @@ function MainApp() {
                 >
                   A-
                 </button>
-                <div className={`w-px h-3.5 mx-0.5 ${
+                <div className={`w-px h-3 sm:h-4 mx-0.5 ${
                   readingTheme === 'dark' ? 'bg-white/20' : 
                   readingTheme === 'sepia' ? 'bg-[#5c4b37]/20' : 
                   'bg-ink/20'
                 }`}></div>
                 <button
                   onClick={() => { vibrate(5); setFontSize((f) => Math.min(f + 2, 32)); }}
-                  className={`p-1 rounded-full text-xs transition-colors touch-manipulation active:scale-90 ${
+                  className={`p-1 sm:p-1.5 rounded-full text-[10px] sm:text-xs transition-colors touch-manipulation active:scale-90 ${
                     readingTheme === 'dark' ? 'hover:bg-white/10' : 
                     readingTheme === 'sepia' ? 'hover:bg-[#5c4b37]/10' : 
                     'hover:bg-ink/10'
@@ -3124,25 +2690,25 @@ function MainApp() {
               </div>
 
               {/* Auto Scroll Controls */}
-              <div className={`auto-scroll-control flex items-center gap-0.5 shrink-0 rounded-full px-1 py-1 ${
+              <div className={`auto-scroll-control flex items-center gap-0.5 sm:gap-1 shrink-0 rounded-full px-1 sm:px-1.5 py-1 sm:py-1.5 ${
                 readingTheme === 'dark' ? 'bg-white/10' : 
                 readingTheme === 'sepia' ? 'bg-[#5c4b37]/10' : 
                 'bg-ink/5'
               }`}>
                 <button
                   onClick={toggleAutoScroll}
-                  className={`p-1 rounded-full transition-colors touch-manipulation active:scale-90 ${
+                  className={`p-1 sm:p-1.5 rounded-full transition-colors touch-manipulation active:scale-90 ${
                     isAutoScrolling 
                       ? 'bg-accent text-white shadow-sm' 
                       : readingTheme === 'dark' ? 'hover:bg-white/10' : readingTheme === 'sepia' ? 'hover:bg-[#5c4b37]/10' : 'hover:bg-ink/10'
                   }`}
                 >
-                  {isAutoScrolling ? <Pause className="w-4 h-4" /> : <ChevronsDown className="w-4 h-4" />}
+                  {isAutoScrolling ? <Pause className="w-4 h-4 sm:w-5 sm:h-5" /> : <ChevronsDown className="w-4 h-4 sm:w-5 sm:h-5" />}
                 </button>
                 {isAutoScrolling && (
                   <button
                     onClick={cycleAutoScrollSpeed}
-                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                    className={`text-[9px] sm:text-[11px] font-bold px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full ${
                       readingTheme === 'dark' ? 'bg-white/20' : 
                       readingTheme === 'sepia' ? 'bg-[#5c4b37]/20' : 
                       'bg-ink/10'
@@ -3154,10 +2720,10 @@ function MainApp() {
               </div>
 
               {/* Action Icons */}
-              <div className="flex items-center gap-0.5 shrink-0">
+              <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
                 <button
                   onClick={() => toggleBookmark(selectedSabad?.id || "")}
-                  className={`p-1.5 rounded-full transition-colors touch-manipulation active:scale-95 ${
+                  className={`p-1.5 sm:p-2 rounded-full transition-colors touch-manipulation active:scale-95 ${
                     readingTheme === 'dark' ? 'hover:bg-white/10' : 
                     readingTheme === 'sepia' ? 'hover:bg-[#5c4b37]/10' : 
                     'hover:bg-ink/10'
@@ -3170,19 +2736,19 @@ function MainApp() {
                     transition={{ duration: 0.3, ease: "easeOut" }}
                   >
                     <Bookmark
-                      className={`w-4 h-4 ${bookmarks.includes(selectedSabad?.id || "") ? "fill-accent text-accent" : (readingTheme === 'dark' ? "text-white/70" : readingTheme === 'sepia' ? "text-[#5c4b37]/70" : "text-ink-light")}`}
+                      className={`w-4 h-4 sm:w-5 sm:h-5 ${bookmarks.includes(selectedSabad?.id || "") ? "fill-accent text-accent" : (readingTheme === 'dark' ? "text-white/70" : readingTheme === 'sepia' ? "text-[#5c4b37]/70" : "text-ink-light")}`}
                     />
                   </motion.div>
                 </button>
                 <button
                   onClick={handleShare}
-                  className={`p-1.5 rounded-full transition-colors touch-manipulation active:scale-95 ${
+                  className={`p-1.5 sm:p-2 rounded-full transition-colors touch-manipulation active:scale-95 ${
                     readingTheme === 'dark' ? 'hover:bg-white/10' : 
                     readingTheme === 'sepia' ? 'hover:bg-[#5c4b37]/10' : 
                     'hover:bg-ink/10'
                   }`}
                 >
-                  <Share2 className={`w-4 h-4 ${readingTheme === 'dark' ? "text-white/70" : readingTheme === 'sepia' ? "text-[#5c4b37]/70" : "text-ink-light"}`} />
+                  <Share2 className={`w-4 h-4 sm:w-5 sm:h-5 ${readingTheme === 'dark' ? "text-white/70" : readingTheme === 'sepia' ? "text-[#5c4b37]/70" : "text-ink-light"}`} />
                 </button>
               </div>
             </div>
@@ -3193,16 +2759,33 @@ function MainApp() {
                 <AudioPlayer 
                   url={selectedSabad.audioUrl} 
                   onEnded={handleAudioEnded} 
-                  autoPlay={autoPlayAudio}
-                  onPlay={() => { setIsAudioActive(true); setAutoPlayAudio(true); }}
-                  onPause={() => setAutoPlayAudio(false)}
-                  onNext={() => handleSwipe("left")}
-                  onPrev={() => handleSwipe("right")}
+                  autoPlay={autoPlayAudio && (!playingSabad || playingSabad.id === selectedSabad.id)}
+                  onPlay={() => { setIsAudioActive(true); setAutoPlayAudio(true); setPlayingSabad(selectedSabad); }}
+                  onPause={() => {
+                    if (playingSabad?.id === selectedSabad.id) {
+                      setAutoPlayAudio(false);
+                    }
+                  }}
+                  onNext={() => {
+                    if (playingSabad?.id === selectedSabad.id) {
+                      handleAudioSwipe("left");
+                    } else {
+                      handleSwipe("left");
+                    }
+                  }}
+                  onPrev={() => {
+                    if (playingSabad?.id === selectedSabad.id) {
+                      handleAudioSwipe("right");
+                    } else {
+                      handleSwipe("right");
+                    }
+                  }}
                   title={selectedSabad.title}
                   showToast={showToast}
                   variant="full"
                   hideTitle={true}
                   logoUrl={settings.logoUrl}
+                  preventAutoPause={playingSabad && playingSabad.id !== selectedSabad.id}
                 />
               </div>
             )}
@@ -3415,12 +2998,16 @@ function MainApp() {
 
               {choghadiyaError && (
                 <motion.div 
-                  initial={{ opacity: 0, y: -10 }} 
-                  animate={{ opacity: 1, y: 0 }} 
-                  className="mb-6 p-4 bg-red-50 text-red-700 rounded-2xl text-sm flex items-center gap-3 justify-center text-center border border-red-100"
+                  initial={{ opacity: 0, y: -10, scale: 0.95 }} 
+                  animate={{ opacity: 1, y: 0, scale: 1 }} 
+                  className="mb-6 p-4 sm:p-5 bg-gradient-to-br from-red-50 to-red-100/50 text-red-800 rounded-[1.25rem] text-sm flex flex-col sm:flex-row items-center gap-3 sm:gap-4 justify-center text-center sm:text-left border border-red-200/60 shadow-[0_4px_15px_-5px_rgba(239,68,68,0.15)]"
                 >
-                  <AlertCircle className="w-5 h-5 flex-shrink-0" />
-                  <span>{choghadiyaError}</span>
+                  <div className="bg-red-100/80 p-2.5 rounded-full shrink-0 shadow-sm">
+                    <MapPinOff className="w-6 h-6 text-red-600" />
+                  </div>
+                  <div className="flex-1">
+                    <span className="text-red-800 font-medium leading-snug">{choghadiyaError}</span>
+                  </div>
                 </motion.div>
               )}
 
@@ -3653,15 +3240,30 @@ function MainApp() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="min-h-screen flex flex-col"
+            className="min-h-screen flex flex-col relative"
           >
-            <PremiumHeader title="Admin Access" onBack={() => navigateTo('home')} icon={KeyRound} />
+            {/* Subtle background decoration */}
+            <div className="absolute inset-0 overflow-hidden pointer-events-none">
+              <div className="absolute -top-40 -right-40 w-96 h-96 bg-accent/10 rounded-full blur-3xl"></div>
+              <div className="absolute top-1/2 -left-20 w-72 h-72 bg-accent-dark/5 rounded-full blur-3xl"></div>
+            </div>
+
+            <PremiumHeader title="Admin Access" onBack={() => navigateTo('home')} icon={KeyRound} noGlobalHeader={true} />
             
-            <div className="flex-1 flex items-center justify-center px-6 pb-32">
-              <div className="bg-white/90 backdrop-blur-md p-8 rounded-3xl shadow-2xl border border-ink/10 w-full max-w-sm text-center relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-accent to-accent-dark"></div>
-                <KeyRound className="w-16 h-16 mx-auto text-accent mb-4" />
-                <p className="text-sm text-ink-light mb-6">
+            <div className="flex-1 overflow-y-auto relative z-10">
+              <div className="min-h-full flex flex-col items-center justify-center px-6 py-8">
+                <motion.div 
+                  initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                  animate={{ scale: 1, opacity: 1, y: 0 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                  className="bg-white/80 backdrop-blur-xl p-8 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-white/50 w-full max-w-sm text-center relative overflow-hidden shrink-0"
+                >
+                  <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-accent to-accent-dark"></div>
+                <div className="w-20 h-20 mx-auto bg-accent/10 rounded-full flex items-center justify-center mb-6">
+                  <KeyRound className="w-10 h-10 text-accent" />
+                </div>
+                <h2 className="text-2xl font-bold text-ink mb-2">Admin Login</h2>
+                <p className="text-sm text-ink-light mb-8">
                   कृपया व्यवस्थापक पासवर्ड दर्ज करें
                 </p>
               <form
@@ -3730,11 +3332,12 @@ function MainApp() {
               </form>
               <button
                 onClick={() => navigateTo("home")}
-                className="mt-6 text-ink-light text-sm underline hover:text-ink"
+                className="mt-6 text-ink-light text-sm underline hover:text-ink transition-colors"
               >
                 वापस जाएं
               </button>
-            </div>
+              </motion.div>
+              </div>
             </div>
           </motion.div>
         );
@@ -3845,22 +3448,26 @@ function MainApp() {
         <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto z-50 flex flex-col">
           {/* Mini Player */}
           <AnimatePresence>
-            {isAudioActive && currentScreen !== "audio_reading" && selectedSabad?.audioUrl && !isMiniPlayerDismissed && (
+            {isAudioActive && playingSabad?.audioUrl && !isMiniPlayerDismissed && (currentScreen !== "audio_reading" || playingSabad.id !== selectedSabad?.id) && (
               <AudioPlayer
-                url={selectedSabad.audioUrl}
-                title={selectedSabad.title}
+                url={playingSabad.audioUrl}
+                title={playingSabad.title}
                 variant="mini"
                 onClose={() => {
                   if (globalAudio) globalAudio.pause();
                   clearMediaSession();
                   setIsMiniPlayerDismissed(true);
                   setIsAudioActive(false);
+                  setPlayingSabad(null);
                 }}
                 onClick={() => {
-                  navigateTo("audio_reading");
+                  setSelectedSabad(playingSabad);
+                  if (currentScreen !== "audio_reading") {
+                    navigateTo("audio_reading");
+                  }
                 }}
-                onNext={() => handleSwipe("left")}
-                onPrev={() => handleSwipe("right")}
+                onNext={() => handleAudioSwipe("left")}
+                onPrev={() => handleAudioSwipe("right")}
                 onEnded={handleAudioEnded}
                 autoPlay={autoPlayAudio}
                 onPlay={() => setAutoPlayAudio(true)}
@@ -3913,33 +3520,6 @@ function MainApp() {
         message={confirmDialog?.message || ""}
         onConfirm={confirmDialog?.onConfirm || (() => {})}
         onCancel={() => setConfirmDialog(null)}
-      />
-
-      {/* Premium Voice Search Overlay */}
-      <VoiceSearchOverlay 
-        isListening={isListening} 
-        transcript={voiceTranscript} 
-        status={voiceStatus}
-        volume={voiceVolume}
-        onClose={() => {
-          if (Capacitor.isNativePlatform()) {
-            SpeechRecognition.stop().catch(() => {});
-          } else if (recognitionRef.current) {
-            recognitionRef.current.stop();
-          }
-          
-          // Cleanup audio
-          if (audioContextRef.current) {
-            audioContextRef.current.close().catch(() => {});
-            audioContextRef.current = null;
-          }
-          if (audioStreamRef.current) {
-            audioStreamRef.current.getTracks().forEach(t => t.stop());
-            audioStreamRef.current = null;
-          }
-
-          setIsListening(false);
-        }} 
       />
 
     </div>

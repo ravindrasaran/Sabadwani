@@ -12,7 +12,7 @@ const logger = {
   }
 };
 
-function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay = false, title = 'सबदवाणी', showToast, variant = 'full', onClose, onClick, hideTitle = false, logoUrl }: { 
+function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay = false, title = 'सबदवाणी', showToast, variant = 'full', onClose, onClick, hideTitle = false, logoUrl, preventAutoPause = false }: { 
   url: string, 
   onEnded?: () => void, 
   onPlay?: () => void, 
@@ -26,7 +26,8 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
   onClose?: () => void,
   onClick?: () => void,
   hideTitle?: boolean,
-  logoUrl?: string
+  logoUrl?: string,
+  preventAutoPause?: boolean
 }) {
   const [isPlaying, setIsPlaying] = useState(globalAudio ? !globalAudio.paused : false);
   const [isBuffering, setIsBuffering] = useState(false);
@@ -173,6 +174,13 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
       const newSrc = new URL(url, window.location.origin).href;
       
       if (currentSrc !== newSrc) {
+        if (preventAutoPause) {
+          // Just update local state to reflect that THIS player is not playing the current audio
+          setIsPlaying(false);
+          setProgress(0);
+          return;
+        }
+
         globalAudio.pause();
         globalAudio.src = url;
         globalAudio.load();
@@ -250,6 +258,11 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
       if (!currentSrc || currentSrc === window.location.href || currentSrc !== targetSrc) {
         globalAudio.src = url;
         globalAudio.load();
+        
+        // If we were preventing auto pause, we are now taking over
+        if (preventAutoPause && callbacksRef.current.onPlay) {
+           callbacksRef.current.onPlay();
+        }
       }
       
       const playPromise = globalAudio.play();

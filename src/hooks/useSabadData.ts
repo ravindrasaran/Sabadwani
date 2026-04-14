@@ -60,7 +60,7 @@ export function useSabadData() {
           const data = doc.data();
           let title = normalizeText(data.title);
           title = title.replace(/^\|\|\s*/, "").replace(/\s*\|\|$/, "");
-          return { id: doc.id, ...data, title, text: normalizeText(data.text), type: data.type || "सबद" } as SabadItem;
+          return { id: doc.id, ...data, title, text: normalizeText(data.text), type: data.type || "शब्द" } as SabadItem;
         });
         setSabads(sortItems(fetched));
       } else {

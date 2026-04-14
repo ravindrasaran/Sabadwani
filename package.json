@@ -13,7 +13,6 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@capacitor-community/speech-recognition": "^7.0.1",
     "@capacitor/android": "latest",
     "@capacitor/app": "latest",
     "@capacitor/cli": "latest",

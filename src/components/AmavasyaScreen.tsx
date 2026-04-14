@@ -33,21 +33,21 @@ function AmavasyaScreen({ amavasyaList, selectedYear, setSelectedYear, handleBac
       <PremiumHeader title="अमावस्या दर्शन" onBack={handleBack} icon={CalendarDays} />
 
       <div className="px-4 pt-2">
-        <div className="flex items-center justify-between bg-white/90 shadow-md border border-ink/10 rounded-full py-1 px-6 mb-4 max-w-[280px] mx-auto gap-6">
+        <div className="flex items-center justify-between bg-gradient-to-r from-accent/5 via-accent/10 to-accent/5 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] border border-accent/20 backdrop-blur-md rounded-full py-1.5 px-4 mb-6 max-w-[240px] mx-auto">
           <button
             onClick={() => { vibrate(10); setSelectedYear((y: number) => y - 1); }}
-            className="p-3 hover:bg-ink/10 rounded-full transition-colors"
+            className="p-2.5 hover:bg-accent/20 active:scale-90 text-accent-dark rounded-full transition-all touch-manipulation"
           >
-            <ChevronLeft className="w-6 h-6" />
+            <ChevronLeft className="w-5 h-5" />
           </button>
-          <span className="text-2xl font-bold text-accent-dark">
+          <span className="text-xl font-bold text-accent-dark tracking-wide font-heading">
             {selectedYear}
           </span>
           <button
             onClick={() => { vibrate(10); setSelectedYear((y: number) => y + 1); }}
-            className="p-3 hover:bg-ink/10 rounded-full transition-colors"
+            className="p-2.5 hover:bg-accent/20 active:scale-90 text-accent-dark rounded-full transition-all touch-manipulation"
           >
-            <ChevronRight className="w-6 h-6" />
+            <ChevronRight className="w-5 h-5" />
           </button>
         </div>
 

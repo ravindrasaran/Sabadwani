@@ -1,5 +1,6 @@
 import { motion } from "motion/react";
 import { ChevronLeft, ShieldCheck, PlusCircle, CheckCircle, XCircle, Edit3, Pause, Play, Settings, BookOpenText, Upload, AlertCircle } from "lucide-react";
+import PremiumHeader from "./PremiumHeader";
 
 export default function AdminScreen(props: any) {
   const {
@@ -17,20 +18,11 @@ export default function AdminScreen(props: any) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="pb-32 px-4 pt-4 bg-paper min-h-screen"
+            className="pb-32 bg-paper min-h-screen"
           >
-            <div className="flex items-center gap-3 mb-6 bg-ink text-white p-4 rounded-3xl shadow-lg">
-              <button
-                onClick={() => navigateTo("home")}
-                className="p-2 rounded-full hover:bg-white/20"
-              >
-                <ChevronLeft className="w-6 h-6" />
-              </button>
-              <h1 className="text-xl sm:text-2xl font-bold flex-1 text-center whitespace-nowrap">|| Admin Dashboard ||</h1>
-              <ShieldCheck className="w-8 h-8" />
-            </div>
+            <PremiumHeader title="Admin Dashboard" onBack={() => navigateTo("home")} icon={ShieldCheck} noGlobalHeader={true} />
 
-            <div className="space-y-8">
+            <div className="space-y-8 px-4 pt-4">
               {/* Add New Content Section */}
               <div className="bg-white/90 p-6 rounded-3xl shadow-sm border border-ink/10">
                 <h2 className="text-xl font-bold mb-4 flex items-center gap-2 border-b border-ink/10 pb-2">
@@ -952,7 +944,7 @@ export default function AdminScreen(props: any) {
             {/* Edit Modal */}
             {editModalOpen && editItemData && (
               <div className="fixed inset-0 z-50 bg-ink/50 backdrop-blur-sm flex items-center justify-center p-4">
-                <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl">
+                <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
                   <h2 className="text-xl font-bold mb-4">
                     संपादित करें (Edit)
                   </h2>

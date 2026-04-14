@@ -73,20 +73,6 @@ export const vibrate = (pattern: number | number[] = 50) => {
 export const getSearchSkeleton = (text: string): string => {
   if (!text) return "";
   
-  // 0. Pre-process common number words to digits (Hindi and English)
-  let processed = text.toLowerCase()
-    .replace(/शून्य|zero/g, '0')
-    .replace(/एक|one/g, '1')
-    .replace(/दो|two/g, '2')
-    .replace(/तीन|three/g, '3')
-    .replace(/चार|four/g, '4')
-    .replace(/पाँच|पाच|five/g, '5')
-    .replace(/छह|six/g, '6')
-    .replace(/सात|seven/g, '7')
-    .replace(/आठ|eight/g, '8')
-    .replace(/नौ|nine/g, '9')
-    .replace(/दस|ten/g, '10');
-
   // 1. Map Hindi to Latin basic equivalents
   const charMap: Record<string, string> = {
     'क': 'k', 'ख': 'kh', 'ग': 'g', 'घ': 'gh', 'ङ': 'n',
@@ -102,7 +88,7 @@ export const getSearchSkeleton = (text: string): string => {
   };
 
   let latinized = '';
-  for (let char of processed) {
+  for (let char of text.toLowerCase()) {
     if (charMap[char] !== undefined) {
       latinized += charMap[char];
     } else {
@@ -123,11 +109,8 @@ export const getSearchSkeleton = (text: string): string => {
     .replace(/sh/g, 's')
     .replace(/v/g, 'b') // v and b are often interchanged in Hindi
     .replace(/w/g, 'b')
-    .replace(/z/g, 'j')
-    .replace(/ee/g, 'i')
-    .replace(/oo/g, 'u');
+    .replace(/z/g, 'j');
 
   // 3. Remove all English vowels and non-alphanumeric chars to create a skeleton
-  // Keep digits as they are crucial for shabad numbers
   return latinized.replace(/[aeiouy\W_]/g, '');
 };

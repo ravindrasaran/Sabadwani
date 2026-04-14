@@ -12,9 +12,12 @@ export const setGlobalAudioCallbacks = (callbacks: any) => {
   globalAudioCallbacks = callbacks;
 };
 
+export let isClearingSession = false;
+
 const DEFAULT_LOGO = '/logo.png';
 
 export const updateMediaSessionMetadata = async (metadata: { title: string; artist: string; album: string; artwork?: string }) => {
+  isClearingSession = false; // Reset clearing state if we are intentionally setting new metadata
   const artworkUrl = metadata.artwork || DEFAULT_LOGO;
   if (Capacitor.isNativePlatform()) {
     try {
@@ -38,6 +41,7 @@ export const updateMediaSessionMetadata = async (metadata: { title: string; arti
 };
 
 export const updateMediaSessionState = async (state: 'playing' | 'paused' | 'none') => {
+  if (isClearingSession && state !== 'none') return;
   if (Capacitor.isNativePlatform()) {
     try {
       await MediaSession.setPlaybackState({ playbackState: state });
@@ -50,6 +54,7 @@ export const updateMediaSessionState = async (state: 'playing' | 'paused' | 'non
 };
 
 export const clearMediaSession = async () => {
+  isClearingSession = true;
   if (globalAudio) {
     globalAudio.pause();
     // Forcefully clear the source to tell the browser this media is finished
@@ -66,6 +71,12 @@ export const clearMediaSession = async () => {
         album: '',
         artwork: []
       });
+      const actions: MediaSessionAction[] = [
+        'play', 'pause', 'seekbackward', 'seekforward', 'previoustrack', 'nexttrack', 'seekto', 'stop'
+      ];
+      for (const action of actions) {
+        await MediaSession.setActionHandler({ action }, null);
+      }
     } catch (e) {}
   } else if ('mediaSession' in navigator) {
     // Setting playbackState to 'none' and metadata to null is the standard way to clear
@@ -85,10 +96,15 @@ export const clearMediaSession = async () => {
   
   // Reset the setup flag so it can be re-initialized when a new player starts
   isMediaSessionSetup = false;
+  
+  setTimeout(() => {
+    isClearingSession = false;
+  }, 500);
 };
 
 let lastPositionUpdate = 0;
 export const updateMediaSessionPosition = async (position: number, duration: number, playbackRate: number) => {
+  if (isClearingSession) return;
   const now = Date.now();
   // Throttle to once per second to avoid overwhelming the bridge
   if (now - lastPositionUpdate < 1000) return;
@@ -115,6 +131,7 @@ export const updateMediaSessionPosition = async (position: number, duration: num
 
 let isMediaSessionSetup = false;
 export const setupGlobalMediaSessionListener = async () => {
+  isClearingSession = false; // Ensure we accept events when setting up a new listener
   if (isMediaSessionSetup) return;
   isMediaSessionSetup = true;
 
@@ -127,33 +144,9 @@ export const setupGlobalMediaSessionListener = async () => {
   };
 
   const handlers = {
-    play: () => safeCallback(() => {
-      if (globalAudio) {
-        globalAudio.play().then(() => {
-          updateMediaSessionState('playing');
-        }).catch((e) => {
-          console.error("CapacitorMediaSession: Play error", e);
-          globalAudioCallbacks?.togglePlay?.('play');
-        });
-      } else {
-        globalAudioCallbacks?.togglePlay?.('play');
-      }
-    }),
-    pause: () => safeCallback(() => {
-      if (globalAudio) {
-        globalAudio.pause();
-        updateMediaSessionState('paused');
-      }
-      globalAudioCallbacks?.togglePlay?.('pause');
-    }),
-    stop: () => safeCallback(() => {
-      if (globalAudio) {
-        globalAudio.pause();
-        globalAudio.currentTime = 0;
-        updateMediaSessionState('none');
-      }
-      globalAudioCallbacks?.onClose?.();
-    }),
+    play: () => safeCallback(() => globalAudioCallbacks?.togglePlay?.('play')),
+    pause: () => safeCallback(() => globalAudioCallbacks?.togglePlay?.('pause')),
+    stop: () => safeCallback(() => globalAudioCallbacks?.onClose?.()),
     nexttrack: () => safeCallback(() => globalAudioCallbacks?.onNext?.()),
     previoustrack: () => safeCallback(() => globalAudioCallbacks?.onPrev?.()),
     seekbackward: (details: any) => safeCallback(() => {
