@@ -764,7 +764,15 @@ function MainApp() {
   const [editItemData, setEditItemData] = useState<any>(null);
   const [editAudioError, setEditAudioError] = useState("");
   const [editPhotoError, setEditPhotoError] = useState("");
-  const [confirmDialog, setConfirmDialog] = useState<{isOpen: boolean, title: string, message: string, onConfirm: () => void} | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean, 
+    title: string, 
+    message: string, 
+    onConfirm: () => void,
+    confirmText?: string,
+    cancelText?: string,
+    isAlert?: boolean
+  } | null>(null);
 
   const toggleNoticeStatus = async (id: string, currentStatus: boolean) => {
     const isOnline = await checkIsOnline();
@@ -1035,7 +1043,7 @@ function MainApp() {
         if (permission.location !== 'granted') {
           const request = await Geolocation.requestPermissions();
           if (request.location !== 'granted') {
-            setChoghadiyaError("लोकेशन की अनुमति नहीं मिली। कृपया सेटिंग्स में जाकर अनुमति दें।");
+            setChoghadiyaError("लोकेशन की अनुमति नहीं मिली। कृपया सेटिंग्स में जाकर अनुमति दें या सीधे अपने शहर का नाम लिखकर खोजें।");
             setChoghadiyaLoading(false);
             return;
           }
@@ -1069,11 +1077,32 @@ function MainApp() {
       calculateChoghadiya(resolvedName, choghadiyaDate, { lat: latitude, lon: longitude });
     } catch (error: any) {
       console.error("Location error:", error);
-      if (error.code === 1 || error.message?.includes("denied")) {
-        setChoghadiyaError("लोकेशन की अनुमति नहीं मिली। कृपया सेटिंग्स में जाकर अनुमति दें।");
-      } else if (error.code === 3 || error.message?.includes("timeout")) {
+      const errorMsg = error.message?.toLowerCase() || "";
+      
+      if (error.code === 1 || errorMsg.includes("denied")) {
+        setChoghadiyaError("लोकेशन की अनुमति नहीं मिली। कृपया सेटिंग्स में जाकर अनुमति दें या सीधे अपने शहर का नाम लिखकर खोजें।");
+      } else if (error.code === 2 || errorMsg.includes("disabled") || errorMsg.includes("unavailable") || errorMsg.includes("location services")) {
+        setConfirmDialog({
+          isOpen: true,
+          title: "लोकेशन (GPS) बंद है",
+          message: "कृपया अपने मोबाइल की लोकेशन (GPS) चालू करें और फिर से प्रयास करें।",
+          onConfirm: () => setConfirmDialog(null),
+          confirmText: "ठीक है",
+          isAlert: true
+        });
+        setChoghadiyaError("कृपया मोबाइल की लोकेशन (GPS) चालू करें।");
+      } else if (error.code === 3 || errorMsg.includes("timeout")) {
         setChoghadiyaError("लोकेशन मिलने में समय लग रहा है। कृपया दोबारा प्रयास करें।");
       } else {
+        // Fallback for other errors (often GPS is off but throws a generic error)
+        setConfirmDialog({
+          isOpen: true,
+          title: "लोकेशन प्राप्त नहीं हुई",
+          message: "कृपया सुनिश्चित करें कि आपके मोबाइल की लोकेशन (GPS) चालू है और ऐप को अनुमति दी गई है।",
+          onConfirm: () => setConfirmDialog(null),
+          confirmText: "ठीक है",
+          isAlert: true
+        });
         setChoghadiyaError("लोकेशन प्राप्त करने में त्रुटि। कृपया शहर का नाम लिखकर खोजें।");
       }
       setChoghadiyaLoading(false);
@@ -1565,8 +1594,6 @@ function MainApp() {
   const handleSabadClick = (shabad: SabadItem) => {
     vibrate(10);
     setSelectedSabad(shabad);
-    setIsAudioActive(false);
-    setIsMiniPlayerDismissed(false);
     setAutoPlayAudio(false);
     
     if (shabad.audioUrl) {
@@ -2646,23 +2673,23 @@ function MainApp() {
               <button
                 onClick={handleBack}
                 className={`p-1.5 sm:p-2 -ml-0.5 sm:-ml-1 rounded-full shrink-0 transition-all touch-manipulation active:scale-90 ${
-                  readingTheme === 'dark' ? 'hover:bg-white/10 active:bg-white/20' : 
-                  readingTheme === 'sepia' ? 'hover:bg-[#5c4b37]/10 active:bg-[#5c4b37]/20' : 
-                  'hover:bg-ink/10 active:bg-ink/20'
+                  readingTheme === 'dark' ? 'bg-white/5 hover:bg-white/10 active:bg-white/20' : 
+                  readingTheme === 'sepia' ? 'bg-[#5c4b37]/5 hover:bg-[#5c4b37]/10 active:bg-[#5c4b37]/20' : 
+                  'bg-ink/5 hover:bg-ink/10 active:bg-ink/20'
                 }`}
               >
-                <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6" />
+                <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6" strokeWidth={2.5} />
               </button>
 
               {/* Position Indicator */}
               {readingIndex !== -1 && totalCount > 0 && (
-                <div className={`flex flex-col items-center justify-center text-[9px] sm:text-[10px] md:text-xs font-bold px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl tracking-wide shrink-0 leading-tight ${
+                <div className={`flex flex-col items-center justify-center text-[10px] sm:text-[11px] md:text-xs font-extrabold px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl tracking-wide shrink-0 leading-tight ${
                   readingTheme === 'dark' ? 'bg-white/10 text-white/80' : 
                   readingTheme === 'sepia' ? 'bg-[#5c4b37]/10 text-[#5c4b37]/80' : 
                   'bg-ink/5 text-ink-light'
                 }`}>
                   <span>{readingIndex + 1} / {totalCount}</span>
-                  <span className="text-[8px] sm:text-[9px] md:text-[10px] opacity-90 mt-0.5">{categoryLabel}</span>
+                  <span className="text-[9px] sm:text-[10px] md:text-[11px] opacity-90 mt-0.5">{categoryLabel}</span>
                 </div>
               )}
 
@@ -2684,14 +2711,14 @@ function MainApp() {
               </div>
 
               {/* Font Size Controls */}
-              <div className={`flex items-center gap-0.5 sm:gap-1 font-bold shrink-0 rounded-full px-1 sm:px-1.5 py-1 sm:py-1.5 ${
+              <div className={`flex items-center gap-0.5 sm:gap-1 font-extrabold shrink-0 rounded-full px-1 sm:px-1.5 py-1 sm:py-1.5 ${
                 readingTheme === 'dark' ? 'bg-white/10' : 
                 readingTheme === 'sepia' ? 'bg-[#5c4b37]/10' : 
                 'bg-ink/5'
               }`}>
                 <button
                   onClick={() => { vibrate(5); setFontSize((f) => Math.max(f - 2, 12)); }}
-                  className={`p-1 sm:p-1.5 rounded-full text-[10px] sm:text-xs transition-colors touch-manipulation active:scale-90 ${
+                  className={`p-1 sm:p-1.5 rounded-full text-[11px] sm:text-xs transition-colors touch-manipulation active:scale-90 ${
                     readingTheme === 'dark' ? 'hover:bg-white/10' : 
                     readingTheme === 'sepia' ? 'hover:bg-[#5c4b37]/10' : 
                     'hover:bg-ink/10'
@@ -2706,7 +2733,7 @@ function MainApp() {
                 }`}></div>
                 <button
                   onClick={() => { vibrate(5); setFontSize((f) => Math.min(f + 2, 32)); }}
-                  className={`p-1 sm:p-1.5 rounded-full text-[10px] sm:text-xs transition-colors touch-manipulation active:scale-90 ${
+                  className={`p-1 sm:p-1.5 rounded-full text-[11px] sm:text-xs transition-colors touch-manipulation active:scale-90 ${
                     readingTheme === 'dark' ? 'hover:bg-white/10' : 
                     readingTheme === 'sepia' ? 'hover:bg-[#5c4b37]/10' : 
                     'hover:bg-ink/10'
@@ -2730,12 +2757,12 @@ function MainApp() {
                       : readingTheme === 'dark' ? 'hover:bg-white/10' : readingTheme === 'sepia' ? 'hover:bg-[#5c4b37]/10' : 'hover:bg-ink/10'
                   }`}
                 >
-                  {isAutoScrolling ? <Pause className="w-4 h-4 sm:w-5 sm:h-5" /> : <ChevronsDown className="w-4 h-4 sm:w-5 sm:h-5" />}
+                  {isAutoScrolling ? <Pause className="w-4 h-4 sm:w-5 sm:h-5" strokeWidth={2.5} /> : <ChevronsDown className="w-4 h-4 sm:w-5 sm:h-5" strokeWidth={2.5} />}
                 </button>
                 {isAutoScrolling && (
                   <button
                     onClick={cycleAutoScrollSpeed}
-                    className={`text-[9px] sm:text-[11px] font-bold px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full ${
+                    className={`text-[10px] sm:text-[11px] font-extrabold px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full ${
                       readingTheme === 'dark' ? 'bg-white/20' : 
                       readingTheme === 'sepia' ? 'bg-[#5c4b37]/20' : 
                       'bg-ink/10'
@@ -2763,6 +2790,7 @@ function MainApp() {
                     transition={{ duration: 0.3, ease: "easeOut" }}
                   >
                     <Bookmark
+                      strokeWidth={2.5}
                       className={`w-4 h-4 sm:w-5 sm:h-5 ${bookmarks.includes(selectedSabad?.id || "") ? "fill-accent text-accent" : (readingTheme === 'dark' ? "text-white/70" : readingTheme === 'sepia' ? "text-[#5c4b37]/70" : "text-ink-light")}`}
                     />
                   </motion.div>
@@ -2775,7 +2803,7 @@ function MainApp() {
                     'hover:bg-ink/10'
                   }`}
                 >
-                  <Share2 className={`w-4 h-4 sm:w-5 sm:h-5 ${readingTheme === 'dark' ? "text-white/70" : readingTheme === 'sepia' ? "text-[#5c4b37]/70" : "text-ink-light"}`} />
+                  <Share2 strokeWidth={2.5} className={`w-4 h-4 sm:w-5 sm:h-5 ${readingTheme === 'dark' ? "text-white/70" : readingTheme === 'sepia' ? "text-[#5c4b37]/70" : "text-ink-light"}`} />
                 </button>
               </div>
             </div>
@@ -3551,6 +3579,9 @@ function MainApp() {
         message={confirmDialog?.message || ""}
         onConfirm={confirmDialog?.onConfirm || (() => {})}
         onCancel={() => setConfirmDialog(null)}
+        confirmText={confirmDialog?.confirmText}
+        cancelText={confirmDialog?.cancelText}
+        isAlert={confirmDialog?.isAlert}
       />
 
     </div>
