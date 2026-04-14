@@ -12,7 +12,7 @@ const logger = {
   }
 };
 
-function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay = false, title = 'सबदवाणी', showToast, variant = 'full', onClose, onClick, hideTitle = false, logoUrl, preventAutoPause = false }: { 
+function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay = false, title = 'सबदवाणी', showToast, variant = 'full', onClose, onClick, hideTitle = false, logoUrl, preventAutoPause = false, playingSabad, selectedSabad }: { 
   url: string, 
   onEnded?: () => void, 
   onPlay?: () => void, 
@@ -27,7 +27,9 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
   onClick?: () => void,
   hideTitle?: boolean,
   logoUrl?: string,
-  preventAutoPause?: boolean
+  preventAutoPause?: boolean,
+  playingSabad?: any,
+  selectedSabad?: any
 }) {
   const [isPlaying, setIsPlaying] = useState(globalAudio ? !globalAudio.paused : false);
   const [isBuffering, setIsBuffering] = useState(false);
@@ -49,10 +51,14 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
 
   // Update notification metadata when track changes
   useEffect(() => {
-    if (!globalAudio || !url) return;
+    if (!globalAudio) return;
+
+    // Use playingSabad if available, otherwise fallback to selectedSabad
+    const activeSabad = playingSabad || selectedSabad;
+    if (!activeSabad || !activeSabad.audioUrl) return;
 
     const metadata = {
-      title: title || 'सबदवाणी',
+      title: activeSabad.title || 'सबदवाणी',
       artist: 'सबदवाणी',
       album: 'बिश्नोई',
       artwork: logoUrl || '/logo.png'
@@ -61,7 +67,7 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
     setupGlobalMediaSessionListener();
     updateMediaSessionMetadata(metadata);
     updateMediaSessionState(globalAudio.paused ? 'paused' : 'playing');
-  }, [url, title, logoUrl]);
+  }, [url, title, logoUrl, playingSabad, selectedSabad]);
 
   useEffect(() => {
     const handleOnline = () => {

@@ -59,6 +59,9 @@ import { useGesture } from "@use-gesture/react";
 import SunCalc from "suncalc";
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
+import { Device } from '@capacitor/device';
+import { Geolocation } from '@capacitor/geolocation';
+import { ScreenOrientation } from '@capacitor/screen-orientation';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { AppUpdate } from '@capawesome/capacitor-app-update';
@@ -243,6 +246,11 @@ function MainApp() {
 
     performAppUpdate();
     setupPushNotifications();
+
+    // Lock screen orientation to portrait
+    if (Capacitor.isNativePlatform()) {
+      ScreenOrientation.lock({ orientation: 'portrait' }).catch(console.error);
+    }
   }, []);
 
   const showToast = (message: string) => {
@@ -332,9 +340,11 @@ function MainApp() {
   useEffect(() => {
     const isPlayerVisible = (isAudioActive && !isMiniPlayerDismissed) || (currentScreen === "audio_reading" && selectedSabad?.audioUrl);
     
+    // If player is visible and we have an audio source, setup session
     if (isPlayerVisible && (playingSabad?.audioUrl || selectedSabad?.audioUrl)) {
       setupGlobalMediaSessionListener();
     } else {
+      // If player is NOT visible, clear session to hide lock screen controls
       clearMediaSession();
     }
   }, [isAudioActive, currentScreen, isMiniPlayerDismissed, playingSabad, selectedSabad]);
@@ -1013,52 +1023,63 @@ function MainApp() {
 
   const bichhudaList = useMemo(() => getBichhudaList(bichhudaYear), [bichhudaYear]);
 
-  const handleGetLocation = () => {
+  const handleGetLocation = async () => {
     setChoghadiyaLoading(true);
     setChoghadiyaError("");
 
-    if (!navigator.geolocation) {
-      setChoghadiyaError("आपके डिवाइस में लोकेशन की सुविधा उपलब्ध नहीं है। कृपया शहर का नाम लिखकर खोजें।");
-      setChoghadiyaLoading(false);
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        try {
-          const { latitude, longitude } = position.coords;
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&accept-language=en&addressdetails=1`,
-          );
-          const data = await res.json();
-          const addr = data.address || {};
-          const city = addr.city || addr.town || addr.village || addr.suburb || "Unknown Location";
-          const state = addr.state || "";
-          const country = addr.country || "";
-          const resolvedName = [city, state, country === "India" ? "" : country]
-            .filter(Boolean)
-            .join(", ");
-          setChoghadiyaLocation(resolvedName);
-          calculateChoghadiya(resolvedName, choghadiyaDate, { lat: latitude, lon: longitude });
-        } catch (error) {
-          setChoghadiyaError("लोकेशन का नाम प्राप्त करने में त्रुटि। कृपया शहर का नाम लिखकर खोजें।");
+    try {
+      let position;
+      if (Capacitor.isNativePlatform()) {
+        // Native approach: Request permission if needed, then get position
+        const permission = await Geolocation.checkPermissions();
+        if (permission.location !== 'granted') {
+          const request = await Geolocation.requestPermissions();
+          if (request.location !== 'granted') {
+            setChoghadiyaError("लोकेशन की अनुमति नहीं मिली। कृपया सेटिंग्स में जाकर अनुमति दें।");
+            setChoghadiyaLoading(false);
+            return;
+          }
+        }
+        position = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 20000 });
+      } else {
+        // Web approach
+        if (!navigator.geolocation) {
+          setChoghadiyaError("आपके डिवाइस में लोकेशन की सुविधा उपलब्ध नहीं है।");
           setChoghadiyaLoading(false);
+          return;
         }
-      },
-      (error) => {
-        if (error.code === error.PERMISSION_DENIED) {
-          setChoghadiyaError("लोकेशन की अनुमति नहीं मिली। कृपया अपने डिवाइस की सेटिंग्स में जाकर लोकेशन (GPS) चालू करें।");
-        } else if (error.code === error.POSITION_UNAVAILABLE) {
-          setChoghadiyaError("लोकेशन प्राप्त नहीं की जा सकी। कृपया अपना GPS/लोकेशन चालू करें।");
-        } else if (error.code === error.TIMEOUT) {
-          setChoghadiyaError("लोकेशन प्राप्त करने में समय सीमा समाप्त हो गई। कृपया पुनः प्रयास करें।");
-        } else {
-          setChoghadiyaError("लोकेशन प्राप्त करने में अज्ञात त्रुटि। कृपया शहर का नाम लिखकर खोजें।");
-        }
-        setChoghadiyaLoading(false);
-      },
-      { timeout: 10000, maximumAge: 60000 }
-    );
+        position = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 20000, maximumAge: 60000 });
+        });
+      }
+
+      const { latitude, longitude } = position.coords;
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&accept-language=en&addressdetails=1`,
+      );
+      const data = await res.json();
+      const addr = data.address || {};
+      const city = addr.city || addr.town || addr.village || addr.suburb || "Unknown Location";
+      const state = addr.state || "";
+      const country = addr.country || "";
+      const resolvedName = [city, state, country === "India" ? "" : country]
+        .filter(Boolean)
+        .join(", ");
+      setChoghadiyaLocation(resolvedName);
+      calculateChoghadiya(resolvedName, choghadiyaDate, { lat: latitude, lon: longitude });
+    } catch (error: any) {
+      console.error("Location error:", error);
+      if (error.code === 1 || error.message?.includes("denied")) {
+        setChoghadiyaError("लोकेशन की अनुमति नहीं मिली। कृपया सेटिंग्स में जाकर अनुमति दें।");
+      } else if (error.code === 3 || error.message?.includes("timeout")) {
+        setChoghadiyaError("लोकेशन मिलने में समय लग रहा है। कृपया दोबारा प्रयास करें।");
+      } else {
+        setChoghadiyaError("लोकेशन प्राप्त करने में त्रुटि। कृपया शहर का नाम लिखकर खोजें।");
+      }
+      setChoghadiyaLoading(false);
+    } finally {
+      setChoghadiyaLoading(false);
+    }
   };
 
   // --- Precise Astronomical Calculations ---
@@ -1391,9 +1412,10 @@ function MainApp() {
 
   const bindGestures = useGesture(
     {
-      onDrag: ({ swipe: [swipeX] }) => {
-        if (swipeX === -1) handleSwipe("left"); // Swiped left
-        if (swipeX === 1) handleSwipe("right"); // Swiped right
+      onDragEnd: ({ swipe: [swipeX], movement: [mx] }) => {
+        // Trigger if it's a fast swipe OR if the user dragged more than 60px
+        if (swipeX === -1 || mx < -60) handleSwipe("left");
+        else if (swipeX === 1 || mx > 60) handleSwipe("right");
       },
       onPinch: ({ delta: [d] }) => {
         setFontSize((s) => {
@@ -1403,7 +1425,12 @@ function MainApp() {
       },
     },
     {
-      drag: { axis: 'x', filterTaps: true, swipe: { distance: 50 } },
+      drag: { 
+        axis: 'x', 
+        filterTaps: true, 
+        swipe: { distance: 30, velocity: 0.2 }, 
+        touchAction: 'pan-y' 
+      },
       pinch: { eventOptions: { passive: false } },
     },
   );
@@ -3449,31 +3476,35 @@ function MainApp() {
           {/* Mini Player */}
           <AnimatePresence>
             {isAudioActive && playingSabad?.audioUrl && !isMiniPlayerDismissed && (currentScreen !== "audio_reading" || playingSabad.id !== selectedSabad?.id) && (
-              <AudioPlayer
-                url={playingSabad.audioUrl}
-                title={playingSabad.title}
-                variant="mini"
-                onClose={() => {
-                  if (globalAudio) globalAudio.pause();
-                  clearMediaSession();
-                  setIsMiniPlayerDismissed(true);
-                  setIsAudioActive(false);
-                  setPlayingSabad(null);
-                }}
-                onClick={() => {
-                  setSelectedSabad(playingSabad);
-                  if (currentScreen !== "audio_reading") {
-                    navigateTo("audio_reading");
-                  }
-                }}
-                onNext={() => handleAudioSwipe("left")}
-                onPrev={() => handleAudioSwipe("right")}
-                onEnded={handleAudioEnded}
-                autoPlay={autoPlayAudio}
-                onPlay={() => setAutoPlayAudio(true)}
-                onPause={() => setAutoPlayAudio(false)}
-                logoUrl={settings.logoUrl}
-              />
+              <div className={settings.isAdEnabled !== false ? "mb-0" : "mb-2"}>
+                <AudioPlayer
+                  url={playingSabad.audioUrl}
+                  title={playingSabad.title}
+                  variant="mini"
+                  playingSabad={playingSabad}
+                  selectedSabad={selectedSabad}
+                  onClose={() => {
+                    if (globalAudio) globalAudio.pause();
+                    clearMediaSession();
+                    setIsMiniPlayerDismissed(true);
+                    setIsAudioActive(false);
+                    setPlayingSabad(null);
+                  }}
+                  onClick={() => {
+                    setSelectedSabad(playingSabad);
+                    if (currentScreen !== "audio_reading") {
+                      navigateTo("audio_reading");
+                    }
+                  }}
+                  onNext={() => handleAudioSwipe("left")}
+                  onPrev={() => handleAudioSwipe("right")}
+                  onEnded={handleAudioEnded}
+                  autoPlay={autoPlayAudio}
+                  onPlay={() => setAutoPlayAudio(true)}
+                  onPause={() => setAutoPlayAudio(false)}
+                  logoUrl={settings.logoUrl}
+                />
+              </div>
             )}
           </AnimatePresence>
 

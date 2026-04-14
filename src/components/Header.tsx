@@ -15,6 +15,16 @@ function Header({
   unreadCount: number;
   onNotificationClick: () => void;
 }) {
+  const [isScrolled, setIsScrolled] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 10);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
   const [clickCount, setClickCount] = useState(0);
 
   const handleLogoClick = () => {
@@ -40,7 +50,7 @@ function Header({
   }, [clickCount]);
 
   return (
-    <header className="sticky top-0 z-40 bg-paper/95 backdrop-blur-md border-b border-ink/10 px-4 py-2 pt-safe flex items-center justify-between shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
+    <header className={`sticky top-0 z-40 bg-paper/95 backdrop-blur-md border-b border-ink/10 px-4 py-2 pt-safe flex items-center justify-between transition-shadow duration-300 ${isScrolled ? 'shadow-[0_4px_20px_rgba(0,0,0,0.08)]' : 'shadow-none'}`}>
       <div
         className="flex items-center gap-3 cursor-pointer"
         onClick={handleLogoClick}
