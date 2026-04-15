@@ -59,7 +59,6 @@ import { useGesture } from "@use-gesture/react";
 import SunCalc from "suncalc";
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
-import { Device } from '@capacitor/device';
 import { Geolocation } from '@capacitor/geolocation';
 import { ScreenOrientation } from '@capacitor/screen-orientation';
 import { StatusBar, Style } from '@capacitor/status-bar';
@@ -1078,9 +1077,11 @@ function MainApp() {
     } catch (error: any) {
       console.error("Location error:", error);
       const errorMsg = error.message?.toLowerCase() || "";
-      
-      setChoghadiyaError("लोकेशन की अनुमति नहीं मिली। कृपया सेटिंग्स में जाकर अनुमति दें या सीधे अपने शहर का नाम लिखकर खोजें।");
-      setChoghadiyaLoading(false);
+      if (error.code === 2 || errorMsg.includes("disabled") || errorMsg.includes("unavailable") || errorMsg.includes("location services")) {
+        setChoghadiyaError("कृपया अपने मोबाइल की लोकेशन (GPS) चालू करें।");
+      } else {
+        setChoghadiyaError("लोकेशन की अनुमति नहीं मिली। कृपया सेटिंग्स में जाकर अनुमति दें या सीधे अपने शहर का नाम लिखकर खोजें।");
+      }
     } finally {
       setChoghadiyaLoading(false);
     }
@@ -2027,7 +2028,7 @@ function MainApp() {
             </div>
 
             {/* Premium Grid Layout for Main Categories - Compact 3-Column Design */}
-            <div className="grid grid-cols-3 gap-3 px-4 mt-2 flex-1 overflow-y-auto pb-4 hide-scrollbar">
+            <div className="grid grid-cols-3 gap-x-3 gap-y-2 px-4 mt-2 flex-1 overflow-y-auto pb-4 hide-scrollbar">
               {isLoading ? (
                 [...Array(12)].map((_, i) => <CategorySkeleton key={i} />)
               ) : (
@@ -2284,17 +2285,17 @@ function MainApp() {
           >
             <PremiumHeader title="डिजिटल जाप माला" onBack={() => navigateTo('home')} icon={Target} />
             
-            <div className="flex-1 flex flex-col items-center justify-center relative px-4 mt-8">
-              <div className="text-7xl font-heading text-accent mb-4 drop-shadow-sm z-10 flex items-center justify-center w-36 h-36 bg-white/50 rounded-full shadow-inner border border-ink/10">{malaCount}</div>
-              <div className="text-sm font-bold text-ink-light mb-12 bg-white/50 px-5 py-1.5 rounded-full border border-ink/10 z-10 mt-2">
+            <div className="flex-1 flex flex-col items-center justify-center relative px-4 mt-6">
+              <div className="text-6xl font-heading text-accent mb-3 drop-shadow-sm z-10 flex items-center justify-center w-32 h-32 bg-white/50 rounded-full shadow-inner border border-ink/10">{malaCount}</div>
+              <div className="text-sm font-bold text-ink-light mb-8 bg-white/50 px-5 py-1.5 rounded-full border border-ink/10 z-10 mt-2">
                 माला पूर्ण: <span className="text-accent-dark">{malaLaps}</span>
               </div>
               
-              <div className="relative flex items-center justify-center scale-90 sm:scale-100 mt-4 mb-8">
+              <div className="relative flex items-center justify-center scale-90 sm:scale-100 mt-4 mb-6">
                 {/* Decorative background rings */}
                 <div className="absolute flex items-center justify-center pointer-events-none opacity-5">
-                  <div className="w-64 h-64 rounded-full border-[15px] border-ink"></div>
-                  <div className="absolute w-80 h-80 rounded-full border-[2px] border-ink border-dashed"></div>
+                  <div className="w-60 h-60 rounded-full border-[12px] border-ink"></div>
+                  <div className="absolute w-76 h-76 rounded-full border-[2px] border-ink border-dashed"></div>
                 </div>
 
                 <button 
@@ -2309,7 +2310,7 @@ function MainApp() {
                       setMalaCount(c => c + 1);
                     }
                   }}
-                  className="relative w-56 h-56 rounded-full bg-gradient-to-br from-accent to-accent-dark text-white shadow-2xl flex items-center justify-center active:scale-95 transition-all border-[10px] border-white/30 group z-10"
+                  className="relative w-52 h-52 rounded-full bg-gradient-to-br from-accent to-accent-dark text-white shadow-2xl flex items-center justify-center active:scale-95 transition-all border-[8px] border-white/30 group z-10"
                 >
                   <div className="absolute inset-0 rounded-full bg-white/20 opacity-0 group-active:opacity-100 transition-opacity"></div>
                   <span className="text-3xl font-bold font-heading tracking-wider">जाप करें</span>
@@ -2328,7 +2329,7 @@ function MainApp() {
                     }
                   });
                 }} 
-                className="mt-12 flex items-center gap-2 text-ink-light hover:text-ink transition-colors bg-white/50 px-5 py-3 rounded-xl z-10 text-base font-bold"
+                className="mt-8 flex items-center gap-2 text-ink-light hover:text-ink transition-colors bg-white/50 px-5 py-3 rounded-xl z-10 text-base font-bold"
               >
                 <RotateCcw className="w-5 h-5" /> रीसेट करें
               </button>

@@ -71,11 +71,11 @@ export const clearMediaSession = async () => {
         album: '',
         artwork: []
       });
-      const actions: MediaSessionAction[] = [
+      const actions = [
         'play', 'pause', 'seekbackward', 'seekforward', 'previoustrack', 'nexttrack', 'seekto', 'stop'
       ];
       for (const action of actions) {
-        await MediaSession.setActionHandler({ action }, null);
+        await MediaSession.setActionHandler({ action: action as any }, null);
       }
     } catch (e) {}
   } else if ('mediaSession' in navigator) {

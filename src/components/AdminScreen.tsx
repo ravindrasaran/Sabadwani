@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { ChevronLeft, ShieldCheck, PlusCircle, CheckCircle, XCircle, Edit3, Pause, Play, Settings, BookOpenText, Upload, AlertCircle } from "lucide-react";
+import { ShieldCheck, PlusCircle, CheckCircle, XCircle, Edit3, Pause, Play, Settings, BookOpenText, Upload, AlertCircle } from "lucide-react";
 import PremiumHeader from "./PremiumHeader";
 
 export default function AdminScreen(props: any) {
