@@ -1079,32 +1079,7 @@ function MainApp() {
       console.error("Location error:", error);
       const errorMsg = error.message?.toLowerCase() || "";
       
-      if (error.code === 1 || errorMsg.includes("denied")) {
-        setChoghadiyaError("लोकेशन की अनुमति नहीं मिली। कृपया सेटिंग्स में जाकर अनुमति दें या सीधे अपने शहर का नाम लिखकर खोजें।");
-      } else if (error.code === 2 || errorMsg.includes("disabled") || errorMsg.includes("unavailable") || errorMsg.includes("location services")) {
-        setConfirmDialog({
-          isOpen: true,
-          title: "लोकेशन (GPS) बंद है",
-          message: "कृपया अपने मोबाइल की लोकेशन (GPS) चालू करें और फिर से प्रयास करें।",
-          onConfirm: () => setConfirmDialog(null),
-          confirmText: "ठीक है",
-          isAlert: true
-        });
-        setChoghadiyaError("कृपया मोबाइल की लोकेशन (GPS) चालू करें।");
-      } else if (error.code === 3 || errorMsg.includes("timeout")) {
-        setChoghadiyaError("लोकेशन मिलने में समय लग रहा है। कृपया दोबारा प्रयास करें।");
-      } else {
-        // Fallback for other errors (often GPS is off but throws a generic error)
-        setConfirmDialog({
-          isOpen: true,
-          title: "लोकेशन प्राप्त नहीं हुई",
-          message: "कृपया सुनिश्चित करें कि आपके मोबाइल की लोकेशन (GPS) चालू है और ऐप को अनुमति दी गई है।",
-          onConfirm: () => setConfirmDialog(null),
-          confirmText: "ठीक है",
-          isAlert: true
-        });
-        setChoghadiyaError("लोकेशन प्राप्त करने में त्रुटि। कृपया शहर का नाम लिखकर खोजें।");
-      }
+      setChoghadiyaError("लोकेशन की अनुमति नहीं मिली। कृपया सेटिंग्स में जाकर अनुमति दें या सीधे अपने शहर का नाम लिखकर खोजें।");
       setChoghadiyaLoading(false);
     } finally {
       setChoghadiyaLoading(false);
