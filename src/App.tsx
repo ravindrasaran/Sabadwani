@@ -4,10 +4,12 @@ import AudioPlayer from "./components/AudioPlayer";
 import PremiumHeader from "./components/PremiumHeader";
 import Header from "./components/Header";
 import AdBanner from "./components/AdBanner";
-import AmavasyaScreen from "./components/AmavasyaScreen";
+import { AmavasyaScreen, ChoghadiyaScreen, BichhudaScreen } from "./components/AstroScreens";
+import NotificationsPanel from "./components/NotificationsPanel";
 import NavItem from "./components/NavItem";
 import PremiumBanner from "./components/PremiumBanner";
-import CategoryCard from "./components/CategoryCard";
+import JaapMalaScreen from "./components/JaapMalaScreen";
+import CategoryGrid from "./components/CategoryGrid";
 import ShabadCard from "./components/ShabadCard";
 import AboutScreen from "./components/AboutScreen";
 import PrivacyScreen from "./components/PrivacyScreen";
@@ -17,7 +19,7 @@ import { useWakeLock } from "./hooks/useWakeLock";
 import { useSabadData } from "./hooks/useSabadData";
 import { generateAmavasyaForYear, getBichhudaList, getJD, getTithiName, getSamvat } from "./lib/astro";
 import { vibrate, checkIsOnline, getSearchSkeleton } from "./lib/utils";
-import { ShabadSkeleton, PostSkeleton, BannerSkeleton, CategorySkeleton, MelaSkeleton } from "./components/Skeleton";
+import { ShabadSkeleton, PostSkeleton, BannerSkeleton, MelaSkeleton } from "./components/Skeleton";
 import { globalAudio, setupGlobalMediaSessionListener, clearMediaSession } from "./lib/audioGlobals";
 import React, { useState, useEffect, useRef, useMemo, ReactNode } from "react";
 import {
@@ -39,12 +41,7 @@ import {
   Bookmark,
   Users,
   KeyRound,
-  X,
-  MapPin,
-  Loader2,
-  Target,
   ListOrdered,
-  RotateCcw,
   AlertTriangle,
   AlertCircle,
   Clock,
@@ -52,7 +49,6 @@ import {
   Hand,
   ChevronsDown,
   Pause,
-  MapPinOff,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useGesture } from "@use-gesture/react";
@@ -2028,109 +2024,11 @@ function MainApp() {
             </div>
 
             {/* Premium Grid Layout for Main Categories - Compact 3-Column Design */}
-            <div className="grid grid-cols-3 gap-x-3 gap-y-1 px-4 mt-1.5 flex-1 overflow-y-auto pb-4 hide-scrollbar">
-              {isLoading ? (
-                [...Array(12)].map((_, i) => <CategorySkeleton key={i} />)
-              ) : (
-                <>
-                  {/* 1. Sabadwani */}
-                  <CategoryCard
-                    onClick={() => handleOpenCategory("reading", "shabad_list")}
-                    icon={Book}
-                    titleLine1="संपूर्ण"
-                    titleLine2="सबदवाणी"
-                  />
-
-                  {/* 2. Amavasya */}
-                  <CategoryCard
-                    onClick={() => navigateTo("amavasya")}
-                    icon={CalendarDays}
-                    titleLine1="अमावस्या"
-                    titleLine2="दर्शन"
-                  />
-
-                  {/* 3. Aarti */}
-                  <CategoryCard
-                    onClick={() => handleOpenCategory("audio_reading", "category_list", "aarti")}
-                    icon={Music}
-                    titleLine1="आरती"
-                    titleLine2="संग्रह"
-                  />
-
-                  {/* 4. Bhajan */}
-                  <CategoryCard
-                    onClick={() => handleOpenCategory("audio_reading", "category_list", "bhajan")}
-                    icon={Music}
-                    titleLine1="भजन"
-                    titleLine2="संग्रह"
-                  />
-
-                  {/* 5. Sakhi */}
-                  <CategoryCard
-                    onClick={() => handleOpenCategory("audio_reading", "category_list", "sakhi")}
-                    icon={BookOpenText}
-                    titleLine1="साखी"
-                    titleLine2="संग्रह"
-                  />
-
-                  {/* 6. Mantra */}
-                  <CategoryCard
-                    onClick={() => handleOpenCategory("audio_reading", "category_list", "mantra")}
-                    icon={Music}
-                    titleLine1="गुरु"
-                    titleLine2="मंत्र"
-                  />
-
-                  {/* 7. Jap Mala */}
-                  <CategoryCard
-                    onClick={() => navigateTo("mala")}
-                    icon={Target}
-                    titleLine1="जाप"
-                    titleLine2="माला"
-                  />
-
-                  {/* 8. Mele */}
-                  <CategoryCard
-                    onClick={() => navigateTo("mele")}
-                    icon={Users}
-                    titleLine1="प्रमुख"
-                    titleLine2="मेले"
-                  />
-
-                  {/* 9. 29 Niyam */}
-                  <CategoryCard
-                    onClick={() => navigateTo("niyam")}
-                    icon={ListOrdered}
-                    titleLine1="२९"
-                    titleLine2="नियम"
-                  />
-
-                  {/* 10. Choghadiya */}
-                  <CategoryCard
-                    onClick={() => navigateTo("choghadiya")}
-                    icon={Sun}
-                    titleLine1="चौघड़िया"
-                    titleLine2="मुहूर्त"
-                  />
-
-                  {/* 11. Bichhuda */}
-                  <CategoryCard
-                    onClick={() => navigateTo("bichhuda")}
-                    icon={Book}
-                    titleLine1="बिछुड़ा (विदर)"
-                    titleLine2=""
-                  />
-
-                  {/* 12. Community */}
-                  <CategoryCard
-                    onClick={() => navigateTo("community_posts")}
-                    icon={HeartHandshake}
-                    titleLine1="भक्त"
-                    titleLine2="योगदान"
-                  />
-                </>
-              )}
-            </div>
+            <CategoryGrid 
+              isLoading={isLoading} 
+              handleOpenCategory={handleOpenCategory} 
+              navigateTo={navigateTo} 
+            />
           </motion.div>
         );
 
@@ -2274,67 +2172,33 @@ function MainApp() {
 
       case "mala":
         return (
-          <motion.div
-            key="mala"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3, ease: "circOut" }}
-            style={{ willChange: "transform, opacity", transform: "translateZ(0)" }}
-            className="pb-32 min-h-screen flex flex-col bg-paper"
-          >
-            <PremiumHeader title="डिजिटल जाप माला" onBack={() => navigateTo('home')} icon={Target} />
-            
-            <div className="flex-1 flex flex-col items-center justify-center relative px-4 mt-2">
-              <div className="text-6xl font-heading text-accent mb-2 drop-shadow-sm z-10 flex items-center justify-center w-32 h-32 bg-white/50 rounded-full shadow-inner border border-ink/10">{malaCount}</div>
-              <div className="text-sm font-bold text-ink-light mb-6 bg-white/50 px-5 py-1.5 rounded-full border border-ink/10 z-10 mt-1">
-                माला पूर्ण: <span className="text-accent-dark">{malaLaps}</span>
-              </div>
-              
-              <div className="relative flex items-center justify-center scale-90 sm:scale-100 mt-4 mb-6">
-                {/* Decorative background rings */}
-                <div className="absolute flex items-center justify-center pointer-events-none opacity-5">
-                  <div className="w-60 h-60 rounded-full border-[12px] border-ink"></div>
-                  <div className="absolute w-76 h-76 rounded-full border-[2px] border-ink border-dashed"></div>
-                </div>
-
-                <button 
-                  onClick={() => {
-                    vibrate(12);
-                    playOmVishnu();
-                    if (malaCount + 1 >= 108) {
-                      vibrate([50, 30, 100, 30, 50]);
-                      setMalaCount(0);
-                      setMalaLaps(l => l + 1);
-                    } else {
-                      setMalaCount(c => c + 1);
-                    }
-                  }}
-                  className="relative w-52 h-52 rounded-full bg-gradient-to-br from-accent to-accent-dark text-white shadow-2xl flex items-center justify-center active:scale-95 transition-all border-[8px] border-white/30 group z-10"
-                >
-                  <div className="absolute inset-0 rounded-full bg-white/20 opacity-0 group-active:opacity-100 transition-opacity"></div>
-                  <span className="text-3xl font-bold font-heading tracking-wider">जाप करें</span>
-                </button>
-              </div>
-              
-              <button 
-                onClick={() => { 
-                  setConfirmDialog({
-                    isOpen: true,
-                    title: "माला रीसेट",
-                    message: "क्या आप वाकई माला रीसेट करना चाहते हैं?",
-                    onConfirm: () => {
-                      setMalaCount(0); 
-                      setMalaLaps(0); 
-                    }
-                  });
-                }} 
-                className="mt-8 flex items-center gap-2 text-ink-light hover:text-ink transition-colors bg-white/50 px-5 py-3 rounded-xl z-10 text-base font-bold"
-              >
-                <RotateCcw className="w-5 h-5" /> रीसेट करें
-              </button>
-            </div>
-          </motion.div>
+          <JaapMalaScreen
+            malaCount={malaCount}
+            malaLaps={malaLaps}
+            onBack={() => navigateTo('home')}
+            onJap={() => {
+              vibrate(12);
+              playOmVishnu();
+              if (malaCount + 1 >= 108) {
+                vibrate([50, 30, 100, 30, 50]);
+                setMalaCount(0);
+                setMalaLaps(l => l + 1);
+              } else {
+                setMalaCount(c => c + 1);
+              }
+            }}
+            onReset={() => {
+              setConfirmDialog({
+                isOpen: true,
+                title: "माला रीसेट",
+                message: "क्या आप वाकई माला रीसेट करना चाहते हैं?",
+                onConfirm: () => {
+                  setMalaCount(0);
+                  setMalaLaps(0);
+                }
+              });
+            }}
+          />
         );
 
       case "niyam":
@@ -2969,254 +2833,30 @@ function MainApp() {
 
       case "choghadiya":
         return (
-          <motion.div
-            key="choghadiya"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="pb-32 bg-paper min-h-screen"
-          >
-            <PremiumHeader title="चौघड़िया मुहूर्त" onBack={() => navigateTo("home")} icon={Sun} />
-
-            <div className="px-4">
-              <div className="bg-white/90 p-6 rounded-3xl shadow-sm border border-ink/10 mb-6">
-              <div className="space-y-4 mb-6">
-                <div>
-                  <label className="block font-bold text-sm mb-1">
-                    तिथि (Date)
-                  </label>
-                  <input
-                    type="date"
-                    value={choghadiyaDate}
-                    onChange={(e) => setChoghadiyaDate(e.target.value)}
-                    className="w-full p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none font-medium"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-sm mb-1">
-                    स्थान (Location)
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={choghadiyaLocation}
-                      onChange={(e) => setChoghadiyaLocation(e.target.value)}
-                      placeholder="शहर का नाम दर्ज करें..."
-                      className="flex-1 p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none font-medium"
-                    />
-                    <button
-                      onClick={handleGetLocation}
-                      className="p-3 bg-accent/10 text-accent-dark rounded-xl hover:bg-accent/20 transition-colors"
-                      title="मेरी वर्तमान लोकेशन"
-                    >
-                      <MapPin className="w-5 h-5" />
-                    </button>
-                  </div>
-                </div>
-                <button
-                  onClick={() => calculateChoghadiya()}
-                  disabled={choghadiyaLoading}
-                  className="w-full p-3 bg-accent text-white font-bold rounded-xl hover:bg-accent-dark transition-colors flex items-center justify-center gap-2 shadow-sm"
-                >
-                  {choghadiyaLoading ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <Sun className="w-5 h-5" />
-                  )}
-                  मुहूर्त निकालें
-                </button>
-              </div>
-
-              {choghadiyaError && (
-                <motion.div 
-                  initial={{ opacity: 0, y: -10, scale: 0.95 }} 
-                  animate={{ opacity: 1, y: 0, scale: 1 }} 
-                  className="mb-6 p-4 sm:p-5 bg-gradient-to-br from-red-50 to-red-100/50 text-red-800 rounded-[1.25rem] text-sm flex flex-col sm:flex-row items-center gap-3 sm:gap-4 justify-center text-center sm:text-left border border-red-200/60 shadow-[0_4px_15px_-5px_rgba(239,68,68,0.15)]"
-                >
-                  <div className="bg-red-100/80 p-2.5 rounded-full shrink-0 shadow-sm">
-                    <MapPinOff className="w-6 h-6 text-red-600" />
-                  </div>
-                  <div className="flex-1">
-                    <span className="text-red-800 font-medium leading-snug">{choghadiyaError}</span>
-                  </div>
-                </motion.div>
-              )}
-
-              {!choghadiyaLoading &&
-                !choghadiyaError &&
-                choghadiyaSlots.day.length > 0 && (
-                  <div className="space-y-6">
-                    <div>
-                      <h3 className="font-bold text-lg text-accent-dark mb-3 flex items-center gap-2">
-                        <Sun className="w-5 h-5" /> दिन का चौघड़िया
-                      </h3>
-                      <div className="grid grid-cols-1 gap-2">
-                        {choghadiyaSlots.day.map((slot, idx) => {
-                          const now = new Date();
-                          const isCurrent = now >= slot.startTime && now < slot.endTime;
-                          return (
-                          <div
-                            key={`day-${slot.name}-${idx}`}
-                            id={isCurrent ? "current-choghadiya-slot" : undefined}
-                            className={`flex justify-between p-3 rounded-xl border ${isCurrent ? "ring-2 ring-accent shadow-md scale-[1.02] transition-transform" : ""} ${slot.type === "good" ? "bg-green-50 border-green-200 text-green-800" : slot.type === "bad" ? "bg-red-50 border-red-200 text-red-800" : "bg-blue-50 border-blue-200 text-blue-800"}`}
-                          >
-                            <div className="flex flex-col">
-                              <span className="font-bold">{slot.name}</span>
-                              {isCurrent && <span className="text-xs font-bold text-accent">अभी चल रहा है</span>}
-                            </div>
-                            <span className="text-sm font-medium flex items-center">
-                              {slot.time}
-                            </span>
-                          </div>
-                        )})}
-                      </div>
-                    </div>
-
-                    <div>
-                      <h3 className="font-bold text-lg text-ink mb-3 flex items-center gap-2">
-                        <Book className="w-5 h-5" /> रात का चौघड़िया
-                      </h3>
-                      <div className="grid grid-cols-1 gap-2">
-                        {choghadiyaSlots.night.map((slot, idx) => {
-                          const now = new Date();
-                          const isCurrent = now >= slot.startTime && now < slot.endTime;
-                          return (
-                          <div
-                            key={`night-${slot.name}-${idx}`}
-                            id={isCurrent ? "current-choghadiya-slot" : undefined}
-                            className={`flex justify-between p-3 rounded-xl border ${isCurrent ? "ring-2 ring-accent shadow-md scale-[1.02] transition-transform" : ""} ${slot.type === "good" ? "bg-green-50 border-green-200 text-green-800" : slot.type === "bad" ? "bg-red-50 border-red-200 text-red-800" : "bg-blue-50 border-blue-200 text-blue-800"}`}
-                          >
-                            <div className="flex flex-col">
-                              <span className="font-bold">{slot.name}</span>
-                              {isCurrent && <span className="text-xs font-bold text-accent">अभी चल रहा है</span>}
-                            </div>
-                            <span className="text-sm font-medium flex items-center">
-                              {slot.time}
-                            </span>
-                          </div>
-                        )})}
-                      </div>
-                    </div>
-                    <p className="text-xs text-ink-light mt-4 italic text-center">
-                      नोट: यह समय {choghadiyaLocation} के सटीक सूर्योदय/सूर्यास्त पर आधारित है।
-                      <br />
-                      गुरु जम्भेश्वर भगवान ने 365 दिन के हर क्षण को ही अच्छा माना है, उन्होंने इस प्रकार के आडंबरों से बिश्नोई समाज को मुक्त रखा है फिर भी आज के समय की मांग के लिए यहां दिए गए हैं।
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </motion.div>
+          <ChoghadiyaScreen
+            choghadiyaDate={choghadiyaDate}
+            setChoghadiyaDate={setChoghadiyaDate}
+            choghadiyaLocation={choghadiyaLocation}
+            setChoghadiyaLocation={setChoghadiyaLocation}
+            handleGetLocation={handleGetLocation}
+            calculateChoghadiya={calculateChoghadiya}
+            choghadiyaLoading={choghadiyaLoading}
+            choghadiyaError={choghadiyaError}
+            choghadiyaSlots={choghadiyaSlots}
+            handleBack={() => navigateTo("home")}
+          />
         );
 
       case "bichhuda":
         return (
-          <motion.div
-            key="bichhuda"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="pb-32 bg-paper min-h-screen"
-          >
-            <PremiumHeader title="बिछुड़ा (विदर)" onBack={() => navigateTo("home")} icon={Book} />
-
-            <div className="px-4 pt-4">
-              <div className="bg-white/90 p-6 rounded-3xl shadow-sm border border-ink/10 mb-6">
-              <div className="flex items-center justify-between mb-6 gap-2">
-                <h2 className="font-bold text-lg flex-1">बिछुड़ा तिथियां</h2>
-                <select
-                  value={bichhudaMonth}
-                  onChange={(e) => setBichhudaMonth(Number(e.target.value))}
-                  className="p-2 rounded-xl border border-ink/20 bg-white font-bold text-accent-dark text-sm"
-                >
-                  {Array.from({ length: 12 }, (_, i) =>
-                    new Date(2000, i, 1).toLocaleDateString("hi-IN", {
-                      month: "long",
-                    }),
-                  ).map((m, i) => (
-                    <option key={`month-${i}`} value={i}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={bichhudaYear}
-                  onChange={(e) => setBichhudaYear(Number(e.target.value))}
-                  className="p-2 rounded-xl border border-ink/20 bg-white font-bold text-accent-dark text-sm"
-                >
-                  {Array.from({ length: 101 }, (_, i) => new Date().getFullYear() - 50 + i).map((y) => (
-                    <option key={`year-${y}`} value={y}>
-                      {y}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-3 mb-8">
-                {bichhudaList
-                  .filter((item) => item.rawStart.getMonth() === bichhudaMonth)
-                  .map((item) => (
-                    <div
-                      key={item.start}
-                      className={`bg-paper p-4 rounded-2xl border flex flex-col relative overflow-hidden transition-all ${
-                        item.isRunning 
-                          ? "border-accent/50 ring-2 ring-accent/20 shadow-sm" 
-                          : item.isUpcoming 
-                            ? "border-accent/50 ring-1 ring-accent/20" 
-                            : "border-ink/20"
-                      }`}
-                    >
-                      {item.isRunning && (
-                        <div className="absolute top-0 right-0 bg-accent text-white text-[10px] font-bold px-2 py-0.5 rounded-bl-lg flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></span>
-                          चल रहा है
-                        </div>
-                      )}
-                      {item.isUpcoming && (
-                        <div className="absolute top-0 right-0 bg-accent text-white text-[10px] font-bold px-2 py-0.5 rounded-bl-lg">
-                          आगामी
-                        </div>
-                      )}
-                      <span className="font-bold text-accent-dark mb-2 text-lg">
-                        {item.monthName} {bichhudaYear}
-                      </span>
-                      <div className="flex flex-col gap-1 text-sm text-ink-light">
-                        <span className="flex justify-between border-b border-ink/5 pb-1">
-                          <span>प्रारंभ:</span>{" "}
-                          <span className="font-semibold text-ink">
-                            {item.start}
-                          </span>
-                        </span>
-                        <span className="flex justify-between pt-1">
-                          <span>समाप्त:</span>{" "}
-                          <span className="font-semibold text-ink">
-                            {item.end}
-                          </span>
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-              </div>
-
-              <div className="space-y-4">
-                <div className="bg-red-50 p-4 rounded-2xl border border-red-100">
-                  <h3 className="font-bold text-lg mb-2 text-red-700">
-                    वर्जित कार्य
-                  </h3>
-                  <ul className="list-disc list-inside text-sm space-y-1 text-red-600">
-                    <li>लकड़ी या ईंधान इकट्ठा करना</li>
-                    <li>चारपाई या पलंग बुनवाना</li>
-                    <li>घर की छत ढलवाना</li>
-                    <li>दक्षिण दिशा की यात्रा करना</li>
-                  </ul>
-                </div>
-                <p className="text-xs text-ink-light mt-4 italic text-center">
-                  नोट: गुरु जम्भेश्वर भगवान ने 365 दिन के हर क्षण को ही अच्छा माना है, उन्होंने इस प्रकार के आडंबरों से बिश्नोई समाज को मुक्त रखा है फिर भी आज के समय की मांग के लिए यहां दिए गए हैं।
-                </p>
-              </div>
-            </div>
-            </div>
-          </motion.div>
+          <BichhudaScreen
+            bichhudaMonth={bichhudaMonth}
+            setBichhudaMonth={setBichhudaMonth}
+            bichhudaYear={bichhudaYear}
+            setBichhudaYear={setBichhudaYear}
+            bichhudaList={bichhudaList}
+            handleBack={() => navigateTo("home")}
+          />
         );
 
       case "mele":
@@ -3418,61 +3058,14 @@ function MainApp() {
       </div>
 
       {/* Notifications Panel */}
-      <AnimatePresence>
-        {showNotifications && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="absolute top-[60px] right-4 w-80 bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-ink/10 z-50 overflow-hidden"
-          >
-            <div className="p-4 border-b border-ink/10 flex justify-between items-center bg-paper/50">
-              <h3 className="font-bold text-ink">नोटिफिकेशन्स</h3>
-              <div className="flex gap-3">
-                {unreadCount > 0 && (
-                  <button
-                    onClick={markAllRead}
-                    className="text-xs text-accent font-bold hover:underline"
-                  >
-                    Mark all read
-                  </button>
-                )}
-                <button
-                  onClick={() => setShowNotifications(false)}
-                  className="text-ink-light hover:text-ink"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-            <div className="max-h-80 overflow-y-auto">
-              {notifications.filter(n => !n.read).length === 0 ? (
-                <div className="p-6 text-center text-ink-light text-sm">
-                  कोई नया नोटिफिकेशन नहीं है।
-                </div>
-              ) : (
-                notifications.filter(n => !n.read).map((n) => (
-                  <div
-                    key={n.id}
-                    onClick={() => markRead(n.id)}
-                    className="p-4 border-b border-ink/5 last:border-0 bg-accent/5 cursor-pointer hover:bg-accent/10 transition-colors"
-                  >
-                    <div className="flex justify-between items-start mb-1">
-                      <h4 className="font-bold text-sm text-ink">{n.title}</h4>
-                      <span className="text-[10px] text-ink-light">
-                        {n.date}
-                      </span>
-                    </div>
-                    <p className="text-xs text-ink-light leading-relaxed">
-                      {n.message}
-                    </p>
-                  </div>
-                ))
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <NotificationsPanel
+        showNotifications={showNotifications}
+        setShowNotifications={setShowNotifications}
+        notifications={notifications}
+        unreadCount={unreadCount}
+        markAllRead={markAllRead}
+        markRead={markRead}
+      />
 
       {/* Fixed Bottom Section (Ad + Nav) */}
       {currentScreen !== "admin" && currentScreen !== "admin_login" && (
