@@ -42,6 +42,33 @@ export const updateMediaSessionMetadata = async (metadata: { title: string; arti
 
 export const updateMediaSessionState = async (state: 'playing' | 'paused' | 'none') => {
   if (isClearingSession && state !== 'none') return;
+  
+  // Handle Background Mode for Native Platforms
+  if (Capacitor.isNativePlatform() && (window as any).cordova?.plugins?.backgroundMode) {
+    const bgMode = (window as any).cordova.plugins.backgroundMode;
+    if (state === 'playing') {
+      if (!bgMode.isActive()) {
+        bgMode.enable();
+        bgMode.overrideBackButton();
+        bgMode.setDefaults({
+          title: 'सबदवाणी प्लेयर सक्रिय है',
+          text: 'भजन/आरती बैकग्राउंड में चल रही है',
+          icon: 'icon', // This should match your app icon name
+          color: 'F59E0B', // Accent color
+          resume: true,
+          hidden: false,
+          bigText: true
+        });
+      }
+    } else if (state === 'none' || state === 'paused') {
+      // We keep it enabled if paused to allow resuming from lock screen, 
+      // but disable if stopped (none)
+      if (state === 'none' && bgMode.isActive()) {
+        bgMode.disable();
+      }
+    }
+  }
+
   if (Capacitor.isNativePlatform()) {
     try {
       await MediaSession.setPlaybackState({ playbackState: state });
@@ -132,6 +159,20 @@ export const updateMediaSessionPosition = async (position: number, duration: num
 let isMediaSessionSetup = false;
 export const setupGlobalMediaSessionListener = async () => {
   isClearingSession = false; // Ensure we accept events when setting up a new listener
+  
+  // Initialize Background Mode if on Native Platform
+  if (Capacitor.isNativePlatform() && (window as any).cordova?.plugins?.backgroundMode) {
+    const bgMode = (window as any).cordova.plugins.backgroundMode;
+    bgMode.setDefaults({
+      title: 'सबदवाणी',
+      text: 'ऑडियो प्लेयर तैयार है',
+      icon: 'icon',
+      color: 'F59E0B',
+      resume: true,
+      hidden: true // Hidden until playback starts
+    });
+  }
+
   if (isMediaSessionSetup) return;
   isMediaSessionSetup = true;
 
