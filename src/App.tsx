@@ -2028,7 +2028,7 @@ function MainApp() {
             </div>
 
             {/* Premium Grid Layout for Main Categories - Compact 3-Column Design */}
-            <div className="grid grid-cols-3 gap-x-3 gap-y-2 px-4 mt-2 flex-1 overflow-y-auto pb-4 hide-scrollbar">
+            <div className="grid grid-cols-3 gap-x-3 gap-y-1 px-4 mt-1.5 flex-1 overflow-y-auto pb-4 hide-scrollbar">
               {isLoading ? (
                 [...Array(12)].map((_, i) => <CategorySkeleton key={i} />)
               ) : (
@@ -2285,9 +2285,9 @@ function MainApp() {
           >
             <PremiumHeader title="डिजिटल जाप माला" onBack={() => navigateTo('home')} icon={Target} />
             
-            <div className="flex-1 flex flex-col items-center justify-center relative px-4 mt-6">
-              <div className="text-6xl font-heading text-accent mb-3 drop-shadow-sm z-10 flex items-center justify-center w-32 h-32 bg-white/50 rounded-full shadow-inner border border-ink/10">{malaCount}</div>
-              <div className="text-sm font-bold text-ink-light mb-8 bg-white/50 px-5 py-1.5 rounded-full border border-ink/10 z-10 mt-2">
+            <div className="flex-1 flex flex-col items-center justify-center relative px-4 mt-2">
+              <div className="text-6xl font-heading text-accent mb-2 drop-shadow-sm z-10 flex items-center justify-center w-32 h-32 bg-white/50 rounded-full shadow-inner border border-ink/10">{malaCount}</div>
+              <div className="text-sm font-bold text-ink-light mb-6 bg-white/50 px-5 py-1.5 rounded-full border border-ink/10 z-10 mt-1">
                 माला पूर्ण: <span className="text-accent-dark">{malaLaps}</span>
               </div>
               

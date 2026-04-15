@@ -28,9 +28,7 @@ function Header({
   const [clickCount, setClickCount] = useState(0);
 
   const handleLogoClick = () => {
-    if (clickCount === 0) {
-      onNavigate("home");
-    }
+    onNavigate("home");
     setClickCount((prev) => prev + 1);
     if (clickCount + 1 >= 5) {
       if (isAdminAuthenticated) {
