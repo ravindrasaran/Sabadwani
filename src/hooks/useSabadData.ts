@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { collection, onSnapshot, doc } from "firebase/firestore";
+import { collection, query, orderBy, getDocs, getDocsFromCache, doc, getDoc, getDocFromCache } from "firebase/firestore";
 import { db } from "../firebase";
-import { SabadItem, AppSettings } from "../types";
+import { SabadItem, AppSettings, Thought, Mele, Notice, Badhai } from "../types";
 
 export const normalizeText = (text: any): string => {
   if (typeof text === 'string') return text;
@@ -14,21 +14,6 @@ export const normalizeText = (text: any): string => {
   return String(text || '');
 };
 
-export const sortItems = (items: SabadItem[]) => {
-  return items.sort((a, b) => {
-    if (a.sequence !== undefined && b.sequence !== undefined) {
-      return a.sequence - b.sequence;
-    }
-    if (a.sequence !== undefined) return -1;
-    if (b.sequence !== undefined) return 1;
-    
-    const numA = parseInt(a.title.match(/\d+/)?.[0] || "999999");
-    const numB = parseInt(b.title.match(/\d+/)?.[0] || "999999");
-    if (numA !== numB) return numA - numB;
-    return a.title.localeCompare(b.title);
-  });
-};
-
 export function useSabadData() {
   const [isLoading, setIsLoading] = useState(true);
   const [sabads, setSabads] = useState<SabadItem[]>([]);
@@ -36,10 +21,10 @@ export function useSabadData() {
   const [bhajans, setBhajans] = useState<SabadItem[]>([]);
   const [sakhis, setSakhis] = useState<SabadItem[]>([]);
   const [mantras, setMantras] = useState<SabadItem[]>([]);
-  const [thoughts, setThoughts] = useState<any[]>([]);
-  const [meles, setMeles] = useState<any[]>([]);
-  const [notices, setNotices] = useState<any[]>([]);
-  const [badhais, setBadhais] = useState<any[]>([]);
+  const [thoughts, setThoughts] = useState<Thought[]>([]);
+  const [meles, setMeles] = useState<Mele[]>([]);
+  const [notices, setNotices] = useState<Notice[]>([]);
+  const [badhais, setBadhais] = useState<Badhai[]>([]);
   const [pendingPosts, setPendingPosts] = useState<SabadItem[]>([]);
   const [settings, setSettings] = useState<AppSettings>({
     logoUrl: "",
@@ -52,141 +37,94 @@ export function useSabadData() {
   });
 
   useEffect(() => {
-    if (!db) return;
+    let mounted = true;
 
-    const unsubSabads = onSnapshot(collection(db, "shabads"), (snapshot) => {
-      if (!snapshot.empty) {
-        const fetched = snapshot.docs.map((doc) => {
-          const data = doc.data();
-          let title = normalizeText(data.title);
-          title = title.replace(/^\|\|\s*/, "").replace(/\s*\|\|$/, "");
-          return { id: doc.id, ...data, title, text: normalizeText(data.text), type: data.type || "शब्द" } as SabadItem;
-        });
-        setSabads(sortItems(fetched));
-      } else {
-        setSabads([]);
+    async function fetchWithStaleWhileRevalidate(
+      collName: string, 
+      type: string, 
+      setter: any, 
+      hasSequence: boolean = true,
+      customMapper?: (doc: any) => any
+    ) {
+      if (!db) return;
+      
+      let q = collection(db, collName) as any;
+      if (hasSequence) {
+        q = query(q, orderBy("sequence", "asc"));
       }
-      setIsLoading(false);
-    });
-    const unsubAartis = onSnapshot(collection(db, "aartis"), (snapshot) => {
-      if (!snapshot.empty) {
-        const fetched = snapshot.docs.map((doc) => {
-          const data = doc.data();
-          let title = normalizeText(data.title);
-          title = title.replace(/^\|\|\s*/, "").replace(/\s*\|\|$/, "");
-          return { id: doc.id, ...data, title, text: normalizeText(data.text), type: data.type || "आरती" } as SabadItem;
-        });
-        setAartis(sortItems(fetched));
-      } else {
-        setAartis([]);
-      }
-    });
-    const unsubBhajans = onSnapshot(collection(db, "bhajans"), (snapshot) => {
-      if (!snapshot.empty) {
-        const fetched = snapshot.docs.map((doc) => {
-          const data = doc.data();
-          let title = normalizeText(data.title);
-          title = title.replace(/^\|\|\s*/, "").replace(/\s*\|\|$/, "");
-          return { id: doc.id, ...data, title, text: normalizeText(data.text), type: data.type || "भजन" } as SabadItem;
-        });
-        setBhajans(sortItems(fetched));
-      } else {
-        setBhajans([]);
-      }
-    });
-    const unsubSakhis = onSnapshot(collection(db, "sakhis"), (snapshot) => {
-      if (!snapshot.empty) {
-        const fetched = snapshot.docs.map((doc) => {
-          const data = doc.data();
-          let title = normalizeText(data.title);
-          title = title.replace(/^\|\|\s*/, "").replace(/\s*\|\|$/, "");
-          return { id: doc.id, ...data, title, text: normalizeText(data.text), type: data.type || "साखी" } as SabadItem;
-        });
-        setSakhis(sortItems(fetched));
-      } else {
-        setSakhis([]);
-      }
-    });
-    const unsubMantras = onSnapshot(collection(db, "mantras"), (snapshot) => {
-      if (!snapshot.empty) {
-        const fetched = snapshot.docs.map((doc) => {
-          const data = doc.data();
-          let title = normalizeText(data.title);
-          title = title.replace(/^\|\|\s*/, "").replace(/\s*\|\|$/, "");
-          const text = normalizeText(data.text);
-          if (!title && text) {
-            title = text.split('\n')[0].substring(0, 30) + "...";
-          }
-          return { id: doc.id, ...data, title, text, type: data.type || "मंत्र" } as SabadItem;
-        });
-        setMantras(sortItems(fetched));
-      } else {
-        setMantras([]);
-      }
-    });
-    const unsubThoughts = onSnapshot(collection(db, "thoughts"), (snapshot) => {
-      if (!snapshot.empty) {
-        setThoughts(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data(), text: normalizeText(doc.data().text) })));
-      } else {
-        setThoughts([]);
-      }
-    });
-    const unsubMeles = onSnapshot(collection(db, "meles"), (snapshot) => {
-      if (!snapshot.empty) {
-        setMeles(snapshot.docs.map((doc) => {
-          const data = doc.data();
-          return { id: doc.id, ...data, name: normalizeText(data.name), desc: normalizeText(data.desc), location: normalizeText(data.location) } as any;
-        }));
-      } else {
-        setMeles([]);
-      }
-    });
-    const unsubNotices = onSnapshot(collection(db, "notices"), (snapshot) => {
-      if (!snapshot.empty) {
-        setNotices(snapshot.docs.map((doc) => {
-          const data = doc.data();
-          return { id: doc.id, ...data, title: normalizeText(data.title), text: normalizeText(data.text) } as any;
-        }));
-      } else {
-        setNotices([]);
-      }
-    });
-    const unsubBadhais = onSnapshot(collection(db, "badhais"), (snapshot) => {
-      if (!snapshot.empty) {
-        setBadhais(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-      } else {
-        setBadhais([]);
-      }
-    });
-    const unsubPending = onSnapshot(collection(db, "pendingPosts"), (snapshot) => {
-      if (!snapshot.empty) {
-        setPendingPosts(snapshot.docs.map((doc) => {
-          const data = doc.data();
-          return { id: doc.id, ...data, title: normalizeText(data.title), text: normalizeText(data.text) } as SabadItem;
-        }));
-      } else {
-        setPendingPosts([]);
-      }
-    });
-    const unsubSettings = onSnapshot(doc(db, "settings", "general"), (doc) => {
-      if (doc.exists()) {
-        setSettings((prev) => ({ ...prev, ...doc.data() }));
-      }
-    });
 
-    return () => {
-      unsubSabads();
-      unsubAartis();
-      unsubBhajans();
-      unsubSakhis();
-      unsubMantras();
-      unsubThoughts();
-      unsubMeles();
-      unsubNotices();
-      unsubBadhais();
-      unsubPending();
-      unsubSettings();
-    };
+      const mapper = customMapper || ((docData: any) => {
+        const data = docData.data();
+        let title = normalizeText(data.title);
+        title = title.replace(/^\|\|\s*/, "").replace(/\s*\|\|$/, "");
+        const text = normalizeText(data.text);
+        let finalTitle = title;
+        if (!title && text && type === "मंत्र") {
+          finalTitle = text.split('\n')[0].substring(0, 30) + "...";
+        }
+        return { id: docData.id, ...data, title: finalTitle, text, type: data.type || type } as any;
+      });
+
+      // 1. Instant UI Paint: Try Cache First
+      try {
+        const cacheSnap = await getDocsFromCache(q);
+        if (!cacheSnap.empty && mounted) {
+          setter(cacheSnap.docs.map(mapper));
+          // If we successfully get Sabads from cache, we can turn off global loader instantly!
+          if (collName === "shabads") setIsLoading(false); 
+        }
+      } catch (e) {
+        // Cache miss
+      }
+
+      // 2. Background Sync: Fetch from Server
+      try {
+        const serverSnap = await getDocs(q); // Native getDocs is smart enough to do delta-sync to save quota
+        if (mounted) {
+          setter(serverSnap.docs.map(mapper));
+          if (collName === "shabads") setIsLoading(false);
+        }
+      } catch (e) {
+        // Complete offline scenario handled gracefully because cache is already there
+        console.warn(`Offline sync failed for ${collName}`);
+      }
+    }
+
+    async function loadSettings() {
+      if (!db) return;
+      const docRef = doc(db, "settings", "general");
+      try {
+        const cacheSnap = await getDocFromCache(docRef);
+        if (cacheSnap.exists() && mounted) setSettings((prev) => ({ ...prev, ...cacheSnap.data() }));
+      } catch(e) {}
+      
+      try {
+        const serverSnap = await getDoc(docRef);
+        if (serverSnap.exists() && mounted) setSettings((prev) => ({ ...prev, ...serverSnap.data() }));
+      } catch(e) {}
+    }
+
+    if (db) {
+      // Trigger all parallel load streams silently
+      loadSettings();
+      fetchWithStaleWhileRevalidate("shabads", "शब्द", setSabads, true);
+      fetchWithStaleWhileRevalidate("aartis", "आरती", setAartis, true);
+      fetchWithStaleWhileRevalidate("bhajans", "भजन", setBhajans, true);
+      fetchWithStaleWhileRevalidate("sakhis", "साखी", setSakhis, true);
+      fetchWithStaleWhileRevalidate("mantras", "मंत्र", setMantras, true);
+
+      // Meta Collections without sequence ordering
+      fetchWithStaleWhileRevalidate("thoughts", "thought", setThoughts, false, (doc) => ({ id: doc.id, text: normalizeText(doc.data().text), author: doc.data().author } as Thought));
+      fetchWithStaleWhileRevalidate("meles", "mele", setMeles, false, (doc) => ({ id: doc.id, name: normalizeText(doc.data().name), desc: normalizeText(doc.data().desc), location: normalizeText(doc.data().location), date: doc.data().date } as Mele));
+      fetchWithStaleWhileRevalidate("notices", "notice", setNotices, false, (doc) => ({ id: doc.id, title: normalizeText(doc.data().title), text: normalizeText(doc.data().text), active: doc.data().active } as Notice));
+      fetchWithStaleWhileRevalidate("badhais", "badhai", setBadhais, false, (doc) => ({ id: doc.id, title: doc.data().title, imageUrl: doc.data().imageUrl, active: doc.data().active } as Badhai));
+      fetchWithStaleWhileRevalidate("pendingPosts", "pending", setPendingPosts, false, (doc) => ({ id: doc.id, ...doc.data(), title: normalizeText(doc.data().title), text: normalizeText(doc.data().text) } as SabadItem));
+      
+      // Fallback timeout in case both cache and server fail to respond quickly
+      setTimeout(() => { if(mounted) setIsLoading(false); }, 3000);
+    }
+
+    return () => { mounted = false; };
   }, []);
 
   return { isLoading, sabads, aartis, bhajans, sakhis, mantras, thoughts, meles, notices, badhais, pendingPosts, settings, setSettings };

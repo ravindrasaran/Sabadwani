@@ -11,7 +11,7 @@ interface CategoryGridProps {
 
 const CategoryGrid: React.FC<CategoryGridProps> = ({ isLoading, handleOpenCategory, navigateTo }) => {
   return (
-    <div className="grid grid-cols-3 gap-x-3 gap-y-1 px-4 mt-1.5 flex-1 overflow-y-auto pb-4 hide-scrollbar">
+    <div className="grid grid-cols-3 gap-3 px-4 mt-2 flex-1 overflow-y-auto pb-12 hide-scrollbar">
       {isLoading ? (
         [...Array(12)].map((_, i) => <CategorySkeleton key={i} />)
       ) : (

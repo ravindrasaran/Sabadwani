@@ -1,10 +1,226 @@
 import { Capacitor } from '@capacitor/core';
-import { MediaSession } from '@capgo/capacitor-media-session';
+import { Playlist } from '@mustafaj/capacitor-plugin-playlist';
+import { AudioCacheService } from './AudioCacheService';
 
-export const globalAudio = typeof window !== 'undefined' ? new Audio() : null;
-if (globalAudio) {
-  globalAudio.crossOrigin = "anonymous";
-  globalAudio.preload = "metadata";
+class AudioWrapper {
+  private audio: HTMLAudioElement | null = null;
+  private isNative = Capacitor.isNativePlatform();
+  private listeners: { [key: string]: Function[] } = {};
+  
+  public _src = '';
+  public _currentTime = 0;
+  public _duration = 0;
+  public _paused = true;
+  public _ended = false;
+  public _volume = 1;
+  public _playbackRate = 1;
+  public _metadata: any = null;
+
+  constructor() {
+    if (!this.isNative && typeof window !== 'undefined') {
+      this.audio = new Audio();
+      this.audio.crossOrigin = "anonymous";
+      this.audio.preload = "metadata";
+      
+      const events = ['timeupdate', 'playing', 'play', 'pause', 'waiting', 'canplay', 'ended', 'error'];
+      events.forEach(evt => {
+        this.audio!.addEventListener(evt, (e) => {
+          this._currentTime = this.audio!.currentTime;
+          this._duration = this.audio!.duration;
+          this._paused = this.audio!.paused;
+          this._ended = this.audio!.ended;
+          this.emit(evt, e);
+        });
+      });
+    } else if (this.isNative) {
+      Playlist.initialize();
+      Playlist.addListener('status', (data: any) => {
+        const val = data.value as any;
+        if (val.currentPosition !== undefined) {
+          this._currentTime = val.currentPosition;
+          this._duration = val.duration || 0;
+          this.emit('timeupdate', {});
+        }
+        if (val.status === 'playing') {
+          this._paused = false;
+          this._ended = false;
+          this.emit('playing', {});
+          this.emit('play', {});
+        } else if (val.status === 'paused') {
+          this._paused = true;
+          this.emit('pause', {});
+        } else if (val.status === 'loading') {
+          this.emit('waiting', {});
+        } else if (val.status === 'ready') {
+          this.emit('canplay', {});
+        } else if (val.status === 'stopped' || (data.msgType === 'track_changed' && val.isAtEnd)) {
+          this._paused = true;
+          this._ended = true;
+          this.emit('ended', {});
+        }
+        
+        // Handle native media controls (Next/Prev from lock screen)
+        if (data.msgType === 'command') {
+           if (val.command === 'next' && globalAudioCallbacks?.onNext) {
+             globalAudioCallbacks.onNext();
+           } else if (val.command === 'previous' && globalAudioCallbacks?.onPrev) {
+             globalAudioCallbacks.onPrev();
+           }
+        }
+
+        if (data.msgType === 'error') {
+          this.emit('error', { name: 'NotAllowedError' });
+        }
+      });
+    }
+  }
+
+  get src() { return this._src; }
+  set src(val: string) {
+    this._src = val;
+    if (!val) {
+      if (this.audio) this.audio.src = '';
+      return;
+    }
+
+    if (this.isNative) {
+      // Async wrapper to handle caching logic
+      (async () => {
+        try {
+          const cachedUrl = await AudioCacheService.getLocalUrl(val);
+          
+          // If we fallback to remote, optionally trigger background cache
+          if (cachedUrl === val && val.startsWith('http')) {
+            AudioCacheService.downloadToCache(val);
+          }
+
+          await Playlist.setPlaylistItems({
+            items: [{
+              trackId: 'track1',
+              assetUrl: cachedUrl,
+              title: this._metadata?.title || 'सबदवाणी',
+              artist: this._metadata?.artist || 'बिश्नोई समाज',
+              album: this._metadata?.album || 'सबदवाणी',
+              albumArt: this._metadata?.artwork || 'https://bishnoi.co.in/logo.png',
+              isStream: cachedUrl.startsWith('http')
+            }],
+            options: { startPaused: true, retainPosition: false }
+          });
+        } catch (err) {
+          console.warn("Error setting playlist items with cache:", err);
+        }
+      })();
+    } else if (this.audio) {
+      this.audio.src = val;
+    }
+  }
+
+  get currentTime() { return this._currentTime; }
+  set currentTime(val: number) {
+    this._currentTime = val;
+    if (this.isNative) {
+      Playlist.seekTo({ position: val });
+    } else if (this.audio) {
+      this.audio.currentTime = val;
+    }
+  }
+
+  get duration() { return this._duration; }
+  get paused() { return this._paused; }
+  get ended() { return this._ended; }
+
+  get volume() { return this._volume; }
+  set volume(val: number) {
+    this._volume = val;
+    if (this.isNative) {
+      Playlist.setPlaybackVolume({ volume: val });
+    } else if (this.audio) {
+      this.audio.volume = val;
+    }
+  }
+
+  get playbackRate() { return this._playbackRate; }
+  set playbackRate(val: number) {
+    this._playbackRate = val;
+    if (this.isNative) {
+      Playlist.setPlaybackRate({ rate: val });
+    } else if (this.audio) {
+      this.audio.playbackRate = val;
+    }
+  }
+
+  load() {
+    if (this.audio) this.audio.load();
+  }
+
+  async play() {
+    if (this.isNative) {
+      await Playlist.play();
+      this._paused = false;
+    } else if (this.audio) {
+      return this.audio.play();
+    }
+  }
+
+  pause() {
+    if (this.isNative) {
+      Playlist.pause();
+      this._paused = true;
+    } else if (this.audio) {
+      this.audio.pause();
+    }
+  }
+
+  addEventListener(event: string, callback: Function) {
+    if (!this.listeners[event]) this.listeners[event] = [];
+    this.listeners[event].push(callback);
+  }
+
+  removeEventListener(event: string, callback: Function) {
+    if (this.listeners[event]) {
+      this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
+    }
+  }
+
+  private emit(event: string, data: any) {
+    if (this.listeners[event]) {
+      this.listeners[event].forEach(cb => cb(data));
+    }
+  }
+}
+
+export const globalAudio = new AudioWrapper();
+
+// Pro Feature: Smooth Fading Logic
+const FADE_DURATION = 500; // 0.5 seconds
+let fadeInterval: NodeJS.Timeout | null = null;
+
+export const fadeAudio = (targetVolume: number, onComplete?: () => void) => {
+  if (!globalAudio) return;
+  if (fadeInterval) clearInterval(fadeInterval);
+
+  const startVolume = globalAudio.volume;
+  const steps = 20;
+  const volumeStep = (targetVolume - startVolume) / steps;
+  const stepDuration = FADE_DURATION / steps;
+  let currentStep = 0;
+
+  fadeInterval = setInterval(() => {
+    currentStep++;
+    const nextVolume = startVolume + (volumeStep * currentStep);
+    globalAudio.volume = Math.max(0, Math.min(1, nextVolume));
+
+    if (currentStep >= steps) {
+      if (fadeInterval) clearInterval(fadeInterval);
+      globalAudio.volume = targetVolume;
+      if (onComplete) onComplete();
+    }
+  }, stepDuration);
+};
+
+// Pro Feature: Audio Focus Handling (For Calls/Other Media)
+if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
+  (navigator as any).mediaSession.playbackState = 'none';
 }
 
 export let globalAudioCallbacks: any = {};
@@ -14,23 +230,21 @@ export const setGlobalAudioCallbacks = (callbacks: any) => {
 
 export let isClearingSession = false;
 
-const DEFAULT_LOGO = '/logo.png';
+const DEFAULT_LOGO = 'https://bishnoi.co.in/logo.png';
 
 export const updateMediaSessionMetadata = async (metadata: { title: string; artist: string; album: string; artwork?: string }) => {
-  isClearingSession = false; // Reset clearing state if we are intentionally setting new metadata
+  isClearingSession = false;
   const artworkUrl = metadata.artwork || DEFAULT_LOGO;
-  if (Capacitor.isNativePlatform()) {
-    try {
-      await MediaSession.setMetadata({
-        title: metadata.title,
-        artist: metadata.artist,
-        album: metadata.album,
-        artwork: [{ src: artworkUrl, sizes: '512x512', type: 'image/png' }]
-      });
-    } catch (e) {
-      console.error("MediaSession setMetadata error:", e);
-    }
-  } else if ('mediaSession' in navigator) {
+  
+  // Save metadata for native plugin
+  globalAudio._metadata = {
+    title: metadata.title,
+    artist: metadata.artist,
+    album: metadata.album,
+    artwork: artworkUrl
+  };
+
+  if (!Capacitor.isNativePlatform() && 'mediaSession' in navigator) {
     navigator.mediaSession.metadata = new MediaMetadata({
       title: metadata.title,
       artist: metadata.artist,
@@ -43,39 +257,7 @@ export const updateMediaSessionMetadata = async (metadata: { title: string; arti
 export const updateMediaSessionState = async (state: 'playing' | 'paused' | 'none') => {
   if (isClearingSession && state !== 'none') return;
   
-  // Handle Background Mode for Native Platforms
-  if (Capacitor.isNativePlatform() && (window as any).cordova?.plugins?.backgroundMode) {
-    const bgMode = (window as any).cordova.plugins.backgroundMode;
-    if (state === 'playing') {
-      if (!bgMode.isActive()) {
-        bgMode.enable();
-        bgMode.overrideBackButton();
-        bgMode.setDefaults({
-          title: 'सबदवाणी प्लेयर सक्रिय है',
-          text: 'भजन/आरती बैकग्राउंड में चल रही है',
-          icon: 'icon', // This should match your app icon name
-          color: 'F59E0B', // Accent color
-          resume: true,
-          hidden: false,
-          bigText: true
-        });
-      }
-    } else if (state === 'none' || state === 'paused') {
-      // We keep it enabled if paused to allow resuming from lock screen, 
-      // but disable if stopped (none)
-      if (state === 'none' && bgMode.isActive()) {
-        bgMode.disable();
-      }
-    }
-  }
-
-  if (Capacitor.isNativePlatform()) {
-    try {
-      await MediaSession.setPlaybackState({ playbackState: state });
-    } catch (e) {
-      console.error("MediaSession setPlaybackState error:", e);
-    }
-  } else if ('mediaSession' in navigator) {
+  if (!Capacitor.isNativePlatform() && 'mediaSession' in navigator) {
     navigator.mediaSession.playbackState = state === 'none' ? 'none' : state;
   }
 };
@@ -84,104 +266,45 @@ export const clearMediaSession = async () => {
   isClearingSession = true;
   if (globalAudio) {
     globalAudio.pause();
-    // Forcefully clear the source to tell the browser this media is finished
     globalAudio.src = "";
     globalAudio.load();
   }
 
   if (Capacitor.isNativePlatform()) {
     try {
-      await MediaSession.setPlaybackState({ playbackState: 'none' });
-      await MediaSession.setMetadata({
-        title: '',
-        artist: '',
-        album: '',
-        artwork: []
-      });
-      const actions = [
-        'play', 'pause', 'seekbackward', 'seekforward', 'previoustrack', 'nexttrack', 'seekto', 'stop'
-      ];
-      for (const action of actions) {
-        await MediaSession.setActionHandler({ action: action as any }, null);
-      }
+      await Playlist.clearAllItems();
     } catch (e) {}
   } else if ('mediaSession' in navigator) {
-    // Setting playbackState to 'none' and metadata to null is the standard way to clear
     navigator.mediaSession.playbackState = 'none';
     navigator.mediaSession.metadata = null;
-    
-    // Explicitly remove all action handlers
-    const actions: MediaSessionAction[] = [
-      'play', 'pause', 'seekbackward', 'seekforward', 'previoustrack', 'nexttrack', 'seekto', 'stop'
-    ];
-    actions.forEach(action => {
-      try {
-        navigator.mediaSession.setActionHandler(action, null);
-      } catch (e) {}
-    });
   }
   
-  // Reset the setup flag so it can be re-initialized when a new player starts
-  isMediaSessionSetup = false;
-  
-  setTimeout(() => {
-    isClearingSession = false;
-  }, 500);
+  setTimeout(() => { isClearingSession = false; }, 500);
 };
 
 let lastPositionUpdate = 0;
 export const updateMediaSessionPosition = async (position: number, duration: number, playbackRate: number) => {
   if (isClearingSession) return;
   const now = Date.now();
-  // Throttle to once per second to avoid overwhelming the bridge
   if (now - lastPositionUpdate < 1000) return;
   lastPositionUpdate = now;
 
-  if (Capacitor.isNativePlatform()) {
+  if (!Capacitor.isNativePlatform() && 'mediaSession' in navigator && navigator.mediaSession.setPositionState) {
     try {
-      await MediaSession.setPositionState({
-        duration: duration,
-        playbackRate: playbackRate,
-        position: position
-      });
-    } catch (e) {}
-  } else if ('mediaSession' in navigator && navigator.mediaSession.setPositionState) {
-    try {
-      navigator.mediaSession.setPositionState({
-        duration: duration,
-        playbackRate: playbackRate,
-        position: position
-      });
+      navigator.mediaSession.setPositionState({ duration, playbackRate, position });
     } catch (e) {}
   }
 };
 
 let isMediaSessionSetup = false;
 export const setupGlobalMediaSessionListener = async () => {
-  isClearingSession = false; // Ensure we accept events when setting up a new listener
+  isClearingSession = false;
   
-  // Initialize Background Mode if on Native Platform
-  if (Capacitor.isNativePlatform() && (window as any).cordova?.plugins?.backgroundMode) {
-    const bgMode = (window as any).cordova.plugins.backgroundMode;
-    bgMode.setDefaults({
-      title: 'सबदवाणी',
-      text: 'ऑडियो प्लेयर तैयार है',
-      icon: 'icon',
-      color: 'F59E0B',
-      resume: true,
-      hidden: true // Hidden until playback starts
-    });
-  }
-
   if (isMediaSessionSetup) return;
   isMediaSessionSetup = true;
 
   const safeCallback = (cb: () => void) => {
-    try {
-      cb();
-    } catch (err) {
-      console.error("MediaSession callback error:", err);
-    }
+    try { cb(); } catch (err) {}
   };
 
   const handlers = {
@@ -216,18 +339,8 @@ export const setupGlobalMediaSessionListener = async () => {
   if (!Capacitor.isNativePlatform()) {
     if ('mediaSession' in navigator) {
       Object.entries(handlers).forEach(([action, handler]) => {
-        try {
-          navigator.mediaSession.setActionHandler(action as MediaSessionAction, handler);
-        } catch (e) {}
+        try { navigator.mediaSession.setActionHandler(action as MediaSessionAction, handler); } catch (e) {}
       });
-    }
-  } else {
-    try {
-      for (const [action, handler] of Object.entries(handlers)) {
-        await MediaSession.setActionHandler({ action: action as any }, handler);
-      }
-    } catch (e) {
-      console.error("Native MediaSession setup error:", e);
     }
   }
 };

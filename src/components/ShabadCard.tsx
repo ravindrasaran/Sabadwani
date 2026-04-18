@@ -12,7 +12,7 @@ const ShabadCard: React.FC<ShabadCardProps> = React.memo(({ title, icon: Icon, o
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-4 py-3.5 px-5 mx-2 my-1.5 bg-white/90 backdrop-blur-sm rounded-[1.25rem] border border-accent/10 hover:border-accent/30 hover:bg-white active:scale-[0.98] active:bg-accent/5 transition-all shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] hover:shadow-[0_8px_20px_-6px_rgba(0,0,0,0.1)] text-left group touch-manipulation relative overflow-hidden"
+      className="flex items-center gap-4 py-3.5 px-5 mx-2 my-1.5 w-[calc(100%-1rem)] bg-white/90 backdrop-blur-sm rounded-[1.25rem] border border-accent/10 hover:border-accent/30 hover:bg-white active:scale-[0.98] active:bg-accent/5 transition-all shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] hover:shadow-[0_8px_20px_-6px_rgba(0,0,0,0.1)] text-left group touch-manipulation relative overflow-hidden"
     >
       <div className="absolute inset-0 bg-gradient-to-r from-accent/0 via-accent/0 to-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
       

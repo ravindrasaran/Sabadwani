@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "motion/react";
 import { Play, Pause, ChevronLeft, ChevronRight, Loader2, AlertCircle, X } from "lucide-react";
-import { globalAudio, setGlobalAudioCallbacks, updateMediaSessionMetadata, updateMediaSessionState, updateMediaSessionPosition, setupGlobalMediaSessionListener } from "../lib/audioGlobals";
+import { globalAudio, setGlobalAudioCallbacks, updateMediaSessionMetadata, updateMediaSessionState, updateMediaSessionPosition, setupGlobalMediaSessionListener, fadeAudio } from "../lib/audioGlobals";
 import { checkIsOnline, vibrate } from "../lib/utils";
 
 const logger = {
@@ -271,26 +271,33 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
         }
       }
       
-      const playPromise = globalAudio.play();
-      if (playPromise !== undefined) {
-        playPromise.catch((e) => {
-          // Only handle non-abort errors
-          if (e.name !== 'AbortError') {
-            logger.error("Play failed:", e);
-            setIsPlaying(false);
-            
-            if (e.name === 'NotAllowedError') {
-              setLocalError("प्लेबैक शुरू करने के लिए कृपया बटन पर क्लिक करें।");
-            } else {
-              setLocalError("ऑडियो चलाने में समस्या आ रही है।");
+      // Pro Feature: Fade-in safely through wrapper function to prevent Race Conditions
+      fadeAudio(0, () => {
+        const playPromise = globalAudio.play();
+        if (playPromise !== undefined) {
+          playPromise.then(() => {
+            fadeAudio(1);
+          }).catch((e) => {
+            // Only handle non-abort errors
+            if (e.name !== 'AbortError') {
+              logger.error("Play failed:", e);
+              setIsPlaying(false);
+              
+              if (e.name === 'NotAllowedError') {
+                setLocalError("प्लेबैक शुरू करने के लिए कृपया बटन पर क्लिक करें।");
+              } else {
+                setLocalError("ऑडियो चलाने में समस्या आ रही है।");
+              }
             }
-          }
-        });
-      }
+          });
+        }
+      });
     } else {
-      // Pause logic
-      globalAudio.pause();
-      setIsPlaying(false);
+      // Pro Feature: Fade-out then pause
+      fadeAudio(0, () => {
+        globalAudio.pause();
+        setIsPlaying(false);
+      });
     }
   }, [url]);
 

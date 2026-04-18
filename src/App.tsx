@@ -1,54 +1,45 @@
 import ConfirmDialog from "./components/ConfirmDialog";
-import AdminScreen from "./components/AdminScreen";
 import AudioPlayer from "./components/AudioPlayer";
-import PremiumHeader from "./components/PremiumHeader";
 import Header from "./components/Header";
 import AdBanner from "./components/AdBanner";
-import { AmavasyaScreen, ChoghadiyaScreen, BichhudaScreen } from "./components/AstroScreens";
 import NotificationsPanel from "./components/NotificationsPanel";
 import NavItem from "./components/NavItem";
-import PremiumBanner from "./components/PremiumBanner";
-import JaapMalaScreen from "./components/JaapMalaScreen";
-import CategoryGrid from "./components/CategoryGrid";
-import ShabadCard from "./components/ShabadCard";
-import AboutScreen from "./components/AboutScreen";
-import PrivacyScreen from "./components/PrivacyScreen";
-import ContributeScreen from "./components/ContributeScreen";
-import DonateScreen from "./components/DonateScreen";
 import { useWakeLock } from "./hooks/useWakeLock";
 import { useSabadData } from "./hooks/useSabadData";
-import { generateAmavasyaForYear, getBichhudaList, getJD, getTithiName, getSamvat } from "./lib/astro";
+import { generateAmavasyaForYear, getBichhudaList } from "./lib/astro";
 import { vibrate, checkIsOnline, getSearchSkeleton } from "./lib/utils";
-import { ShabadSkeleton, PostSkeleton, BannerSkeleton, MelaSkeleton } from "./components/Skeleton";
 import { globalAudio, setupGlobalMediaSessionListener, clearMediaSession } from "./lib/audioGlobals";
-import React, { useState, useEffect, useRef, useMemo, ReactNode } from "react";
+import React, { useState, useEffect, useRef, useMemo, ReactNode, Suspense, lazy } from "react";
+import { useInitialSetup } from "./hooks/useInitialSetup";
+import { usePushNotifications } from "./hooks/usePushNotifications";
+import { useAppNotifications } from "./hooks/useAppNotifications";
+import { Preferences } from '@capacitor/preferences';
+
+const AdminScreen = lazy(() => import("./components/AdminScreen"));
+const JaapMalaScreen = lazy(() => import("./components/JaapMalaScreen"));
+const AboutScreen = lazy(() => import("./components/AboutScreen"));
+const PrivacyScreen = lazy(() => import("./components/PrivacyScreen"));
+const ContributeScreen = lazy(() => import("./components/ContributeScreen"));
+const DonateScreen = lazy(() => import("./components/DonateScreen"));
+const ReadingScreen = lazy(() => import("./components/screens/ReadingScreen"));
+const SearchScreen = lazy(() => import("./components/screens/SearchScreen"));
+const CommunityPostsScreen = lazy(() => import("./components/screens/CommunityPostsScreen"));
+const AdminLoginScreen = lazy(() => import("./components/screens/AdminLoginScreen"));
+const HomeScreen = lazy(() => import("./components/screens/HomeScreen"));
+const NiyamScreen = lazy(() => import("./components/screens/NiyamScreen"));
+const ShabadListScreen = lazy(() => import("./components/screens/ShabadListScreen"));
+const CategoryListScreen = lazy(() => import("./components/screens/CategoryListScreen"));
+const MelesScreen = lazy(() => import("./components/screens/MelesScreen"));
+const AmavasyaScreen = lazy(() => import("./components/AstroScreens").then(module => ({ default: module.AmavasyaScreen })));
+const ChoghadiyaScreen = lazy(() => import("./components/AstroScreens").then(module => ({ default: module.ChoghadiyaScreen })));
+const BichhudaScreen = lazy(() => import("./components/AstroScreens").then(module => ({ default: module.BichhudaScreen })));
 import {
-  Book,
   Home,
   Info,
-  ChevronLeft,
-  ChevronRight,
   CalendarDays,
-  BookOpenText,
-  Music,
-  Play,
-  Search,
-  PlusCircle,
-  Sun,
   ShieldCheck,
   HeartHandshake,
-  Share2,
-  Bookmark,
-  Users,
-  KeyRound,
-  ListOrdered,
   AlertTriangle,
-  AlertCircle,
-  Clock,
-  User,
-  Hand,
-  ChevronsDown,
-  Pause,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useGesture } from "@use-gesture/react";
@@ -56,16 +47,12 @@ import SunCalc from "suncalc";
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
-import { ScreenOrientation } from '@capacitor/screen-orientation';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { SplashScreen } from '@capacitor/splash-screen';
-import { AppUpdate } from '@capawesome/capacitor-app-update';
-import { LocalNotifications } from '@capacitor/local-notifications';
-import { PushNotifications } from '@capacitor/push-notifications';
-import { format, addDays } from "date-fns";
-import { hi } from "date-fns/locale";
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
-import { signInAnonymously, signInWithEmailAndPassword } from "firebase/auth";
+import { Routes, Route, useNavigate, useLocation, Navigate } from "react-router-dom";
+import { addDays } from "date-fns";
+import { collection, addDoc, updateDoc, deleteDoc, doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
+import { signInAnonymously } from "firebase/auth";
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
 import { db, auth, storage } from "./firebase";
 
@@ -87,19 +74,22 @@ class ErrorBoundary extends React.Component<{ children: ReactNode }, { hasError:
     this.state = { hasError: false, error: null };
   }
 
-  static getDerivedStateFromError(error: Error) {
-    return { hasError: true, error };
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    // Log the error to Firebase
+    console.error("ErrorBoundary caught an error:", error, errorInfo);
+    
+    // In a premium setup, we log to Crashlytics here. 
+    // Assuming standard Firebase SDK availability:
+    // logEvent(analytics, 'app_crash', { error: error.message, componentStack: errorInfo.componentStack });
   }
-
-
 
   render() {
     if (this.state.hasError) {
       return (
         <div className="min-h-screen max-w-md mx-auto relative shadow-2xl bg-paper flex flex-col items-center justify-center p-6 text-center">
           <AlertTriangle className="w-16 h-16 text-red-500 mb-4" />
-          <h1 className="text-2xl font-bold text-ink mb-2">कुछ गलत हो गया</h1>
-          <p className="text-ink-light mb-6">क्षमा करें, ऐप में कोई तकनीकी समस्या आ गई है। कृपया ऐप को रीस्टार्ट करें।</p>
+          <h1 className="text-2xl font-bold text-ink mb-2">तकनीकी समस्या</h1>
+          <p className="text-ink-light mb-6">क्षमा करें, ऐप में कोई तकनीकी समस्या आ गई है। इसे ठीक करने की रिपोर्ट भेज दी गई है। कृपया ऐप को रीस्टार्ट करें।</p>
           <button
             onClick={() => window.location.reload()}
             className="bg-accent text-white px-6 py-3 rounded-full font-bold shadow-lg"
@@ -114,14 +104,6 @@ class ErrorBoundary extends React.Component<{ children: ReactNode }, { hasError:
 }
 
 import { Screen, SabadItem } from "./types";
-
-type Notification = {
-  id: string;
-  title: string;
-  message: string;
-  date: string;
-  read: boolean;
-};
 
 const niyamList = [
   "तीस दिन सूतक रखना (जन्म के बाद 30 दिन तक सूतक मानना)।",
@@ -157,137 +139,55 @@ const niyamList = [
 
 // --- Components ---
 
+import { useAppStore } from "./store/useAppStore";
+
 function MainApp() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const paymentIntentPending = useRef(false);
 
-  useEffect(() => {
-    setupGlobalMediaSessionListener();
-
-    // Web fallback for payment return message
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && paymentIntentPending.current) {
-        paymentIntentPending.current = false;
-        setTimeout(() => {
-          showToast("सहयोग के प्रयास के लिए आपका बहुत-बहुत धन्यवाद! 🙏");
-        }, 500);
-      }
-    };
-    
-    if (!Capacitor.isNativePlatform()) {
-      document.addEventListener('visibilitychange', handleVisibilityChange);
-    }
-
-    const performAppUpdate = async () => {
-      if (Capacitor.isNativePlatform()) {
-        try {
-          // Request notification permissions for Android 13+
-          const perm = await LocalNotifications.checkPermissions();
-          if (perm.display !== 'granted') {
-            await LocalNotifications.requestPermissions();
-          }
-
-          const result = await AppUpdate.getAppUpdateInfo();
-          if (result.updateAvailability === 2) { // UPDATE_AVAILABLE
-            if (result.immediateUpdateAllowed) {
-              await AppUpdate.performImmediateUpdate();
-            } else if (result.flexibleUpdateAllowed) {
-              await AppUpdate.startFlexibleUpdate();
-            }
-          }
-        } catch (error) {
-          console.error("App update check failed:", error);
-        }
-      }
-    };
-
-    const setupPushNotifications = async () => {
-      if (Capacitor.isNativePlatform()) {
-        try {
-          let permStatus = await PushNotifications.checkPermissions();
-          if (permStatus.receive !== 'granted') {
-            permStatus = await PushNotifications.requestPermissions();
-          }
-
-          if (permStatus.receive === 'granted') {
-            await PushNotifications.register();
-          }
-
-          PushNotifications.addListener('registration', (token) => {
-            console.log('Push registration success, token: ' + token.value);
-            // Optionally save this token to Firestore for the user if authenticated
-          });
-
-          PushNotifications.addListener('registrationError', (error: any) => {
-            console.error('Error on registration: ' + JSON.stringify(error));
-          });
-
-          PushNotifications.addListener('pushNotificationReceived', (notification) => {
-            console.log('Push received: ' + JSON.stringify(notification));
-            // Show local notification or toast if app is in foreground
-            showToast(`नई सूचना: ${notification.title}`);
-          });
-
-          PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
-            console.log('Push action performed: ' + JSON.stringify(notification));
-            // Handle navigation or action when user taps notification
-          });
-
-        } catch (error) {
-          console.error("Push notification setup failed:", error);
-        }
-      }
-    };
-
-    performAppUpdate();
-    setupPushNotifications();
-
-    // Lock screen orientation to portrait
-    if (Capacitor.isNativePlatform()) {
-      ScreenOrientation.lock({ orientation: 'portrait' }).catch(console.error);
-    }
-  }, []);
+  const {
+    currentScreen, setCurrentScreen,
+    selectedSabad, setSelectedSabad,
+    playingSabad, setPlayingSabad,
+    isAudioActive, setIsAudioActive,
+    selectedCategory, setSelectedCategory,
+    readingTheme, setReadingTheme,
+    fontSize, setFontSize,
+    hasSeenSwipeHint, setHasSeenSwipeHint,
+    autoPlayAudio, setAutoPlayAudio,
+    isMiniPlayerDismissed, setIsMiniPlayerDismissed,
+    slideDir, setSlideDir
+  } = useAppStore();
 
   const showToast = (message: string) => {
     setToastMessage(message);
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  const historyIndex = useRef(
-    typeof window !== 'undefined' && window.history.state && window.history.state.index !== undefined 
-      ? window.history.state.index 
-      : 0
-  );
+  useInitialSetup(paymentIntentPending, showToast, setupGlobalMediaSessionListener);
+  usePushNotifications(showToast);
+
+  const navigate = useNavigate();
+  const location = useLocation();
   const openedDirectlyRef = useRef(false);
 
-  const [currentScreen, setCurrentScreen] = useState<Screen>(() => {
-    if (typeof window !== 'undefined' && window.history.state && window.history.state.screen) {
-      return window.history.state.screen;
-    }
-    return "home";
-  });
-
+  // Sync route back to currentScreen in store
   useEffect(() => {
-    if (!window.history.state) {
-      window.history.replaceState({ screen: currentScreen, index: historyIndex.current }, "", `#${currentScreen}`);
+    const route = location.pathname.substring(1) || 'home';
+    if (route !== currentScreen) {
+      setCurrentScreen(route as Screen);
     }
+  }, [location.pathname]);
 
-    const handlePopState = (event: PopStateEvent) => {
-      if (event.state && event.state.screen) {
-        setCurrentScreen(event.state.screen);
-        historyIndex.current = event.state.index || 0;
-      } else {
-        setCurrentScreen("home");
-        historyIndex.current = 0;
-      }
-    };
-
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
-  const [isAudioActive, setIsAudioActive] = useState(false);
-
-
+  // Scroll to top instantly without jitter when route changes
+  useEffect(() => {
+    // Only scroll after a small timeout to let 'AnimatePresence mode=wait' finish unmounting the old screen.
+    // Otherwise, scrolling will disrupt the unmount animation coordinate space resulting in a 'jhatka'.
+    const t = setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: "instant" });
+    }, 150);
+    return () => clearTimeout(t);
+  }, [location.pathname]);
 
   useEffect(() => {
     if (Capacitor.isNativePlatform()) {
@@ -319,15 +219,6 @@ function MainApp() {
     }
   }, []);
 
-  const [selectedSabad, setSelectedSabad] = useState<SabadItem | null>(null);
-  const [playingSabad, setPlayingSabad] = useState<SabadItem | null>(null);
-  const [isMiniPlayerDismissed, setIsMiniPlayerDismissed] = useState(false);
-  const [fontSize, setFontSize] = useState(20);
-  const [slideDir, setSlideDir] = useState(1);
-  const [hasSeenSwipeHint, setHasSeenSwipeHint] = useState(() => {
-    return localStorage.getItem("hasSeenSwipeHint") === "true";
-  });
-
   useWakeLock(currentScreen, isAudioActive);
 
   // Global safety: Manage media session based on player visibility
@@ -348,25 +239,23 @@ function MainApp() {
     setIsMiniPlayerDismissed(false);
   }, [selectedSabad]);
 
-  const [selectedCategory, setSelectedCategory] = useState<"aarti" | "bhajan" | "sakhi" | "mantra">("aarti");
-
   // Save last read sabad when it changes
   useEffect(() => {
     if (selectedSabad && (currentScreen === "reading" || currentScreen === "audio_reading")) {
-      localStorage.setItem("lastReadSabad", JSON.stringify({
+      Preferences.set({ key: 'lastReadSabad', value: JSON.stringify({
         sabad: selectedSabad,
         screen: currentScreen,
         category: currentScreen === "audio_reading" ? selectedCategory : undefined
-      }));
+      })});
     }
   }, [selectedSabad, currentScreen, selectedCategory]);
 
-  const handleOpenCategory = (targetScreen: "reading" | "audio_reading", listScreen: "shabad_list" | "category_list", category?: "aarti" | "bhajan" | "sakhi" | "mantra") => {
+  const handleOpenCategory = async (targetScreen: "reading" | "audio_reading", listScreen: "shabad_list" | "category_list", category?: "aarti" | "bhajan" | "sakhi" | "mantra") => {
     vibrate(10);
-    const savedLastRead = localStorage.getItem("lastReadSabad");
-    if (savedLastRead) {
+    const savedLastRead = await Preferences.get({ key: 'lastReadSabad' });
+    if (savedLastRead?.value) {
       try {
-        const parsed = JSON.parse(savedLastRead);
+        const parsed = JSON.parse(savedLastRead.value);
         if (parsed && parsed.sabad && parsed.screen === targetScreen && (category ? parsed.category === category : true)) {
           setSelectedSabad(parsed.sabad);
           if (category) setSelectedCategory(category);
@@ -384,20 +273,20 @@ function MainApp() {
     navigateTo(listScreen);
   };
 
-  const [bookmarks, setBookmarks] = useState<string[]>(() => {
-    const saved = localStorage.getItem("shabad_bookmarks");
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return [];
-      }
-    }
-    return [];
-  });
+  const [bookmarks, setBookmarks] = useState<string[]>([]);
 
   useEffect(() => {
-    localStorage.setItem("shabad_bookmarks", JSON.stringify(bookmarks));
+    Preferences.get({ key: 'shabad_bookmarks' }).then(res => {
+      if (res.value) {
+        try {
+          setBookmarks(JSON.parse(res.value));
+        } catch (e) {}
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    Preferences.set({ key: 'shabad_bookmarks', value: JSON.stringify(bookmarks) });
   }, [bookmarks]);
 
   const toggleBookmark = (id: string) => {
@@ -415,8 +304,6 @@ function MainApp() {
 
   // --- Content State ---
 
-  const [autoPlayAudio, setAutoPlayAudio] = useState(false);
-  const [readingTheme, setReadingTheme] = useState<'light' | 'sepia' | 'dark'>('light');
   const [isAutoScrolling, setIsAutoScrolling] = useState(false);
   const [autoScrollSpeed, setAutoScrollSpeed] = useState(1); // 1 = slow, 2 = medium, 3 = fast
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -497,15 +384,19 @@ function MainApp() {
   const { isLoading, sabads, aartis, bhajans, sakhis, mantras, thoughts, meles, notices, badhais, pendingPosts, settings, setSettings } = useSabadData();
 
   const recentApprovedPosts = useMemo(() => {
-    const all = [
-      ...sabads.map(s => ({ ...s, type: "शब्द" })),
-      ...bhajans.map(s => ({ ...s, type: "भजन" })),
-      ...aartis.map(s => ({ ...s, type: "आरती" })),
-      ...mantras.map(s => ({ ...s, type: "मंत्र" })),
-      ...sakhis.map(s => ({ ...s, type: "साखी" }))
+    const getRecent = (arr: SabadItem[], type: string) => 
+      arr.filter(item => item.author && item.author !== "Admin")
+         .map(item => ({ ...item, type }));
+         
+    const allRecent = [
+      ...getRecent(sabads, "शब्द"),
+      ...getRecent(bhajans, "भजन"),
+      ...getRecent(aartis, "आरती"),
+      ...getRecent(mantras, "मंत्र"),
+      ...getRecent(sakhis, "साखी")
     ];
-    return all
-      .filter(item => item.author && item.author !== "Admin")
+    
+    return allRecent
       .sort((a, b) => new Date(b.createdAt || b.timestamp || 0).getTime() - new Date(a.createdAt || a.timestamp || 0).getTime())
       .slice(0, 10);
   }, [sabads, bhajans, aartis, mantras, sakhis]);
@@ -522,6 +413,11 @@ function MainApp() {
       setIsDataLoaded(true);
     }
   }, [sabads.length, aartis.length, bhajans.length]);
+
+  useEffect(() => {
+    // Premium Migration: Hydrate async Zustand Native Preferences
+    useAppStore.getState().hydrateStore();
+  }, []);
 
   // --- Daily Thought ---
   const [dailyThought, setDailyThought] = useState<any>(thoughts[0] || { text: "विष्णु विष्णु तू भण रे प्राणी", author: "श्री गुरु जम्भेश्वर भगवान" });
@@ -541,73 +437,7 @@ function MainApp() {
   }, [thoughts]);
 
   // --- Notifications ---
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const unreadCount = notifications.filter((n) => !n.read).length;
-
-  useEffect(() => {
-    if (!db) return;
-    const unsubNotifications = onSnapshot(collection(db, "notifications"), (snapshot) => {
-      let newNotifs: Notification[] = [];
-      if (!snapshot.empty) {
-        newNotifs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as Notification));
-      }
-      
-      const hasSeenWelcome = localStorage.getItem("hasSeenWelcome");
-      if (!hasSeenWelcome) {
-        newNotifs.unshift({
-          id: "welcome",
-          title: "स्वागत है!",
-          message: "सबदवाणी ऐप में आपका स्वागत है। यहाँ आपको गुरु जम्भेश्वर भगवान की वाणी और बिश्नोई समाज की जानकारी मिलेगी।",
-          date: "अभी",
-          read: false
-        });
-      }
-
-      setNotifications(prev => {
-        const prevIds = new Set(prev.map(n => n.id));
-        const added = newNotifs.filter(n => !prevIds.has(n.id) && n.id !== "welcome");
-        if (added.length > 0 && prev.length > 0) {
-          showToast(`नई सूचना: ${added[0].title}`);
-        }
-        return newNotifs;
-      });
-    });
-    return () => unsubNotifications();
-  }, []);
-
-  const markRead = async (id: string) => {
-    if (id === "welcome") {
-      localStorage.setItem("hasSeenWelcome", "true");
-      setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-      return;
-    }
-    
-    // Optimistic UI update
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-    
-    if (!db) return;
-    try {
-      // Let Firestore handle offline queue, don't await
-      updateDoc(doc(db, "notifications", id), { read: true }).catch(() => {});
-    } catch (e) {}
-  };
-
-  const markAllRead = async () => {
-    localStorage.setItem("hasSeenWelcome", "true");
-    
-    const unread = notifications.filter(n => !n.read && n.id !== "welcome");
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-    
-    if (!db) return;
-    try {
-      unread.forEach(n => {
-        updateDoc(doc(db, "notifications", n.id), { read: true }).catch(() => {
-        });
-      });
-    } catch (error) {
-    }
-  };
+  const { showNotifications, setShowNotifications, notifications, unreadCount, markRead, markAllRead } = useAppNotifications(db, showToast);
 
   // --- Admin State ---
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
@@ -642,8 +472,16 @@ function MainApp() {
     }
   }, []);
 
-  const playOmVishnu = () => {
-    if (jaapAudioRef.current) {
+  const playOmVishnu = async () => {
+    if (Capacitor.isNativePlatform() && settings.jaapAudioUrl) {
+       // Premium Setup: Prevent DOM element being killed in background/doze mode
+       // Use Native Playlist API instead for Background Safety
+       if (globalAudio) globalAudio.pause();
+       // Import Playlist temporarily if needed or just use globalAudio
+       globalAudio.src = settings.jaapAudioUrl;
+       globalAudio.volume = 0.5;
+       globalAudio.play().catch(()=>{});
+    } else if (jaapAudioRef.current) {
       jaapAudioRef.current.currentTime = 0;
       jaapAudioRef.current.play().catch(() => {});
     } else {
@@ -711,18 +549,17 @@ function MainApp() {
   // --- Premium Features State ---
   const [searchQuery, setSearchQuery] = useState("");
 
-  const [malaCount, setMalaCount] = useState(() => {
-    const saved = localStorage.getItem("malaCount");
-    return saved ? parseInt(saved) : 0;
-  });
-  const [malaLaps, setMalaLaps] = useState(() => {
-    const saved = localStorage.getItem("malaLaps");
-    return saved ? parseInt(saved) : 0;
-  });
+  const [malaCount, setMalaCount] = useState(0);
+  const [malaLaps, setMalaLaps] = useState(0);
 
   useEffect(() => {
-    localStorage.setItem("malaCount", malaCount.toString());
-    localStorage.setItem("malaLaps", malaLaps.toString());
+    Preferences.get({ key: 'malaCount' }).then(res => res.value && setMalaCount(parseInt(res.value)));
+    Preferences.get({ key: 'malaLaps' }).then(res => res.value && setMalaLaps(parseInt(res.value)));
+  }, []);
+
+  useEffect(() => {
+    Preferences.set({ key: 'malaCount', value: malaCount.toString() });
+    Preferences.set({ key: 'malaLaps', value: malaLaps.toString() });
   }, [malaCount, malaLaps]);
 
   // --- Admin Edit State ---
@@ -1260,7 +1097,6 @@ function MainApp() {
       
       if (!hasSeenSwipeHint) {
         setHasSeenSwipeHint(true);
-        localStorage.setItem("hasSeenSwipeHint", "true");
       }
 
       let currentList: SabadItem[] = [];
@@ -1442,24 +1278,17 @@ function MainApp() {
 
   const navigateTo = (screen: Screen, replace = false) => {
     vibrate(10);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    // Removed window.scrollTo because 'smooth' scrolling combined with AnimatePresence
+    // causes a nasty layout "jhatka" or jitter when exiting tall screens like Privacy Policy.
     if (screen === "amavasya") {
       setSelectedYear(new Date().getFullYear());
     }
     
     // Check if we are already on this screen
-    if (currentScreen === screen) return;
+    const targetPath = screen === 'home' ? '/' : `/${screen}`;
+    if (location.pathname === targetPath || (location.pathname === '/' && screen === 'home')) return;
 
-    // If we are replacing, or if this screen is the same as the previous one in history, replace
-    if (replace) {
-      window.history.replaceState({ screen, index: historyIndex.current }, "", `#${screen}`);
-    } else {
-      const newIndex = historyIndex.current + 1;
-      window.history.pushState({ screen, index: newIndex }, "", `#${screen}`);
-      historyIndex.current = newIndex;
-    }
-    
-    setCurrentScreen(screen);
+    navigate(targetPath, { replace });
     setShowNotifications(false);
   };
 
@@ -1537,23 +1366,14 @@ function MainApp() {
   // Process pending deep link once data is loaded
   useEffect(() => {
     if (pendingDeepLinkId && isDataLoaded) {
-      const allSabads = [...sabads, ...aartis, ...bhajans, ...sakhis, ...mantras];
-      const shabad = allSabads.find(item => 
-        item.id === pendingDeepLinkId || 
-        (item as any).shortId === pendingDeepLinkId || 
-        item.id.startsWith(pendingDeepLinkId)
-      );
+      const checkMatch = (item: any) => item.id === pendingDeepLinkId || item.shortId === pendingDeepLinkId || item.id.startsWith(pendingDeepLinkId);
+      const shabad = sabads.find(checkMatch) || aartis.find(checkMatch) || bhajans.find(checkMatch) || sakhis.find(checkMatch) || mantras.find(checkMatch);
       
       if (shabad) {
         handleSabadClick(shabad);
         setPendingDeepLinkId(null);
       } else {
-        const otherItems = [...meles, ...notices];
-        const otherItem = otherItems.find(item => 
-          item.id === pendingDeepLinkId || 
-          (item as any).shortId === pendingDeepLinkId || 
-          item.id.startsWith(pendingDeepLinkId)
-        );
+        const otherItem = meles.find(checkMatch) || notices.find(checkMatch);
         if (otherItem) {
           setSelectedSabad(otherItem as any);
           navigateTo("reading");
@@ -1612,34 +1432,18 @@ function MainApp() {
         let listScreen: Screen = "shabad_list";
         if (currentScreen === "audio_reading") listScreen = "category_list";
         
-        // If it was opened directly, we need to replace the current state with the list screen
-        if (openedDirectlyRef.current) {
-            openedDirectlyRef.current = false;
-            navigateTo(listScreen, true); // Replace with list screen
-        } else {
-            // Normal flow: try to go back in history
-            if (historyIndex.current > 0) {
-                window.history.back();
-            } else {
-                // Fallback
-                navigateTo(listScreen, true);
-            }
-        }
+        navigate(`/${listScreen}`, { replace: true });
         return;
     }
 
     // 2. If we are on a list screen, we MUST go to home.
     if (currentScreen === "shabad_list" || currentScreen === "category_list") {
-        navigateTo("home", true); // Replace with home
+        navigate('/', { replace: true }); // Replace with home
         return;
     }
 
     // 3. Default back for other screens
-    if (historyIndex.current > 0) {
-      window.history.back();
-    } else {
-      navigateTo("home", true);
-    }
+    navigate(-1);
   };
 
   const handleShare = async () => {
@@ -1973,1059 +1777,6 @@ function MainApp() {
     });
   };
 
-  const renderScreen = () => {
-    switch (currentScreen) {
-      case "home":
-        return (
-          <motion.div
-            key="home"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            className="min-h-screen pb-32 flex flex-col bg-paper"
-          >
-            {/* Premium Rotating Banner System */}
-            <div className="shrink-0">
-              {isLoading ? (
-                <BannerSkeleton />
-              ) : (
-                <PremiumBanner 
-                  meles={processedMeles} 
-                  badhais={badhais} 
-                  dailyThought={dailyThought} 
-                  notices={notices}
-                />
-              )}
-            </div>
-
-            {/* Premium Daily Panchang Summary */}
-            <div className="px-4 mb-1.5 shrink-0">
-              <div className="bg-white/80 backdrop-blur-md rounded-2xl p-2 border border-ink/5 shadow-sm flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="bg-accent/10 p-1.5 rounded-xl">
-                    <Sun className="w-4 h-4 text-accent-dark animate-pulse" />
-                  </div>
-                  <div>
-                    <h4 className="text-[10px] font-black text-accent-dark uppercase tracking-widest mb-0.5">आज का पंचांग</h4>
-                    <p className="text-[13px] font-bold text-ink">
-                      {format(new Date(), "dd MMMM, EEEE", { locale: hi })}
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-[12px] font-black text-accent-dark">
-                    {getTithiName(getJD(new Date(new Date().setHours(6, 0, 0, 0))))}
-                  </p>
-                  <p className="text-[10px] font-bold text-ink-light uppercase mt-0.5">
-                    विक्रमी संवत {getSamvat(getJD(new Date(new Date().setHours(6, 0, 0, 0))))}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Premium Grid Layout for Main Categories - Compact 3-Column Design */}
-            <CategoryGrid 
-              isLoading={isLoading} 
-              handleOpenCategory={handleOpenCategory} 
-              navigateTo={navigateTo} 
-            />
-          </motion.div>
-        );
-
-      case "search":
-        const searchSkeleton = getSearchSkeleton(searchQuery);
-        const matchSearch = (title: string, text?: string) => {
-          if (!searchQuery) return false;
-          // Exact match first (for Hindi typing)
-          if (title.toLowerCase().includes(searchQuery.toLowerCase())) return true;
-          if (text && text.toLowerCase().includes(searchQuery.toLowerCase())) return true;
-          
-          // Hinglish/Phonetic match
-          if (searchSkeleton.length < 2) return false; // Don't fuzzy match on single letters
-          const titleSkeleton = getSearchSkeleton(title);
-          if (titleSkeleton.includes(searchSkeleton)) return true;
-          if (text) {
-             const textSkeleton = getSearchSkeleton(text);
-             if (textSkeleton.includes(searchSkeleton)) return true;
-          }
-          return false;
-        };
-
-        const filteredSabads = searchQuery ? sabads.filter(s => matchSearch(s.title, s.text)) : [];
-        const filteredAartis = searchQuery ? aartis.filter(m => matchSearch(m.title, m.text)) : [];
-        const filteredBhajans = searchQuery ? bhajans.filter(m => matchSearch(m.title, m.text)) : [];
-        const filteredSakhis = searchQuery ? sakhis.filter(m => matchSearch(m.title, m.text)) : [];
-        const filteredMantras = searchQuery ? mantras.filter(m => matchSearch(m.title, m.text)) : [];
-        const filteredMeles = searchQuery ? meles.filter(m => matchSearch(m.name, m.location)) : [];
-        
-        return (
-          <motion.div key="search" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="pb-32 bg-paper min-h-screen">
-            <PremiumHeader title="खोजें (Search)" onBack={() => navigateTo('home')} icon={Search} />
-            <div className="px-6 pt-4">
-              <div className="relative mb-4 flex items-center">
-                <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-ink-light" />
-                <input 
-                  autoFocus
-                  type="text" 
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="शब्द, भजन, आरती, साखी या मेले खोजें..." 
-                  className="w-full pl-12 py-3 rounded-2xl border border-ink/20 bg-white focus:border-accent outline-none shadow-sm pr-4"
-                />
-              </div>
-
-            {isLoading ? (
-              <div className="space-y-4">
-                {Array.from({ length: 5 }).map((_, i) => <ShabadSkeleton key={i} />)}
-              </div>
-            ) : searchQuery && (
-              <div className="space-y-6">
-                {filteredSabads.length > 0 && (
-                  <div>
-                    <h3 className="font-bold text-lg mb-3 text-accent-dark">सबदवाणी ({filteredSabads.length})</h3>
-                    <div className="space-y-3">
-                      {filteredSabads.map(s => (
-                        <button key={s.id} onClick={() => handleSabadClick(s)} className="w-full text-left bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
-                          <h4 className="font-bold text-ink">{s.title}</h4>
-                          <p className="text-sm text-ink-light line-clamp-1 mt-1 break-words">{s.text}</p>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {filteredAartis.length > 0 && (
-                  <div>
-                    <h3 className="font-bold text-lg mb-3 text-accent-dark">आरती ({filteredAartis.length})</h3>
-                    <div className="space-y-3">
-                      {filteredAartis.map(m => (
-                        <button key={m.id} onClick={() => { setSelectedSabad(m); setSelectedCategory("aarti"); setAutoPlayAudio(false); navigateTo('audio_reading'); }} className="w-full text-left bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
-                          <h4 className="font-bold text-ink">{m.title}</h4>
-                          <p className="text-sm text-ink-light line-clamp-1 mt-1 break-words">{m.text}</p>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {filteredBhajans.length > 0 && (
-                  <div>
-                    <h3 className="font-bold text-lg mb-3 text-accent-dark">भजन ({filteredBhajans.length})</h3>
-                    <div className="space-y-3">
-                      {filteredBhajans.map(m => (
-                        <button key={m.id} onClick={() => { setSelectedSabad(m); setSelectedCategory("bhajan"); setAutoPlayAudio(false); navigateTo('audio_reading'); }} className="w-full text-left bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
-                          <h4 className="font-bold text-ink">{m.title}</h4>
-                          <p className="text-sm text-ink-light line-clamp-1 mt-1 break-words">{m.text}</p>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {filteredSakhis.length > 0 && (
-                  <div>
-                    <h3 className="font-bold text-lg mb-3 text-accent-dark">साखी ({filteredSakhis.length})</h3>
-                    <div className="space-y-3">
-                      {filteredSakhis.map(m => (
-                        <button key={m.id} onClick={() => { setSelectedSabad(m); setSelectedCategory("sakhi"); setAutoPlayAudio(false); navigateTo('audio_reading'); }} className="w-full text-left bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
-                          <h4 className="font-bold text-ink">{m.title}</h4>
-                          <p className="text-sm text-ink-light line-clamp-1 mt-1 break-words">{m.text}</p>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {filteredMantras.length > 0 && (
-                  <div>
-                    <h3 className="font-bold text-lg mb-3 text-accent-dark">मंत्र ({filteredMantras.length})</h3>
-                    <div className="space-y-3">
-                      {filteredMantras.map(m => (
-                        <button key={m.id} onClick={() => { setSelectedSabad(m); setSelectedCategory("mantra"); setAutoPlayAudio(false); navigateTo('audio_reading'); }} className="w-full text-left bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
-                          <h4 className="font-bold text-ink">{m.title}</h4>
-                          <p className="text-sm text-ink-light line-clamp-1 mt-1 break-words">{m.text}</p>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {filteredMeles.length > 0 && (
-                  <div>
-                    <h3 className="font-bold text-lg mb-3 text-accent-dark">मेले ({filteredMeles.length})</h3>
-                    <div className="space-y-3">
-                      {filteredMeles.map((m) => (
-                        <div key={m.id} className="bg-white p-4 rounded-2xl shadow-sm border border-ink/5">
-                          <h4 className="font-bold text-ink">{m.name}</h4>
-                          <p className="text-sm text-ink-light mt-1">{m.location} • {m.dateStr}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {filteredSabads.length === 0 && filteredAartis.length === 0 && filteredBhajans.length === 0 && filteredSakhis.length === 0 && filteredMantras.length === 0 && filteredMeles.length === 0 && (
-                  <div className="text-center py-12 text-ink-light">
-                    <Search className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                    <p>कोई परिणाम नहीं मिला</p>
-                  </div>
-                )}
-              </div>
-            )}
-            </div>
-          </motion.div>
-        );
-
-      case "mala":
-        return (
-          <JaapMalaScreen
-            malaCount={malaCount}
-            malaLaps={malaLaps}
-            onBack={() => navigateTo('home')}
-            onJap={() => {
-              vibrate(12);
-              playOmVishnu();
-              if (malaCount + 1 >= 108) {
-                vibrate([50, 30, 100, 30, 50]);
-                setMalaCount(0);
-                setMalaLaps(l => l + 1);
-              } else {
-                setMalaCount(c => c + 1);
-              }
-            }}
-            onReset={() => {
-              setConfirmDialog({
-                isOpen: true,
-                title: "माला रीसेट",
-                message: "क्या आप वाकई माला रीसेट करना चाहते हैं?",
-                onConfirm: () => {
-                  setMalaCount(0);
-                  setMalaLaps(0);
-                }
-              });
-            }}
-          />
-        );
-
-      case "niyam":
-        return (
-          <motion.div
-            key="niyam"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3, ease: "circOut" }}
-            style={{ willChange: "transform, opacity", transform: "translateZ(0)" }}
-            className="pb-32 bg-paper min-h-screen"
-          >
-            <PremiumHeader title="२९ नियम" onBack={() => navigateTo('home')} icon={ListOrdered} />
-            
-            <div className="px-4 pt-6">
-              <div className="bg-white/90 p-6 rounded-3xl shadow-sm border border-ink/10 mb-6 text-center">
-                <p className="text-ink leading-relaxed font-medium">
-                  बिश्नोई समाज की स्थापना गुरु जम्भेश्वर भगवान ने इन्हीं 29 नियमों के आधार पर की थी। 
-                  "बीस और नौ बिश्नोई" - जो इन 29 नियमों का पालन करता है, वही बिश्नोई है।
-                </p>
-              </div>
-
-              <div className="space-y-3">
-                {niyamList.map((niyam, idx) => (
-                  <div key={`niyam-${idx}`} className="flex items-start gap-4 bg-white p-4 rounded-2xl shadow-sm border border-ink/5 hover:border-accent/30 transition-colors">
-                    <div className="w-8 h-8 shrink-0 rounded-full bg-accent/10 text-accent font-bold flex items-center justify-center text-sm">
-                      {idx + 1}
-                    </div>
-                    <p className="text-ink font-medium pt-1 leading-relaxed">{niyam}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </motion.div>
-        );
-
-      case "shabad_list":
-        return (
-          <motion.div
-            key="shabad_list"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3, ease: "circOut" }}
-            style={{ willChange: "transform, opacity", transform: "translateZ(0)" }}
-            className="pb-32 bg-paper min-h-screen"
-          >
-            <PremiumHeader title="संपूर्ण सबदवाणी" onBack={handleBack} icon={Book} />
-            <div className="flex flex-col p-2 mt-2">
-              {isLoading || sabads.length === 0 ? (
-                [...Array(8)].map((_, i) => <ShabadSkeleton key={i} />)
-              ) : (
-                sabads.map((item) => (
-                  <ShabadCard
-                    key={item.id}
-                    title={item.title}
-                    icon={item.icon}
-                    onClick={() => handleSabadClick(item)}
-                    iconType="book"
-                  />
-                ))
-              )}
-            </div>
-          </motion.div>
-        );
-
-      case "category_list":
-        const categoryData = {
-          aarti: { title: "आरती", list: aartis, icon: Music },
-          bhajan: { title: "भजन", list: bhajans, icon: Music },
-          sakhi: { title: "साखी", list: sakhis, icon: BookOpenText },
-          mantra: { title: "मंत्र", list: mantras, icon: Music },
-        }[selectedCategory];
-
-        return (
-          <motion.div
-            key="category_list"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3, ease: "circOut" }}
-            style={{ willChange: "transform, opacity", transform: "translateZ(0)" }}
-            className="pb-32 bg-paper min-h-screen"
-          >
-            <PremiumHeader title={`${categoryData.title} संग्रह`} onBack={handleBack} icon={categoryData.icon} />
-            <div className="flex flex-col p-2 mt-2">
-              {isLoading || categoryData.list.length === 0 ? (
-                [...Array(6)].map((_, i) => <ShabadSkeleton key={i} />)
-              ) : (
-                categoryData.list.map((item) => (
-                  <ShabadCard
-                    key={item.id}
-                    title={item.title}
-                    icon={Play}
-                    onClick={() => {
-                      setSelectedSabad(item);
-                      setAutoPlayAudio(false);
-                      navigateTo("audio_reading");
-                    }}
-                    iconType="play"
-                  />
-                ))
-              )}
-            </div>
-          </motion.div>
-        );
-
-      case "community_posts":
-        return (
-          <motion.div
-            key="community_posts"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            className="pb-32 bg-paper min-h-screen"
-          >
-            <PremiumHeader title="भक्त योगदान" onBack={handleBack} icon={HeartHandshake} />
-            <div className="flex flex-col p-4 gap-4">
-              <div className="bg-white/50 backdrop-blur-sm p-5 rounded-[2rem] border border-accent/10 mb-2 shadow-sm flex gap-4 items-center">
-                <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center shrink-0">
-                  <Info className="w-5 h-5 text-accent-dark" />
-                </div>
-                <p className="text-xs text-ink-light leading-relaxed font-medium">
-                  यहाँ सबदवाणी परिवार के सज्जनों द्वारा भेजे गए नवीनतम 10 योगदान दिखाए जा रहे हैं। आप भी अपना योगदान भेज सकते हैं।
-                </p>
-              </div>
-
-              {isLoading ? (
-                <div className="flex flex-col gap-5">
-                  {[...Array(3)].map((_, i) => <PostSkeleton key={i} />)}
-                </div>
-              ) : recentApprovedPosts.length === 0 && myPendingPosts.length === 0 ? (
-                <div className="text-center text-ink-light mt-10">
-                  <Users className="w-16 h-16 mx-auto opacity-20 mb-4" />
-                  <p className="text-xl">अभी तक कोई योगदान नहीं है।</p>
-                  <button
-                    onClick={() => navigateTo("contribute")}
-                    className="mt-4 text-accent font-bold underline"
-                  >
-                    पहला योगदान दें
-                  </button>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-5">
-                  {/* User's own contribution prompt if they haven't sent anything */}
-                  {!recentApprovedPosts.some(p => p.userId === auth?.currentUser?.uid) && myPendingPosts.length === 0 && (
-                    <button
-                      onClick={() => navigateTo("contribute")}
-                      className="bg-accent/5 p-6 rounded-[2rem] border border-dashed border-accent/30 flex items-center justify-between group hover:bg-accent/10 transition-all"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center">
-                          <PlusCircle className="w-6 h-6 text-accent-dark" />
-                        </div>
-                        <div className="text-left">
-                          <h4 className="font-bold text-ink">अपना योगदान भेजें</h4>
-                          <p className="text-[10px] text-ink-light">सबदवाणी परिवार में अपना योगदान जोड़ें</p>
-                        </div>
-                      </div>
-                      <ChevronRight className="w-5 h-5 text-accent-dark group-hover:translate-x-1 transition-transform" />
-                    </button>
-                  )}
-
-                  {/* Pending Section */}
-                  {myPendingPosts.length > 0 && (
-                    <div className="flex flex-col gap-3">
-                      <h4 className="text-xs font-bold text-accent-dark uppercase tracking-widest ml-2">मेरे लंबित योगदान</h4>
-                      {myPendingPosts.map((item) => (
-                        <div
-                          key={item.id}
-                          className="bg-white/40 rounded-[2rem] p-6 shadow-sm border border-dashed border-accent/30 relative overflow-hidden"
-                        >
-                          <div className="absolute top-0 right-0 bg-accent/10 px-4 py-1.5 rounded-bl-2xl text-[10px] font-bold text-accent uppercase tracking-wider">
-                            समीक्षाधीन
-                          </div>
-                          <h3 className="text-lg font-bold text-ink mb-2">
-                            {item.title}
-                          </h3>
-                          <div className="flex items-center gap-3 text-ink-light text-xs mb-4">
-                            <span className="bg-accent/5 text-accent-dark px-2.5 py-1 rounded-full font-bold">{item.type}</span>
-                            <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {new Date(item.timestamp).toLocaleDateString('hi-IN')}</span>
-                          </div>
-                          <p className="text-ink-light text-sm line-clamp-2 italic">
-                            "{item.text}"
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Recent Feed */}
-                  <div className="flex flex-col gap-5">
-                    {recentApprovedPosts.map((item) => (
-                      <div
-                        key={item.id}
-                        className={`group bg-white rounded-[2rem] p-6 shadow-sm border ${auth?.currentUser?.uid === item.userId ? "border-accent/50 ring-1 ring-accent/20" : "border-ink/5"} hover:shadow-xl hover:shadow-accent/5 transition-all duration-500 relative overflow-hidden`}
-                      >
-                        <div className="absolute -right-4 -top-4 w-24 h-24 bg-accent/5 rounded-full blur-2xl group-hover:bg-accent/10 transition-colors"></div>
-                        
-                        <div className="flex flex-col mb-4">
-                          <h3 className="text-xl font-bold text-ink group-hover:text-accent-dark transition-colors leading-tight">
-                            {item.title}
-                          </h3>
-                          <div className="flex items-center gap-2 mt-1.5">
-                            <span className="bg-accent/10 text-accent-dark text-[10px] font-bold px-2.5 py-0.5 rounded-md uppercase tracking-wider">
-                              {item.type}
-                            </span>
-                            {auth?.currentUser?.uid === item.userId && (
-                              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100 uppercase tracking-wider">आपका योगदान</span>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2.5 text-ink-light text-sm mb-6">
-                          <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center border border-accent/5">
-                            <User className="w-4 h-4 text-accent-dark" />
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="font-bold text-ink/90 text-xs leading-none mb-0.5">{item.author}</span>
-                            <span className="text-[10px] opacity-60">सबदवाणी परिवार</span>
-                          </div>
-                        </div>
-
-                        <div className="relative mb-6 pl-4 border-l-2 border-accent/20">
-                          <p className="text-ink-light text-sm line-clamp-3 leading-relaxed">
-                            {item.text}
-                          </p>
-                        </div>
-
-                        <button
-                          onClick={() => {
-                            setSelectedSabad(item);
-                            if (item.type === "शब्द") {
-                              navigateTo("reading");
-                            } else {
-                              if (item.type === "भजन") setSelectedCategory("bhajan");
-                              else if (item.type === "आरती") setSelectedCategory("aarti");
-                              else if (item.type === "मंत्र") setSelectedCategory("mantra");
-                              else if (item.type === "साखी") setSelectedCategory("sakhi");
-                              setAutoPlayAudio(false);
-                              navigateTo("audio_reading");
-                            }
-                          }}
-                          className="w-full py-4 bg-ink/5 hover:bg-accent hover:text-white active:bg-accent-dark active:scale-[0.98] text-ink font-bold rounded-2xl transition-all duration-300 flex items-center justify-center gap-2 group/btn"
-                        >
-                          पूरा पढ़ें <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </motion.div>
-        );
-
-      case "reading":
-      case "audio_reading": {
-        let readingList: SabadItem[] = [];
-        if (currentScreen === "reading") readingList = sabads;
-        else if (currentScreen === "audio_reading") {
-          if (selectedCategory === "aarti") readingList = aartis;
-          else if (selectedCategory === "bhajan") readingList = bhajans;
-          else if (selectedCategory === "sakhi") readingList = sakhis;
-          else if (selectedCategory === "mantra") readingList = mantras;
-        }
-
-        // Fallback to ensure navigation works even if category is not set (e.g. from mini player)
-        if (readingList.length === 0 && selectedSabad) {
-          if (selectedSabad.type === "शब्द") readingList = sabads;
-          else if (selectedSabad.type === "आरती") readingList = aartis;
-          else if (selectedSabad.type === "भजन") readingList = bhajans;
-          else if (selectedSabad.type === "साखी") readingList = sakhis;
-          else if (selectedSabad.type === "मंत्र") readingList = mantras;
-        }
-        const readingIndex = selectedSabad ? readingList.findIndex(item => item.id === selectedSabad.id) : -1;
-        const totalCount = readingList.length;
-        const categoryLabel = currentScreen === "reading" ? "शब्द" : selectedCategory === "aarti" ? "आरती" : selectedCategory === "bhajan" ? "भजन" : selectedCategory === "sakhi" ? "साखी" : selectedCategory === "mantra" ? "मंत्र" : "शब्द";
-        const isFeminine = (currentScreen === "audio_reading" && (selectedCategory === "aarti" || selectedCategory === "sakhi"));
-        const nextWord = isFeminine ? "अगली" : "अगला";
-
-        return (
-          <motion.div
-            key={currentScreen}
-            initial={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.98 }}
-            className={`min-h-screen flex flex-col pb-32 relative transition-colors duration-300 ${
-              readingTheme === 'dark' ? 'bg-[#121212] text-white' : 
-              readingTheme === 'sepia' ? 'bg-[#f4ecd8] text-[#5c4b37]' : 
-              'bg-paper text-ink'
-            }`}
-          >
-            {!hasSeenSwipeHint && (
-              <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 20 }}
-                className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-ink text-white px-5 py-3 rounded-full shadow-2xl text-sm flex items-center gap-3 z-50 pointer-events-none whitespace-nowrap"
-              >
-                <Hand className="w-5 h-5 animate-pulse text-accent" />
-                {nextWord} {categoryLabel} देखने के लिए बाएं swipe करें
-              </motion.div>
-            )}
-
-            <div className={`sticky top-[50px] z-10 px-1.5 sm:px-2 py-2 sm:py-2.5 flex items-center justify-between gap-1 sm:gap-1.5 shadow-sm border-b transition-colors duration-300 overflow-x-auto ${
-              readingTheme === 'dark' ? 'bg-[#1a1a1a]/95 border-white/10 text-white' : 
-              readingTheme === 'sepia' ? 'bg-[#f4ecd8]/95 border-[#5c4b37]/10 text-[#5c4b37]' : 
-              'bg-paper/95 border-ink/10 text-ink'
-            } backdrop-blur-md [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]`}>
-              <button
-                onClick={handleBack}
-                className={`p-1.5 sm:p-2 -ml-0.5 sm:-ml-1 rounded-full shrink-0 transition-all touch-manipulation active:scale-90 ${
-                  readingTheme === 'dark' ? 'bg-white/5 hover:bg-white/10 active:bg-white/20' : 
-                  readingTheme === 'sepia' ? 'bg-[#5c4b37]/5 hover:bg-[#5c4b37]/10 active:bg-[#5c4b37]/20' : 
-                  'bg-ink/5 hover:bg-ink/10 active:bg-ink/20'
-                }`}
-              >
-                <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6" strokeWidth={2.5} />
-              </button>
-
-              {/* Position Indicator */}
-              {readingIndex !== -1 && totalCount > 0 && (
-                <div className={`flex flex-col items-center justify-center text-[10px] sm:text-[11px] md:text-xs font-extrabold px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl tracking-wide shrink-0 leading-tight ${
-                  readingTheme === 'dark' ? 'bg-white/10 text-white/80' : 
-                  readingTheme === 'sepia' ? 'bg-[#5c4b37]/10 text-[#5c4b37]/80' : 
-                  'bg-ink/5 text-ink-light'
-                }`}>
-                  <span>{readingIndex + 1} / {totalCount}</span>
-                  <span className="text-[9px] sm:text-[10px] md:text-[11px] opacity-90 mt-0.5">{categoryLabel}</span>
-                </div>
-              )}
-
-              {/* Theme Switcher */}
-              <div className={`flex items-center gap-0.5 sm:gap-1 shrink-0 rounded-full px-1 sm:px-1.5 py-1 sm:py-1.5 ${
-                readingTheme === 'dark' ? 'bg-white/10' : 
-                readingTheme === 'sepia' ? 'bg-[#5c4b37]/10' : 
-                'bg-ink/5'
-              }`}>
-                <button onClick={() => { vibrate(5); setReadingTheme('light'); }} className={`p-1 sm:p-1.5 rounded-full touch-manipulation active:scale-90 ${readingTheme === 'light' ? 'bg-white shadow-sm' : 'opacity-50 hover:opacity-80'}`}>
-                  <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-white border border-gray-300"></div>
-                </button>
-                <button onClick={() => { vibrate(5); setReadingTheme('sepia'); }} className={`p-1 sm:p-1.5 rounded-full touch-manipulation active:scale-90 ${readingTheme === 'sepia' ? 'bg-[#f4ecd8] shadow-sm' : 'opacity-50 hover:opacity-80'}`}>
-                  <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-[#f4ecd8] border border-[#d4c4a8]"></div>
-                </button>
-                <button onClick={() => { vibrate(5); setReadingTheme('dark'); }} className={`p-1 sm:p-1.5 rounded-full touch-manipulation active:scale-90 ${readingTheme === 'dark' ? 'bg-[#1a1a1a] shadow-sm' : 'opacity-50 hover:opacity-80'}`}>
-                  <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-[#1a1a1a] border border-gray-600"></div>
-                </button>
-              </div>
-
-              {/* Font Size Controls */}
-              <div className={`flex items-center gap-0.5 sm:gap-1 font-extrabold shrink-0 rounded-full px-1 sm:px-1.5 py-1 sm:py-1.5 ${
-                readingTheme === 'dark' ? 'bg-white/10' : 
-                readingTheme === 'sepia' ? 'bg-[#5c4b37]/10' : 
-                'bg-ink/5'
-              }`}>
-                <button
-                  onClick={() => { vibrate(5); setFontSize((f) => Math.max(f - 2, 12)); }}
-                  className={`p-1 sm:p-1.5 rounded-full text-[11px] sm:text-xs transition-colors touch-manipulation active:scale-90 ${
-                    readingTheme === 'dark' ? 'hover:bg-white/10' : 
-                    readingTheme === 'sepia' ? 'hover:bg-[#5c4b37]/10' : 
-                    'hover:bg-ink/10'
-                  }`}
-                >
-                  A-
-                </button>
-                <div className={`w-px h-3 sm:h-4 mx-0.5 ${
-                  readingTheme === 'dark' ? 'bg-white/20' : 
-                  readingTheme === 'sepia' ? 'bg-[#5c4b37]/20' : 
-                  'bg-ink/20'
-                }`}></div>
-                <button
-                  onClick={() => { vibrate(5); setFontSize((f) => Math.min(f + 2, 32)); }}
-                  className={`p-1 sm:p-1.5 rounded-full text-[11px] sm:text-xs transition-colors touch-manipulation active:scale-90 ${
-                    readingTheme === 'dark' ? 'hover:bg-white/10' : 
-                    readingTheme === 'sepia' ? 'hover:bg-[#5c4b37]/10' : 
-                    'hover:bg-ink/10'
-                  }`}
-                >
-                  A+
-                </button>
-              </div>
-
-              {/* Auto Scroll Controls */}
-              <div className={`auto-scroll-control flex items-center gap-0.5 sm:gap-1 shrink-0 rounded-full px-1 sm:px-1.5 py-1 sm:py-1.5 ${
-                readingTheme === 'dark' ? 'bg-white/10' : 
-                readingTheme === 'sepia' ? 'bg-[#5c4b37]/10' : 
-                'bg-ink/5'
-              }`}>
-                <button
-                  onClick={toggleAutoScroll}
-                  className={`p-1 sm:p-1.5 rounded-full transition-colors touch-manipulation active:scale-90 ${
-                    isAutoScrolling 
-                      ? 'bg-accent text-white shadow-sm' 
-                      : readingTheme === 'dark' ? 'hover:bg-white/10' : readingTheme === 'sepia' ? 'hover:bg-[#5c4b37]/10' : 'hover:bg-ink/10'
-                  }`}
-                >
-                  {isAutoScrolling ? <Pause className="w-4 h-4 sm:w-5 sm:h-5" strokeWidth={2.5} /> : <ChevronsDown className="w-4 h-4 sm:w-5 sm:h-5" strokeWidth={2.5} />}
-                </button>
-                {isAutoScrolling && (
-                  <button
-                    onClick={cycleAutoScrollSpeed}
-                    className={`text-[10px] sm:text-[11px] font-extrabold px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full ${
-                      readingTheme === 'dark' ? 'bg-white/20' : 
-                      readingTheme === 'sepia' ? 'bg-[#5c4b37]/20' : 
-                      'bg-ink/10'
-                    }`}
-                  >
-                    {autoScrollSpeed}x
-                  </button>
-                )}
-              </div>
-
-              {/* Action Icons */}
-              <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
-                <button
-                  onClick={() => toggleBookmark(selectedSabad?.id || "")}
-                  className={`p-1.5 sm:p-2 rounded-full transition-colors touch-manipulation active:scale-95 ${
-                    readingTheme === 'dark' ? 'hover:bg-white/10' : 
-                    readingTheme === 'sepia' ? 'hover:bg-[#5c4b37]/10' : 
-                    'hover:bg-ink/10'
-                  }`}
-                >
-                  <motion.div
-                    key={bookmarks.includes(selectedSabad?.id || "") ? "bookmarked" : "not-bookmarked"}
-                    initial={{ scale: 1 }}
-                    animate={{ scale: [1, 1.25, 1] }}
-                    transition={{ duration: 0.3, ease: "easeOut" }}
-                  >
-                    <Bookmark
-                      strokeWidth={2.5}
-                      className={`w-4 h-4 sm:w-5 sm:h-5 ${bookmarks.includes(selectedSabad?.id || "") ? "fill-accent text-accent" : (readingTheme === 'dark' ? "text-white/70" : readingTheme === 'sepia' ? "text-[#5c4b37]/70" : "text-ink-light")}`}
-                    />
-                  </motion.div>
-                </button>
-                <button
-                  onClick={handleShare}
-                  className={`p-1.5 sm:p-2 rounded-full transition-colors touch-manipulation active:scale-95 ${
-                    readingTheme === 'dark' ? 'hover:bg-white/10' : 
-                    readingTheme === 'sepia' ? 'hover:bg-[#5c4b37]/10' : 
-                    'hover:bg-ink/10'
-                  }`}
-                >
-                  <Share2 strokeWidth={2.5} className={`w-4 h-4 sm:w-5 sm:h-5 ${readingTheme === 'dark' ? "text-white/70" : readingTheme === 'sepia' ? "text-[#5c4b37]/70" : "text-ink-light"}`} />
-                </button>
-              </div>
-            </div>
-
-            {/* Audio Player (Fixed outside swipeable container) */}
-            {currentScreen === "audio_reading" && selectedSabad?.audioUrl && (
-              <div className="w-full max-w-md mx-auto px-5 pt-2 shrink-0 z-10 relative">
-                <AudioPlayer 
-                  url={selectedSabad.audioUrl} 
-                  onEnded={handleAudioEnded} 
-                  autoPlay={autoPlayAudio && (!playingSabad || playingSabad.id === selectedSabad.id)}
-                  onPlay={() => { setIsAudioActive(true); setAutoPlayAudio(true); setPlayingSabad(selectedSabad); }}
-                  onPause={() => {
-                    if (playingSabad?.id === selectedSabad.id) {
-                      setAutoPlayAudio(false);
-                    }
-                  }}
-                  onNext={() => {
-                    if (playingSabad?.id === selectedSabad.id) {
-                      handleAudioSwipe("left");
-                    } else {
-                      handleSwipe("left");
-                    }
-                  }}
-                  onPrev={() => {
-                    if (playingSabad?.id === selectedSabad.id) {
-                      handleAudioSwipe("right");
-                    } else {
-                      handleSwipe("right");
-                    }
-                  }}
-                  title={selectedSabad.title}
-                  showToast={showToast}
-                  variant="full"
-                  hideTitle={true}
-                  logoUrl={settings.logoUrl}
-                  preventAutoPause={playingSabad && playingSabad.id !== selectedSabad.id}
-                />
-              </div>
-            )}
-
-            {/* Title Card (Static Container, Fading Content) */}
-            <div className={`w-full max-w-md mx-auto px-5 ${currentScreen === "audio_reading" && selectedSabad?.audioUrl ? "pt-3" : "pt-5"} pb-2 shrink-0 z-10 relative text-center`}>
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={selectedSabad?.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.3 }}
-                  className="inline-flex flex-col items-center justify-center relative z-10"
-                >
-                  <div className="bg-accent/10 text-accent-dark px-6 py-1 rounded-full border border-accent/20 shadow-sm backdrop-blur-sm">
-                    <h2 className="text-xl md:text-2xl font-bold font-serif tracking-wide">
-                      {selectedSabad?.title ? `॥ ${selectedSabad.title} ॥` : ""}
-                    </h2>
-                  </div>
-                  {selectedSabad?.author && selectedSabad.author.toLowerCase() !== "admin" && (
-                    <p className="text-xs text-ink-light font-medium mt-2">
-                      द्वारा: {selectedSabad.author}
-                    </p>
-                  )}
-                </motion.div>
-              </AnimatePresence>
-            </div>
-
-            {/* Swipeable Container */}
-            <div
-              {...(bindGestures() as any)}
-              className="px-5 pt-2 pb-2 flex-1 flex flex-col items-center w-full touch-pan-y overflow-y-auto overflow-x-hidden hide-scrollbar"
-              style={{
-                WebkitOverflowScrolling: "touch",
-                scrollBehavior: "smooth",
-                touchAction: "pan-y"
-              }}
-            >
-              <AnimatePresence mode="wait" custom={slideDir}>
-                <motion.div
-                  key={selectedSabad?.id}
-                  custom={slideDir}
-                  variants={{
-                    enter: (dir) => ({ opacity: 0, x: dir > 0 ? 50 : -50 }),
-                    center: { opacity: 1, x: 0 },
-                    exit: (dir) => ({ opacity: 0, x: dir < 0 ? 50 : -50 })
-                  }}
-                  initial="enter"
-                  animate="center"
-                  exit="exit"
-                  transition={{ type: 'spring', stiffness: 260, damping: 28, mass: 0.5 }}
-                  className="w-full flex flex-col items-center max-w-2xl"
-                  style={{ 
-                    willChange: "transform, opacity",
-                    transform: "translateZ(0)"
-                  }}
-                >
-                  <div
-                    className={`text-center leading-relaxed w-full whitespace-pre-wrap mt-2 p-6 sm:p-8 rounded-3xl shadow-sm border select-none mb-6 transition-colors duration-300 font-medium ${
-                      readingTheme === 'dark' ? 'bg-[#1a1a1a] border-white/10 text-[#e0e0e0]' : 
-                      readingTheme === 'sepia' ? 'bg-[#fdf8ed] border-[#5c4b37]/10 text-[#5c4b37]' : 
-                      'bg-white/60 border-ink/10 text-ink'
-                    }`}
-                    style={{ fontSize: `${fontSize}px` }}
-                  >
-                    {selectedSabad?.text || ""}
-                  </div>
-
-                  {/* Navigation Buttons (Dynamic) */}
-                  <div className="flex justify-between items-center w-full mb-8 px-4 sm:px-6 shrink-0 z-10">
-                    <button 
-                      onClick={() => handleSwipe("right")}
-                      disabled={readingIndex <= 0}
-                      className={`flex items-center justify-center gap-1.5 px-5 sm:px-8 py-3.5 rounded-2xl font-medium border shadow-md transition-all active:scale-95 touch-manipulation ${
-                        readingIndex <= 0 ? 'opacity-40 cursor-not-allowed' : ''
-                      } ${
-                        readingTheme === 'dark' ? 'bg-[#1a1a1a] border-white/10 text-white hover:bg-white/5 active:bg-white/10' : 
-                        readingTheme === 'sepia' ? 'bg-[#fdf8ed] border-[#5c4b37]/10 text-[#5c4b37] hover:bg-[#5c4b37]/5 active:bg-[#5c4b37]/10' : 
-                        'bg-white border-ink/10 text-ink hover:bg-ink/5 active:bg-ink/10'
-                      }`}
-                    >
-                      <ChevronLeft className="w-5 h-5" /> पिछला
-                    </button>
-                    <button 
-                      onClick={() => handleSwipe("left")}
-                      disabled={readingList === sabads && readingIndex === 119 ? false : readingIndex >= totalCount - 1}
-                      className={`flex items-center justify-center gap-1.5 px-5 sm:px-8 py-3.5 rounded-2xl font-medium border shadow-md transition-all active:scale-95 touch-manipulation ${
-                        (readingList === sabads && readingIndex === 119) ? '' : (readingIndex >= totalCount - 1 ? 'opacity-40 cursor-not-allowed' : '')
-                      } ${
-                        readingTheme === 'dark' ? 'bg-[#1a1a1a] border-white/10 text-white hover:bg-white/5 active:bg-white/10' : 
-                        readingTheme === 'sepia' ? 'bg-[#fdf8ed] border-[#5c4b37]/10 text-[#5c4b37] hover:bg-[#5c4b37]/5 active:bg-[#5c4b37]/10' : 
-                        'bg-white border-ink/10 text-ink hover:bg-ink/5 active:bg-ink/10'
-                      }`}
-                    >
-                      अगला <ChevronRight className="w-5 h-5" />
-                    </button>
-                  </div>
-                </motion.div>
-              </AnimatePresence>
-            </div>
-          </motion.div>
-        );
-      }
-
-      case "amavasya":
-        return (
-          <motion.div key="amavasya" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="bg-paper min-h-screen">
-            <AmavasyaScreen amavasyaList={amavasyaList} selectedYear={selectedYear} setSelectedYear={setSelectedYear} handleBack={handleBack} />
-          </motion.div>
-        );
-
-      case "donate":
-        return <DonateScreen navigateTo={navigateTo} settings={settings} showToast={showToast} />;
-
-      case "about":
-        return <AboutScreen navigateTo={navigateTo} settings={settings} />;
-
-      case "privacy":
-        return <PrivacyScreen navigateTo={navigateTo} />;
-
-      case "contribute":
-        return (
-          <ContributeScreen
-            handleBack={handleBack}
-            contribAuthor={contribAuthor}
-            setContribAuthor={setContribAuthor}
-            contribTitle={contribTitle}
-            setContribTitle={setContribTitle}
-            contribType={contribType}
-            setContribType={setContribType}
-            contribAudio={contribAudio}
-            setContribAudio={setContribAudio}
-            contribAudioFile={contribAudioFile}
-            setContribAudioFile={setContribAudioFile}
-            contribAudioError={contribAudioError}
-            setContribAudioError={setContribAudioError}
-            contribText={contribText}
-            setContribText={setContribText}
-            captchaQuestion={captchaQuestion}
-            captchaAnswer={captchaAnswer}
-            setCaptchaAnswer={setCaptchaAnswer}
-            contribError={contribError}
-            isSubmitting={isSubmitting}
-            uploadProgress={uploadProgress}
-            handleContributeSubmit={handleContributeSubmit}
-            handleFileSelect={handleFileSelect}
-          />
-        );
-
-      case "choghadiya":
-        return (
-          <ChoghadiyaScreen
-            choghadiyaDate={choghadiyaDate}
-            setChoghadiyaDate={setChoghadiyaDate}
-            choghadiyaLocation={choghadiyaLocation}
-            setChoghadiyaLocation={setChoghadiyaLocation}
-            handleGetLocation={handleGetLocation}
-            calculateChoghadiya={calculateChoghadiya}
-            choghadiyaLoading={choghadiyaLoading}
-            choghadiyaError={choghadiyaError}
-            choghadiyaSlots={choghadiyaSlots}
-            handleBack={() => navigateTo("home")}
-          />
-        );
-
-      case "bichhuda":
-        return (
-          <BichhudaScreen
-            bichhudaMonth={bichhudaMonth}
-            setBichhudaMonth={setBichhudaMonth}
-            bichhudaYear={bichhudaYear}
-            setBichhudaYear={setBichhudaYear}
-            bichhudaList={bichhudaList}
-            handleBack={() => navigateTo("home")}
-          />
-        );
-
-      case "mele":
-        return (
-          <motion.div
-            key="mele"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="pb-32 bg-paper min-h-screen"
-          >
-            <PremiumHeader title="आगामी प्रमुख मेले" onBack={() => navigateTo("home")} icon={Users} />
-
-            <div className="space-y-4 px-4 pt-4">
-              {isLoading || (processedMeles.length === 0 && meles.length === 0) ? (
-                Array.from({ length: 3 }).map((_, i) => <MelaSkeleton key={i} />)
-              ) : (
-                processedMeles.map((mela) => (
-                  <div
-                    key={mela.id}
-                    className={`mela-card bg-white/90 p-5 rounded-3xl shadow-sm border ${mela.upcoming ? "border-accent/50 ring-1 ring-accent/20" : "border-ink/5"} relative overflow-hidden`}
-                  >
-                    {mela.upcoming && (
-                      <div className="absolute top-0 right-0 bg-accent text-white text-xs font-bold px-3 py-1 rounded-bl-xl">
-                        आगामी (Upcoming)
-                      </div>
-                    )}
-                    <h3 className="font-bold text-xl text-accent-dark mb-1 pr-16">
-                      {mela.name}
-                    </h3>
-                    <p className="text-sm font-semibold text-ink mb-1 flex items-center gap-1">
-                      <CalendarDays className="w-4 h-4 text-accent" />{" "}
-                      {mela.dateFormatted}
-                    </p>
-                    <p className="text-sm text-ink-light mb-3 flex items-center gap-1">
-                      <Home className="w-4 h-4" /> {mela.location}
-                    </p>
-                    <p className="text-sm bg-paper p-3 rounded-xl leading-relaxed">
-                      {mela.desc}
-                    </p>
-                  </div>
-                ))
-              )}
-            </div>
-          </motion.div>
-        );
-
-      case "admin_login":
-        return (
-          <motion.div
-            key="admin_login"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="min-h-screen flex flex-col relative"
-          >
-            {/* Subtle background decoration */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-              <div className="absolute -top-40 -right-40 w-96 h-96 bg-accent/10 rounded-full blur-3xl"></div>
-              <div className="absolute top-1/2 -left-20 w-72 h-72 bg-accent-dark/5 rounded-full blur-3xl"></div>
-            </div>
-
-            <PremiumHeader title="Admin Access" onBack={() => navigateTo('home')} icon={KeyRound} noGlobalHeader={true} />
-            
-            <div className="flex-1 overflow-y-auto relative z-10">
-              <div className="min-h-full flex flex-col items-center justify-center px-6 py-8">
-                <motion.div 
-                  initial={{ scale: 0.9, opacity: 0, y: 20 }}
-                  animate={{ scale: 1, opacity: 1, y: 0 }}
-                  transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                  className="bg-white/80 backdrop-blur-xl p-8 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-white/50 w-full max-w-sm text-center relative overflow-hidden shrink-0"
-                >
-                  <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-accent to-accent-dark"></div>
-                <div className="w-20 h-20 mx-auto bg-accent/10 rounded-full flex items-center justify-center mb-6">
-                  <KeyRound className="w-10 h-10 text-accent" />
-                </div>
-                <h2 className="text-2xl font-bold text-ink mb-2">Admin Login</h2>
-                <p className="text-sm text-ink-light mb-8">
-                  कृपया व्यवस्थापक पासवर्ड दर्ज करें
-                </p>
-              <form
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  if (isAdminLoggingIn) return;
-                  setAdminLoginError("");
-                  
-                  if (!adminPasswordInput) {
-                    setAdminLoginError("कृपया पासवर्ड दर्ज करें।");
-                    return;
-                  }
-
-                  setIsAdminLoggingIn(true);
-                  try {
-                    if (auth) {
-                      // Login with the specific admin email and user-provided password
-                      await signInWithEmailAndPassword(auth, "ravindrasaran@gmail.com", adminPasswordInput);
-                    }
-                    setIsAdminAuthenticated(true);
-                    setAdminPasswordInput("");
-                    navigateTo("admin");
-                  } catch (error: any) {
-                    if (error.code === 'auth/network-request-failed') {
-                      setAdminLoginError("इंटरनेट कनेक्शन उपलब्ध नहीं है। कृपया अपना नेटवर्क जांचें और पुनः प्रयास करें।");
-                    } else if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
-                      setAdminLoginError("गलत पासवर्ड! कृपया सही पासवर्ड दर्ज करें।");
-                    } else if (error.code === 'auth/user-not-found') {
-                      setAdminLoginError("एडमिन अकाउंट नहीं मिला। कृपया Firebase Console में ravindrasaran@gmail.com अकाउंट बनाएं।");
-                    } else if (error.code === 'auth/operation-not-allowed') {
-                      setAdminLoginError("Firebase Authentication में 'Email/Password' लॉगिन इनेबल नहीं है। कृपया इसे इनेबल करें।");
-                    } else {
-                      setAdminLoginError("लॉगिन में त्रुटि हुई: " + error.message);
-                    }
-                    setAdminPasswordInput("");
-                  } finally {
-                    setIsAdminLoggingIn(false);
-                  }
-                }}
-              >
-                {adminLoginError && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: -10 }} 
-                    animate={{ opacity: 1, y: 0 }} 
-                    className="mb-4 p-4 bg-red-50 text-red-700 rounded-2xl text-sm flex items-center gap-3 justify-center text-center border border-red-100"
-                  >
-                    <AlertCircle className="w-5 h-5 flex-shrink-0" />
-                    <span>{adminLoginError}</span>
-                  </motion.div>
-                )}
-                <input
-                  type="password"
-                  value={adminPasswordInput}
-                  onChange={(e) => setAdminPasswordInput(e.target.value)}
-                  placeholder="पासवर्ड"
-                  className="w-full p-4 rounded-xl border border-ink/20 bg-paper/50 text-center text-2xl tracking-widest mb-6 focus:border-accent outline-none transition-colors"
-                  autoFocus
-                />
-                <button
-                  type="submit"
-                  disabled={isAdminLoggingIn}
-                  className={`w-full bg-gradient-to-r from-accent to-accent-dark text-white font-bold py-3.5 rounded-xl shadow-lg hover:shadow-xl transition-all ${isAdminLoggingIn ? 'opacity-70 cursor-not-allowed' : ''}`}
-                >
-                  {isAdminLoggingIn ? 'लॉगिन हो रहा है...' : 'लॉगिन करें'}
-                </button>
-              </form>
-              <button
-                onClick={() => navigateTo("home")}
-                className="mt-6 text-ink-light text-sm underline hover:text-ink transition-colors"
-              >
-                वापस जाएं
-              </button>
-              </motion.div>
-              </div>
-            </div>
-          </motion.div>
-        );
-
-      case "admin":
-        return <AdminScreen {...{
-          navigateTo, isSubmitting, contribAudioError, contribPhotoError, showToast, checkIsOnline, db,
-          setContribAudioError, setContribPhotoError, setIsSubmitting, contribTitle, contribType, contribAudio,
-          contribText, contribAuthor, contribDate, contribLocation, contribPhotoUrl, setContribTitle, setContribType,
-          setContribAudio, setContribText, setContribAuthor, setContribDate, setContribLocation, setContribPhotoUrl,
-          addDoc, collection, serverTimestamp, setContribError, contribError, pendingContributions, setPendingContributions,
-          doc, updateDoc, deleteDoc, setConfirmDialog, editModalOpen, setEditModalOpen, editAudioError, editPhotoError,
-          setEditAudioError, setEditPhotoError, editContribution, setEditContribution, handleUpdateContribution, handleDeleteContribution, handleFileChange,
-          contribAudioFile, uploadFileToStorage, contribPhotoFile, contribSequence, setContribSequence, setContribAudioFile, setContribPhotoFile, handleFileSelect, uploadProgress, sabads, openEditModal, handleDelete, aartis, bhajans, sakhis, mantras, thoughts, meles, notices, badhais, toggleNoticeStatus, toggleBadhaiStatus, settings, setSettings, setSettingsLogoFile, settingsLogoFile, setSettingsQrCodeFile, settingsQrCodeFile, setSettingsJaapAudioFile, settingsJaapAudioFile, handleSaveSettings, pendingPosts, approvePost, rejectPost, editItemData, handleEditSave, setEditItemData
-        }} />;
-    }
-  };
 
   return (
     <div className="min-h-screen max-w-md mx-auto relative shadow-2xl bg-paper overflow-x-hidden flex flex-col">
@@ -3054,7 +1805,54 @@ function MainApp() {
       )}
 
       <div className="flex-1 relative">
-        <AnimatePresence mode="popLayout">{renderScreen()}</AnimatePresence>
+        <AnimatePresence mode="wait">
+          <Suspense fallback={<div className="flex-1 bg-paper flex items-center justify-center min-h-screen"><img src="/logo.png" alt="Loading" className="w-16 h-16 opacity-50 animate-pulse" /></div>}>
+            <Routes location={location} key={location.pathname}>
+            <Route path="/" element={<HomeScreen isLoading={isLoading} processedMeles={processedMeles} badhais={badhais} dailyThought={dailyThought} notices={notices} handleOpenCategory={handleOpenCategory} navigateTo={navigateTo} />} />
+            <Route path="/search" element={<SearchScreen searchQuery={searchQuery} setSearchQuery={setSearchQuery} isLoading={isLoading} sabads={sabads} aartis={aartis} bhajans={bhajans} sakhis={sakhis} mantras={mantras} meles={meles} matchSearch={(title, text) => {
+              if (!searchQuery) return false;
+              if (title.toLowerCase().includes(searchQuery.toLowerCase())) return true;
+              if (text && text.toLowerCase().includes(searchQuery.toLowerCase())) return true;
+              const titleSkeleton = getSearchSkeleton(title);
+              const searchSkeleton = getSearchSkeleton(searchQuery);
+              if (searchSkeleton.length < 2) return false;
+              if (titleSkeleton.includes(searchSkeleton)) return true;
+              if (text) {
+                 const textSkeleton = getSearchSkeleton(text);
+                 if (textSkeleton.includes(searchSkeleton)) return true;
+              }
+              return false;
+            }} handleSabadClick={handleSabadClick} setSelectedSabad={setSelectedSabad} setSelectedCategory={setSelectedCategory} setAutoPlayAudio={setAutoPlayAudio} navigateTo={navigateTo} />} />
+            <Route path="/mala" element={<JaapMalaScreen malaCount={malaCount} malaLaps={malaLaps} onBack={() => navigateTo('home')} onJap={() => { vibrate(12); playOmVishnu(); if (malaCount + 1 >= 108) { vibrate([50, 30, 100, 30, 50]); setMalaCount(0); setMalaLaps(l => l + 1); } else { setMalaCount(c => c + 1); } }} onReset={() => { setConfirmDialog({ isOpen: true, title: "माला रीसेट", message: "क्या आप वाकई माला रीसेट करना चाहते हैं?", onConfirm: () => { setMalaCount(0); setMalaLaps(0); } }); }} />} />
+            <Route path="/niyam" element={<NiyamScreen niyamList={niyamList} navigateTo={navigateTo} />} />
+            <Route path="/shabad_list" element={<ShabadListScreen isLoading={isLoading} sabads={sabads} handleBack={handleBack} handleSabadClick={handleSabadClick} />} />
+            <Route path="/category_list" element={<CategoryListScreen isLoading={isLoading} selectedCategory={selectedCategory} aartis={aartis} bhajans={bhajans} sakhis={sakhis} mantras={mantras} handleBack={handleBack} navigateTo={navigateTo} setSelectedSabad={setSelectedSabad} setAutoPlayAudio={setAutoPlayAudio} />} />
+            <Route path="/community_posts" element={<CommunityPostsScreen isLoading={isLoading} recentApprovedPosts={recentApprovedPosts} myPendingPosts={myPendingPosts} handleBack={handleBack} navigateTo={navigateTo} setSelectedSabad={setSelectedSabad} setSelectedCategory={setSelectedCategory} setAutoPlayAudio={setAutoPlayAudio} />} />
+            <Route path="/reading" element={<ReadingScreen currentScreen="reading" selectedSabad={selectedSabad} selectedCategory={selectedCategory} sabads={sabads} aartis={aartis} bhajans={bhajans} sakhis={sakhis} mantras={mantras} readingTheme={readingTheme} setReadingTheme={setReadingTheme} hasSeenSwipeHint={hasSeenSwipeHint} handleBack={handleBack} fontSize={fontSize} setFontSize={setFontSize} isAutoScrolling={isAutoScrolling} toggleAutoScroll={toggleAutoScroll} autoScrollSpeed={autoScrollSpeed} cycleAutoScrollSpeed={cycleAutoScrollSpeed} toggleBookmark={toggleBookmark} bookmarks={bookmarks} handleShare={handleShare} autoPlayAudio={autoPlayAudio} setAutoPlayAudio={setAutoPlayAudio} playingSabad={playingSabad} setPlayingSabad={setPlayingSabad} setIsAudioActive={setIsAudioActive} handleAudioEnded={handleAudioEnded} handleSwipe={handleSwipe} handleAudioSwipe={handleAudioSwipe} showToast={showToast} settings={settings} vibrate={vibrate} slideDir={slideDir} bindGestures={bindGestures} />} />
+            <Route path="/audio_reading" element={<ReadingScreen currentScreen="audio_reading" selectedSabad={selectedSabad} selectedCategory={selectedCategory} sabads={sabads} aartis={aartis} bhajans={bhajans} sakhis={sakhis} mantras={mantras} readingTheme={readingTheme} setReadingTheme={setReadingTheme} hasSeenSwipeHint={hasSeenSwipeHint} handleBack={handleBack} fontSize={fontSize} setFontSize={setFontSize} isAutoScrolling={isAutoScrolling} toggleAutoScroll={toggleAutoScroll} autoScrollSpeed={autoScrollSpeed} cycleAutoScrollSpeed={cycleAutoScrollSpeed} toggleBookmark={toggleBookmark} bookmarks={bookmarks} handleShare={handleShare} autoPlayAudio={autoPlayAudio} setAutoPlayAudio={setAutoPlayAudio} playingSabad={playingSabad} setPlayingSabad={setPlayingSabad} setIsAudioActive={setIsAudioActive} handleAudioEnded={handleAudioEnded} handleSwipe={handleSwipe} handleAudioSwipe={handleAudioSwipe} showToast={showToast} settings={settings} vibrate={vibrate} slideDir={slideDir} bindGestures={bindGestures} />} />
+            <Route path="/amavasya" element={<motion.div key="amavasya" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="bg-paper min-h-screen"><AmavasyaScreen amavasyaList={amavasyaList} selectedYear={selectedYear} setSelectedYear={setSelectedYear} handleBack={handleBack} /></motion.div>} />
+            <Route path="/donate" element={<DonateScreen navigateTo={navigateTo} settings={settings} showToast={showToast} />} />
+            <Route path="/about" element={<AboutScreen navigateTo={navigateTo} settings={settings} />} />
+            <Route path="/privacy" element={<PrivacyScreen navigateTo={navigateTo} />} />
+            <Route path="/contribute" element={<ContributeScreen handleBack={handleBack} contribAuthor={contribAuthor} setContribAuthor={setContribAuthor} contribTitle={contribTitle} setContribTitle={setContribTitle} contribType={contribType} setContribType={setContribType} contribAudio={contribAudio} setContribAudio={setContribAudio} contribAudioFile={contribAudioFile} setContribAudioFile={setContribAudioFile} contribAudioError={contribAudioError} setContribAudioError={setContribAudioError} contribText={contribText} setContribText={setContribText} captchaQuestion={captchaQuestion} captchaAnswer={captchaAnswer} setCaptchaAnswer={setCaptchaAnswer} contribError={contribError} isSubmitting={isSubmitting} uploadProgress={uploadProgress} handleContributeSubmit={handleContributeSubmit} handleFileSelect={handleFileSelect} />} />
+            <Route path="/choghadiya" element={<ChoghadiyaScreen choghadiyaDate={choghadiyaDate} setChoghadiyaDate={setChoghadiyaDate} choghadiyaLocation={choghadiyaLocation} setChoghadiyaLocation={setChoghadiyaLocation} handleGetLocation={handleGetLocation} calculateChoghadiya={calculateChoghadiya} choghadiyaLoading={choghadiyaLoading} choghadiyaError={choghadiyaError} choghadiyaSlots={choghadiyaSlots} handleBack={() => navigateTo("home")} />} />
+            <Route path="/bichhuda" element={<BichhudaScreen bichhudaMonth={bichhudaMonth} setBichhudaMonth={setBichhudaMonth} bichhudaYear={bichhudaYear} setBichhudaYear={setBichhudaYear} bichhudaList={bichhudaList} handleBack={() => navigateTo("home")} />} />
+            <Route path="/mele" element={<MelesScreen isLoading={isLoading} meles={meles} processedMeles={processedMeles} navigateTo={navigateTo} />} />
+            <Route path="/admin_login" element={<AdminLoginScreen isAdminLoggingIn={isAdminLoggingIn} adminLoginError={adminLoginError} adminPasswordInput={adminPasswordInput} auth={auth} setIsAdminLoggingIn={setIsAdminLoggingIn} setAdminLoginError={setAdminLoginError} setAdminPasswordInput={setAdminPasswordInput} setIsAdminAuthenticated={setIsAdminAuthenticated} navigateTo={navigateTo} />} />
+            <Route path="/admin" element={<AdminScreen {...{
+              navigateTo, isSubmitting, contribAudioError, contribPhotoError, showToast, checkIsOnline, db,
+              setContribAudioError, setContribPhotoError, setIsSubmitting, contribTitle, contribType, contribAudio,
+              contribText, contribAuthor, contribDate, contribLocation, contribPhotoUrl, setContribTitle, setContribType,
+              setContribAudio, setContribText, setContribAuthor, setContribDate, setContribLocation, setContribPhotoUrl,
+              addDoc, collection, serverTimestamp, setContribError, contribError, pendingContributions, setPendingContributions,
+              doc, updateDoc, deleteDoc, setConfirmDialog, editModalOpen, setEditModalOpen, editAudioError, editPhotoError,
+              setEditAudioError, setEditPhotoError, editContribution, setEditContribution, handleUpdateContribution, handleDeleteContribution, handleFileChange,
+              contribAudioFile, uploadFileToStorage, contribPhotoFile, contribSequence, setContribSequence, setContribAudioFile, setContribPhotoFile, handleFileSelect, uploadProgress, sabads, openEditModal, handleDelete, aartis, bhajans, sakhis, mantras, thoughts, meles, notices, badhais, toggleNoticeStatus, toggleBadhaiStatus, settings, setSettings, setSettingsLogoFile, settingsLogoFile, setSettingsQrCodeFile, settingsQrCodeFile, setSettingsJaapAudioFile, settingsJaapAudioFile, handleSaveSettings, pendingPosts, approvePost, rejectPost, editItemData, handleEditSave, setEditItemData
+            }} />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
+        </AnimatePresence>
       </div>
 
       {/* Notifications Panel */}
@@ -3106,7 +1904,7 @@ function MainApp() {
           </AnimatePresence>
 
           {settings.isAdEnabled !== false && <AdBanner text={settings.adText} link={settings.adLink} />}
-          <div className="bg-white/95 backdrop-blur-xl border-t border-ink/10 flex justify-around items-center py-1.5 px-1 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] pb-safe">
+          <div className="bg-white border-t border-ink/10 flex justify-around items-center py-1.5 px-1 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] pb-safe">
             <NavItem
               icon={<Home className="w-6 h-6" />}
               label="होम"
