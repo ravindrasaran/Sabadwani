@@ -6,6 +6,7 @@ class AudioWrapper {
   private audio: HTMLAudioElement | null = null;
   private isNative = Capacitor.isNativePlatform();
   private listeners: { [key: string]: Function[] } = {};
+  private _loadPromise: Promise<void> | null = null;
   
   public _src = '';
   public _currentTime = 0;
@@ -85,7 +86,7 @@ class AudioWrapper {
 
     if (this.isNative) {
       // Async wrapper to handle caching logic
-      (async () => {
+      this._loadPromise = (async () => {
         try {
           const cachedUrl = await AudioCacheService.getLocalUrl(val);
           
@@ -155,6 +156,9 @@ class AudioWrapper {
 
   async play() {
     if (this.isNative) {
+      if (this._loadPromise) {
+        await this._loadPromise;
+      }
       await Playlist.play();
       this._paused = false;
     } else if (this.audio) {
@@ -198,6 +202,12 @@ let fadeInterval: NodeJS.Timeout | null = null;
 export const fadeAudio = (targetVolume: number, onComplete?: () => void) => {
   if (!globalAudio) return;
   if (fadeInterval) clearInterval(fadeInterval);
+
+  if (Capacitor.isNativePlatform()) {
+    globalAudio.volume = targetVolume;
+    if (onComplete) onComplete();
+    return;
+  }
 
   const startVolume = globalAudio.volume;
   const steps = 20;

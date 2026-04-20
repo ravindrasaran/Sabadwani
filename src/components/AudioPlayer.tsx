@@ -179,7 +179,9 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
       const currentSrc = globalAudio.src;
       const newSrc = new URL(url, window.location.origin).href;
       
-      if (currentSrc !== newSrc) {
+      // Strict equality check is needed against both the raw url and parsed src
+      // because new URL() might normalize string slightly.
+      if (currentSrc !== url && currentSrc !== newSrc) {
         if (preventAutoPause) {
           // Just update local state to reflect that THIS player is not playing the current audio
           setIsPlaying(false);
@@ -261,7 +263,7 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
       const currentSrc = globalAudio.src;
       const targetSrc = new URL(url, window.location.origin).href;
       
-      if (!currentSrc || currentSrc === window.location.href || currentSrc !== targetSrc) {
+      if (!currentSrc || currentSrc === window.location.href || (currentSrc !== url && currentSrc !== targetSrc)) {
         globalAudio.src = url;
         globalAudio.load();
         
