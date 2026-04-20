@@ -7,7 +7,7 @@ import NavItem from "./components/NavItem";
 import { useWakeLock } from "./hooks/useWakeLock";
 import { useSabadData } from "./hooks/useSabadData";
 import { generateAmavasyaForYear, getBichhudaList } from "./lib/astro";
-import { vibrate, checkIsOnline, getSearchSkeleton } from "./lib/utils";
+import { vibrate, checkIsOnline, getSearchSkeleton, getTransliteratedSearch } from "./lib/utils";
 import { globalAudio, setupGlobalMediaSessionListener, clearMediaSession } from "./lib/audioGlobals";
 import React, { useState, useEffect, useRef, useMemo, ReactNode, Suspense, lazy } from "react";
 import { useInitialSetup } from "./hooks/useInitialSetup";
@@ -72,6 +72,10 @@ class ErrorBoundary extends React.Component<{ children: ReactNode }, { hasError:
   constructor(props: { children: ReactNode }) {
     super(props);
     this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
@@ -1075,20 +1079,6 @@ function MainApp() {
     }
   }, [currentScreen, choghadiyaSlots]);
 
-  // Scroll to upcoming mela when mele screen is opened
-  useEffect(() => {
-    if (currentScreen === "mele") {
-      const timer = setTimeout(() => {
-        const cards = document.querySelectorAll('.mela-card');
-        const targetIdx = processedMeles.findIndex((m: any) => m.upcoming);
-        if (targetIdx !== -1 && cards[targetIdx]) {
-          cards[targetIdx].scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [currentScreen, processedMeles]);
-
   // --- Swipe Gesture Logic ---
   const handleSwipe = (direction: "left" | "right") => {
     try {
@@ -1811,16 +1801,54 @@ function MainApp() {
             <Route path="/" element={<HomeScreen isLoading={isLoading} processedMeles={processedMeles} badhais={badhais} dailyThought={dailyThought} notices={notices} handleOpenCategory={handleOpenCategory} navigateTo={navigateTo} />} />
             <Route path="/search" element={<SearchScreen searchQuery={searchQuery} setSearchQuery={setSearchQuery} isLoading={isLoading} sabads={sabads} aartis={aartis} bhajans={bhajans} sakhis={sakhis} mantras={mantras} meles={meles} matchSearch={(title, text) => {
               if (!searchQuery) return false;
-              if (title.toLowerCase().includes(searchQuery.toLowerCase())) return true;
-              if (text && text.toLowerCase().includes(searchQuery.toLowerCase())) return true;
-              const titleSkeleton = getSearchSkeleton(title);
-              const searchSkeleton = getSearchSkeleton(searchQuery);
-              if (searchSkeleton.length < 2) return false;
-              if (titleSkeleton.includes(searchSkeleton)) return true;
-              if (text) {
-                 const textSkeleton = getSearchSkeleton(text);
-                 if (textSkeleton.includes(searchSkeleton)) return true;
+              const query = searchQuery.toLowerCase().trim();
+              if (title.toLowerCase().includes(query)) return true;
+              if (text && text.toLowerCase().includes(query)) return true;
+              
+              // If the user typed in Hindi/Devnagari, the standard .includes() above is perfectly accurate.
+              // We skip skeleton searching for Devnagari completely to prevent severe false positives 
+              // (e.g. "राम" -> "rm" -> matches "धर्म", "कर्म", "मर्म", etc.)
+              const isDevnagari = /[\u0900-\u097F]/.test(searchQuery);
+              
+              if (!isDevnagari) {
+                // Use transliterated search to keep vowel context intact.
+                // This is much safer than pure skeleton and perfectly matches 'aaj' -> 'aj' inside longer strings
+                const searchTransl = getTransliteratedSearch(searchQuery);
+                if (searchTransl.length > 0) {
+                  const titleTransl = getTransliteratedSearch(title);
+                  if (titleTransl.includes(searchTransl)) return true;
+                  
+                  if (text) {
+                    const textTransl = getTransliteratedSearch(text);
+                    if (searchTransl.length <= 4) {
+                      const words = textTransl.split(' ');
+                      if (words.some(w => w === searchTransl)) return true;
+                    } else {
+                      if (textTransl.includes(searchTransl)) return true;
+                    }
+                  }
+                }
+                
+                // Fallback to pure skeleton match ONLY for long queries to catch severe misspellings (like zameendar vs jamindar)
+                if (query.length >= 4) {
+                  const searchSkeleton = getSearchSkeleton(searchQuery);
+                  if (searchSkeleton.length >= 3) {
+                    const titleSkeleton = getSearchSkeleton(title);
+                    if (titleSkeleton.includes(searchSkeleton)) return true;
+                    
+                    if (text) {
+                      const textSkeleton = getSearchSkeleton(text);
+                      if (searchSkeleton.length <= 4) {
+                        const words = textSkeleton.split(' ');
+                        if (words.some(w => w === searchSkeleton)) return true;
+                      } else {
+                        if (textSkeleton.includes(searchSkeleton)) return true;
+                      }
+                    }
+                  }
+                }
               }
+              
               return false;
             }} handleSabadClick={handleSabadClick} setSelectedSabad={setSelectedSabad} setSelectedCategory={setSelectedCategory} setAutoPlayAudio={setAutoPlayAudio} navigateTo={navigateTo} />} />
             <Route path="/mala" element={<JaapMalaScreen malaCount={malaCount} malaLaps={malaLaps} onBack={() => navigateTo('home')} onJap={() => { vibrate(12); playOmVishnu(); if (malaCount + 1 >= 108) { vibrate([50, 30, 100, 30, 50]); setMalaCount(0); setMalaLaps(l => l + 1); } else { setMalaCount(c => c + 1); } }} onReset={() => { setConfirmDialog({ isOpen: true, title: "माला रीसेट", message: "क्या आप वाकई माला रीसेट करना चाहते हैं?", onConfirm: () => { setMalaCount(0); setMalaLaps(0); } }); }} />} />
@@ -1904,7 +1932,7 @@ function MainApp() {
           </AnimatePresence>
 
           {settings.isAdEnabled !== false && <AdBanner text={settings.adText} link={settings.adLink} />}
-          <div className="bg-white border-t border-ink/10 flex justify-around items-center py-1.5 px-1 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] pb-safe">
+          <div className="bg-white/95 backdrop-blur-xl border-t border-ink/10 flex justify-around items-center py-1.5 px-1 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] pb-safe">
             <NavItem
               icon={<Home className="w-6 h-6" />}
               label="होम"

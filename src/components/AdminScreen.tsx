@@ -117,12 +117,14 @@ export default function AdminScreen(props: any) {
                         }
                         
                         // Send Notification
-                        await addDoc(collection(db, "notifications"), {
-                          title: `नया ${contribType} जोड़ा गया`,
-                          message: `नया ${contribType} "${contribTitle}" ऐप में जोड़ दिया गया है।`,
-                          date: "अभी",
-                          read: false,
-                        });
+                        if (contribType !== "सुविचार") {
+                          await addDoc(collection(db, "notifications"), {
+                            title: `नया ${contribType} जोड़ा गया`,
+                            message: `नया ${contribType} "${contribTitle}" ऐप में जोड़ दिया गया है।`,
+                            date: "अभी",
+                            read: false,
+                          });
+                        }
                       }
 
                       setContribTitle("");
@@ -182,11 +184,11 @@ export default function AdminScreen(props: any) {
                     </div>
                   </div>
 
-                  {contribType !== "सुविचार" && contribType !== "मेले" && (
+                  {contribType !== "सुविचार" && contribType !== "मेले" && contribType !== "बधाई संदेश" && (
                     <>
                       <div>
                         <label className="block font-bold text-sm mb-1">
-                          {contribType === "बधाई संदेश" ? "नाम (Name)" : "शीर्षक (Title)"}
+                          शीर्षक (Title)
                         </label>
                         <input
                           value={contribTitle}
@@ -194,10 +196,10 @@ export default function AdminScreen(props: any) {
                           required
                           type="text"
                           className="w-full p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none transition-colors"
-                          placeholder={contribType === "बधाई संदेश" ? "नाम लिखें..." : "शीर्षक लिखें..."}
+                          placeholder="शीर्षक लिखें..."
                         />
                       </div>
-                      {contribType !== "आवश्यक सूचना" && contribType !== "बधाई संदेश" && (
+                      {contribType !== "आवश्यक सूचना" && (
                       <div>
                         <label className="block font-bold text-sm mb-1">
                           ऑडियो लिंक (Audio URL - Optional) या अपलोड करें
@@ -362,6 +364,21 @@ export default function AdminScreen(props: any) {
                     </>
                   )}
 
+                  {contribType === "सुविचार" && (
+                    <div>
+                      <label className="block font-bold text-sm mb-1">
+                        लेखक (Author)
+                      </label>
+                      <input
+                        value={contribAuthor}
+                        onChange={(e) => setContribAuthor(e.target.value)}
+                        type="text"
+                        className="w-full p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none transition-colors"
+                        placeholder="गुरु जम्भेश्वर"
+                      />
+                    </div>
+                  )}
+
                   <div>
                     <label className="block font-bold text-sm mb-1">
                       {contribType === "सुविचार"
@@ -374,20 +391,6 @@ export default function AdminScreen(props: any) {
                               ? "सूचना का विवरण (Notice Details)"
                               : "पाठ (Text / Lyrics)"}
                     </label>
-                    {contribType === "सुविचार" && (
-                      <div className="mb-4">
-                        <label className="block font-bold text-sm mb-1">
-                          लेखक (Author)
-                        </label>
-                        <input
-                          value={contribAuthor}
-                          onChange={(e) => setContribAuthor(e.target.value)}
-                          type="text"
-                          className="w-full p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none transition-colors"
-                          placeholder="गुरु जम्भेश्वर"
-                        />
-                      </div>
-                    )}
                     <textarea
                       value={contribText}
                       onChange={(e) => setContribText(e.target.value)}
@@ -1169,6 +1172,25 @@ export default function AdminScreen(props: any) {
                         </div>
                       </>
                     )}
+                    {editItemData.type === "सुविचार" && (
+                      <div>
+                        <label className="block font-bold text-sm mb-1">
+                          लेखक (Author)
+                        </label>
+                        <input
+                          type="text"
+                          value={editItemData.author || ""}
+                          onChange={(e) =>
+                            setEditItemData({
+                              ...editItemData,
+                              author: e.target.value,
+                            })
+                          }
+                          className="w-full p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none"
+                          placeholder="गुरु जम्भेश्वर"
+                        />
+                      </div>
+                    )}
                     <div>
                       <label className="block font-bold text-sm mb-1">
                         {editItemData.type === "सुविचार"
@@ -1194,25 +1216,6 @@ export default function AdminScreen(props: any) {
                         className="w-full p-3 rounded-xl border border-ink/20 bg-white h-32 focus:border-accent outline-none"
                       ></textarea>
                     </div>
-                    {editItemData.type === "सुविचार" && (
-                      <div>
-                        <label className="block font-bold text-sm mb-1">
-                          लेखक (Author)
-                        </label>
-                        <input
-                          type="text"
-                          value={editItemData.author || ""}
-                          onChange={(e) =>
-                            setEditItemData({
-                              ...editItemData,
-                              author: e.target.value,
-                            })
-                          }
-                          className="w-full p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none"
-                          placeholder="गुरु जम्भेश्वर"
-                        />
-                      </div>
-                    )}
                     <div className="flex gap-3 mt-6">
                       <button
                         type="button"

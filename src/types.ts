@@ -44,7 +44,8 @@ export type Mele = {
   name: string;
   desc?: string;
   location?: string;
-  date?: string;
+  date?: string | any;
+  dateStr?: string;
 };
 
 export type Notice = {
@@ -52,13 +53,18 @@ export type Notice = {
   title: string;
   text: string;
   active?: boolean;
+  isActive?: boolean;
 };
 
 export type Badhai = {
   id: string;
   title: string;
+  name?: string;
   imageUrl?: string;
+  photoUrl?: string;
+  text?: string;
   active?: boolean;
+  isActive?: boolean;
 };
 
 export type AppSettings = {

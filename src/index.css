@@ -87,20 +87,6 @@ input, textarea {
 }
 
 /* Safe Area Insets for modern mobile devices */
-
-/* 
- * PREMIUM CRASH FIX (libGLESv2_mtk.so / webviewchromium):
- * Force disable all backdrop-filters globally. 
- * MediaTek processors and certain low-end Android GPUs have a fatal 
- * hardware-acceleration bug when rendering "-webkit-backdrop-filter: blur()" 
- * inside Android WebViews, causing `glBindFramebuffer` to abort. 
- * Disabling this ensures absolute stability on all Android targets.
- */
-*, ::before, ::after {
-  -webkit-backdrop-filter: none !important;
-  backdrop-filter: none !important;
-}
-
 @utility pb-safe {
   padding-bottom: env(safe-area-inset-bottom);
 }

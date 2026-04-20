@@ -115,9 +115,9 @@ export function useSabadData() {
 
       // Meta Collections without sequence ordering
       fetchWithStaleWhileRevalidate("thoughts", "thought", setThoughts, false, (doc) => ({ id: doc.id, text: normalizeText(doc.data().text), author: doc.data().author } as Thought));
-      fetchWithStaleWhileRevalidate("meles", "mele", setMeles, false, (doc) => ({ id: doc.id, name: normalizeText(doc.data().name), desc: normalizeText(doc.data().desc), location: normalizeText(doc.data().location), date: doc.data().date } as Mele));
-      fetchWithStaleWhileRevalidate("notices", "notice", setNotices, false, (doc) => ({ id: doc.id, title: normalizeText(doc.data().title), text: normalizeText(doc.data().text), active: doc.data().active } as Notice));
-      fetchWithStaleWhileRevalidate("badhais", "badhai", setBadhais, false, (doc) => ({ id: doc.id, title: doc.data().title, imageUrl: doc.data().imageUrl, active: doc.data().active } as Badhai));
+      fetchWithStaleWhileRevalidate("meles", "mele", setMeles, false, (doc) => ({ id: doc.id, name: normalizeText(doc.data().name), desc: normalizeText(doc.data().desc), location: normalizeText(doc.data().location), date: doc.data().date, dateStr: doc.data().dateStr } as Mele));
+      fetchWithStaleWhileRevalidate("notices", "notice", setNotices, false, (doc) => ({ id: doc.id, title: normalizeText(doc.data().title), text: normalizeText(doc.data().text), active: doc.data().active, isActive: doc.data().isActive ?? doc.data().active } as Notice));
+      fetchWithStaleWhileRevalidate("badhais", "badhai", setBadhais, false, (doc) => ({ id: doc.id, title: doc.data().title || doc.data().name || "", name: doc.data().name || doc.data().title || "", imageUrl: doc.data().imageUrl || doc.data().photoUrl, photoUrl: doc.data().photoUrl || doc.data().imageUrl, text: doc.data().text || "", active: doc.data().active, isActive: doc.data().isActive ?? doc.data().active } as Badhai));
       fetchWithStaleWhileRevalidate("pendingPosts", "pending", setPendingPosts, false, (doc) => ({ id: doc.id, ...doc.data(), title: normalizeText(doc.data().title), text: normalizeText(doc.data().text) } as SabadItem));
       
       // Fallback timeout in case both cache and server fail to respond quickly

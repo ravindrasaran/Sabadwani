@@ -37,18 +37,29 @@ const JaapMalaScreen: React.FC<JaapMalaScreenProps> = ({
         </div>
         
         <div className="relative flex items-center justify-center w-full max-w-[250px] sm:max-w-[300px] aspect-square mt-6 mb-10">
-          {/* Decorative background rings */}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-5">
-            <div className="w-full h-full rounded-full border-[10px] sm:border-[12px] border-ink"></div>
-            <div className="absolute w-[115%] h-[115%] rounded-full border-[1.5px] sm:border-[2px] border-ink border-dashed"></div>
+          {/* Premium Decorative background rings */}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            {/* Soft spiritual background aura (तेज) */}
+            <div className="absolute w-[140%] h-[140%] rounded-full bg-gradient-to-tr from-accent/20 to-transparent blur-3xl"></div>
+            
+            {/* Outer dotted slowly rotating circle (Represents 108 beads of Mala) */}
+            <div className="absolute w-[125%] h-[125%] rounded-full flex items-center justify-center animate-[spin_60s_linear_infinite]">
+              <div className="w-full h-full rounded-full border-[4px] border-accent/40 border-dotted"></div>
+            </div>
+
+            {/* Middle solid ring (Aura boundary) */}
+            <div className="absolute w-[112%] h-[112%] rounded-full border border-accent/20 shadow-[inset_0_0_15px_rgba(var(--color-accent),0.1)]"></div>
+
+            {/* Inner translucent thick boundary */}
+            <div className="w-full h-full rounded-full border-[8px] sm:border-[12px] border-accent/15"></div>
           </div>
 
           <button 
             onClick={onJap}
-            className="relative w-full h-full rounded-full bg-gradient-to-br from-accent to-accent-dark text-white shadow-2xl flex items-center justify-center active:scale-95 transition-all border-[6px] sm:border-[8px] border-white/30 group z-10"
+            className="relative w-full h-full rounded-full bg-gradient-to-br from-accent to-accent-dark text-white shadow-2xl flex items-center justify-center active:scale-95 transition-all border-[6px] sm:border-[8px] border-white/40 group z-10"
           >
             <div className="absolute inset-0 rounded-full bg-white/20 opacity-0 group-active:opacity-100 transition-opacity"></div>
-            <span className="text-2xl sm:text-3xl md:text-4xl font-bold font-heading tracking-wider">जाप करें</span>
+            <span className="text-2xl sm:text-3xl md:text-4xl font-bold font-heading tracking-wider drop-shadow-md">जाप करें</span>
           </button>
         </div>
         
