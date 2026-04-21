@@ -7,6 +7,7 @@ class AudioWrapper {
   private isNative = Capacitor.isNativePlatform();
   private listeners: { [key: string]: Function[] } = {};
   private _loadPromise: Promise<void> | null = null;
+  private _isTransitioning = false;
   
   public _src = '';
   public _currentTime = 0;
@@ -38,6 +39,11 @@ class AudioWrapper {
       Playlist.addListener('status', (data: any) => {
         const val = data.value || {};
         
+        // Prevent duplicate trigger events during async loading
+        if (this._isTransitioning && data.msgType !== 40 && data.msgType !== 30 && data.msgType !== 35) {
+            return;
+        }
+
         // Handle playback position updates
         if (data.msgType === 40 || val.currentPosition !== undefined || val.position !== undefined) {
           this._currentTime = val.currentPosition !== undefined ? val.currentPosition : (val.position !== undefined ? val.position : this._currentTime);
@@ -46,15 +52,18 @@ class AudioWrapper {
         }
 
         if (data.msgType === 100) {
-           if (val.currentIndex === 0 && globalAudioCallbacks?.onPrev) {
-               // Hit dummy_prev from Lock Screen "Prev"
-               globalAudioCallbacks.onPrev();
+           if (val.currentIndex === 0) {
+               this._isTransitioning = true;
+               Playlist.pause(); // Immediately stop the dummy track
+               if (globalAudioCallbacks?.onPrev) globalAudioCallbacks.onPrev();
+               return;
            } else if (val.currentIndex === 2) {
-               // Hit dummy_next from natural playback finish or manual next
-               // Note that explicit Next button is also caught by msgType 90/command
+               this._isTransitioning = true;
+               Playlist.pause(); // Immediately stop the dummy track
                this._paused = true;
                this._ended = true;
                this.emit('ended', {});
+               return;
            }
         }
 
@@ -78,17 +87,25 @@ class AudioWrapper {
         
         // Handle native media controls (Next/Prev from lock screen)
         if (data.msgType === 'command') {
-           if (val.command === 'next' && globalAudioCallbacks?.onNext) {
-             globalAudioCallbacks.onNext();
-           } else if (val.command === 'previous' && globalAudioCallbacks?.onPrev) {
-             globalAudioCallbacks.onPrev();
+           if (val.command === 'next') {
+             this._isTransitioning = true;
+             Playlist.pause();
+             if (globalAudioCallbacks?.onNext) globalAudioCallbacks.onNext();
+           } else if (val.command === 'previous') {
+             this._isTransitioning = true;
+             Playlist.pause();
+             if (globalAudioCallbacks?.onPrev) globalAudioCallbacks.onPrev();
            }
-        } else if (data.msgType === 90 && globalAudioCallbacks?.onNext) {
+        } else if (data.msgType === 90) {
            // 90: RMX_STATUS_SKIP_FORWARD
-           globalAudioCallbacks.onNext();
-        } else if (data.msgType === 95 && globalAudioCallbacks?.onPrev) {
+           this._isTransitioning = true;
+           Playlist.pause();
+           if (globalAudioCallbacks?.onNext) globalAudioCallbacks.onNext();
+        } else if (data.msgType === 95) {
            // 95: RMX_STATUS_SKIP_BACK
-           globalAudioCallbacks.onPrev();
+           this._isTransitioning = true;
+           Playlist.pause();
+           if (globalAudioCallbacks?.onPrev) globalAudioCallbacks.onPrev();
         }
 
         if (data.msgType === 'error') {
@@ -101,12 +118,17 @@ class AudioWrapper {
   get src() { return this._src; }
   set src(val: string) {
     this._src = val;
+    this._isTransitioning = false; // Reset transition lock
+    
     if (!val) {
       if (this.audio) this.audio.src = '';
+      if (this.isNative) Playlist.pause();
       return;
     }
 
     if (this.isNative) {
+      Playlist.pause(); // Pause instantly to stop any currently running dummy audio
+
       // Async wrapper to handle caching logic
       this._loadPromise = (async () => {
         try {
@@ -117,13 +139,19 @@ class AudioWrapper {
             AudioCacheService.downloadToCache(val);
           }
 
+          let localLogoPath = 'https://bishnoi.co.in/logo.png';
+          if (typeof window !== 'undefined') {
+            localLogoPath = new URL('/logo.png', window.location.origin).href;
+          }
+
           await Playlist.setPlaylistItems({
             items: [
               {
                 trackId: 'dummy_prev',
-                assetUrl: 'https://bishnoi.co.in/silent.mp3', // dummy to force back button
-                title: 'पिछला शब्द',
-                artist: 'बिश्नोई समाज',
+                assetUrl: cachedUrl, // Use local cache URL so 0 network request
+                title: 'लोड हो रहा है...',
+                artist: this._metadata?.artist || 'बिश्नोई समाज',
+                albumArt: localLogoPath,
                 isStream: false
               },
               {
@@ -132,15 +160,16 @@ class AudioWrapper {
                 title: this._metadata?.title || 'सबदवाणी',
                 artist: this._metadata?.artist || 'बिश्नोई समाज',
                 album: this._metadata?.album || 'सबदवाणी',
-                albumArt: this._metadata?.artwork || new URL('/logo.png', window.location.origin).href,
+                albumArt: this._metadata?.artwork || localLogoPath,
                 // Set isStream to false so lock screen shows progress bar and seek controls
                 isStream: false 
               },
               {
                 trackId: 'dummy_next',
-                assetUrl: 'https://bishnoi.co.in/silent.mp3', // dummy to force next button
-                title: 'अगला शब्द',
-                artist: 'बिश्नोई समाज',
+                assetUrl: cachedUrl, // Use local cache URL so 0 network request
+                title: 'लोड हो रहा है...',
+                artist: this._metadata?.artist || 'बिश्नोई समाज',
+                albumArt: localLogoPath,
                 isStream: false
               }
             ],
@@ -234,8 +263,7 @@ class AudioWrapper {
 
 export const globalAudio = new AudioWrapper();
 
-// Pro Feature: Smooth Fading Logic
-const FADE_DURATION = 500; // 0.5 seconds
+const FADE_DURATION = 500;
 let fadeInterval: NodeJS.Timeout | null = null;
 
 export const fadeAudio = (targetVolume: number, onComplete?: () => void) => {
@@ -267,7 +295,6 @@ export const fadeAudio = (targetVolume: number, onComplete?: () => void) => {
   }, stepDuration);
 };
 
-// Pro Feature: Audio Focus Handling (For Calls/Other Media)
 if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
   (navigator as any).mediaSession.playbackState = 'none';
 }
