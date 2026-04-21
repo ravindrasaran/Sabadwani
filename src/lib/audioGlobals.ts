@@ -45,6 +45,19 @@ class AudioWrapper {
           this.emit('timeupdate', {});
         }
 
+        if (data.msgType === 100) {
+           if (val.currentIndex === 0 && globalAudioCallbacks?.onPrev) {
+               // Hit dummy_prev from Lock Screen "Prev"
+               globalAudioCallbacks.onPrev();
+           } else if (val.currentIndex === 2) {
+               // Hit dummy_next from natural playback finish or manual next
+               // Note that explicit Next button is also caught by msgType 90/command
+               this._paused = true;
+               this._ended = true;
+               this.emit('ended', {});
+           }
+        }
+
         if (val.status === 'playing' || data.msgType === 30) {
           this._paused = false;
           this._ended = false;
@@ -105,17 +118,33 @@ class AudioWrapper {
           }
 
           await Playlist.setPlaylistItems({
-            items: [{
-              trackId: 'track1',
-              assetUrl: cachedUrl,
-              title: this._metadata?.title || 'सबदवाणी',
-              artist: this._metadata?.artist || 'बिश्नोई समाज',
-              album: this._metadata?.album || 'सबदवाणी',
-              albumArt: this._metadata?.artwork || 'https://bishnoi.co.in/logo.png',
-              // Set isStream to false so lock screen shows progress bar and seek controls
-              isStream: false 
-            }],
-            options: { startPaused: true, retainPosition: false }
+            items: [
+              {
+                trackId: 'dummy_prev',
+                assetUrl: 'https://bishnoi.co.in/silent.mp3', // dummy to force back button
+                title: 'पिछला शब्द',
+                artist: 'बिश्नोई समाज',
+                isStream: false
+              },
+              {
+                trackId: 'track_current',
+                assetUrl: cachedUrl,
+                title: this._metadata?.title || 'सबदवाणी',
+                artist: this._metadata?.artist || 'बिश्नोई समाज',
+                album: this._metadata?.album || 'सबदवाणी',
+                albumArt: this._metadata?.artwork || new URL('/logo.png', window.location.origin).href,
+                // Set isStream to false so lock screen shows progress bar and seek controls
+                isStream: false 
+              },
+              {
+                trackId: 'dummy_next',
+                assetUrl: 'https://bishnoi.co.in/silent.mp3', // dummy to force next button
+                title: 'अगला शब्द',
+                artist: 'बिश्नोई समाज',
+                isStream: false
+              }
+            ],
+            options: { startPaused: true, retainPosition: false, playFromId: 'track_current' }
           });
         } catch (err) {
           console.warn("Error setting playlist items with cache:", err);
@@ -250,7 +279,7 @@ export const setGlobalAudioCallbacks = (callbacks: any) => {
 
 export let isClearingSession = false;
 
-const DEFAULT_LOGO = 'https://bishnoi.co.in/logo.png';
+const DEFAULT_LOGO = typeof window !== 'undefined' ? new URL('/logo.png', window.location.origin).href : '/logo.png';
 
 export const updateMediaSessionMetadata = async (metadata: { title: string; artist: string; album: string; artwork?: string }) => {
   isClearingSession = false;
