@@ -201,6 +201,7 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
             
             if (globalAudio) {
               setIsPlaying(true);
+              if (callbacksRef.current.onPlay) callbacksRef.current.onPlay();
               // Small delay to ensure browser is ready
               setTimeout(() => {
                 const playPromise = globalAudio.play();
@@ -258,6 +259,7 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
       
       // Optimistic UI update
       setIsPlaying(true);
+      if (callbacksRef.current.onPlay) callbacksRef.current.onPlay();
       
       // Ensure we have a valid source
       const currentSrc = globalAudio.src;
@@ -266,11 +268,6 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
       if (!currentSrc || currentSrc === window.location.href || (currentSrc !== url && currentSrc !== targetSrc)) {
         globalAudio.src = url;
         globalAudio.load();
-        
-        // If we were preventing auto pause, we are now taking over
-        if (preventAutoPause && callbacksRef.current.onPlay) {
-           callbacksRef.current.onPlay();
-        }
       }
       
       // Pro Feature: Fade-in safely through wrapper function to prevent Race Conditions
@@ -312,13 +309,13 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
   if (variant === 'mini') {
     return (
       <motion.div 
-        initial={{ y: 100, opacity: 0 }}
+        initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        exit={{ y: 100, opacity: 0 }}
+        exit={{ y: 20, opacity: 0 }}
         drag="y"
-        dragConstraints={{ top: 0, bottom: 100 }}
+        dragConstraints={{ top: 0, bottom: 50 }}
         onDragEnd={(_, info) => {
-          if (info.offset.y > 50 && onClose) onClose();
+          if (info.offset.y > 30 && onClose) onClose();
         }}
         onClick={onClick}
         className={`w-[95%] mx-auto mb-2 max-w-md bg-white/70 backdrop-blur-2xl border border-white/40 p-3 shadow-[0_8px_30px_rgba(0,0,0,0.12)] z-[90] flex items-center gap-3 rounded-2xl transition-transform ${onClick ? 'cursor-pointer active:scale-[0.98]' : ''}`}
