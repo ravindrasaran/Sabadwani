@@ -8,6 +8,7 @@ class AudioWrapper {
   private listeners: { [key: string]: Function[] } = {};
   private _loadPromise: Promise<void> | null = null;
   private _isTransitioning = false;
+  private _srcCounter = 0; // Prevent race conditions on fast next
   
   public _src = '';
   public _currentTime = 0;
@@ -52,14 +53,9 @@ class AudioWrapper {
         }
 
         if (data.msgType === 100) {
-           if (val.currentIndex === 0) {
+           if (val.isAtEnd || val.currentIndex === 0 || val.status === 'completed' || val.status === 'stopped') {
                this._isTransitioning = true;
-               Playlist.pause(); // Immediately stop the dummy track
-               if (globalAudioCallbacks?.onPrev) globalAudioCallbacks.onPrev();
-               return;
-           } else if (val.currentIndex === 2) {
-               this._isTransitioning = true;
-               Playlist.pause(); // Immediately stop the dummy track
+               Playlist.pause();
                this._paused = true;
                this._ended = true;
                this.emit('ended', {});
@@ -119,6 +115,8 @@ class AudioWrapper {
   set src(val: string) {
     this._src = val;
     this._isTransitioning = false; // Reset transition lock
+    this._srcCounter++; // Increment counter for race condition check
+    const currentSrcCount = this._srcCounter;
     
     if (!val) {
       if (this.audio) this.audio.src = '';
@@ -127,12 +125,18 @@ class AudioWrapper {
     }
 
     if (this.isNative) {
-      Playlist.pause(); // Pause instantly to stop any currently running dummy audio
+      Playlist.pause(); // Pause instantly to stop any currently running audio
 
-      // Async wrapper to handle caching logic
+      // Async wrapper to handle caching logic safely
       this._loadPromise = (async () => {
         try {
           const cachedUrl = await AudioCacheService.getLocalUrl(val);
+          
+          // ABORT if the user clicked Next again before the fetch finished!
+          if (this._srcCounter !== currentSrcCount) {
+             console.log("Fast next detected. Aborting old async load:", val);
+             return;
+          }
           
           // If we fallback to remote, optionally trigger background cache
           if (cachedUrl === val && val.startsWith('http')) {
@@ -144,16 +148,9 @@ class AudioWrapper {
             localLogoPath = new URL('/logo.png', window.location.origin).href;
           }
 
+          // Single item without dummy arrays
           await Playlist.setPlaylistItems({
             items: [
-              {
-                trackId: 'dummy_prev',
-                assetUrl: cachedUrl, // Use local cache URL so 0 network request
-                title: 'लोड हो रहा है...',
-                artist: this._metadata?.artist || 'बिश्नोई समाज',
-                albumArt: localLogoPath,
-                isStream: false
-              },
               {
                 trackId: 'track_current',
                 assetUrl: cachedUrl,
@@ -161,16 +158,7 @@ class AudioWrapper {
                 artist: this._metadata?.artist || 'बिश्नोई समाज',
                 album: this._metadata?.album || 'सबदवाणी',
                 albumArt: this._metadata?.artwork || localLogoPath,
-                // Set isStream to false so lock screen shows progress bar and seek controls
                 isStream: false 
-              },
-              {
-                trackId: 'dummy_next',
-                assetUrl: cachedUrl, // Use local cache URL so 0 network request
-                title: 'लोड हो रहा है...',
-                artist: this._metadata?.artist || 'बिश्नोई समाज',
-                albumArt: localLogoPath,
-                isStream: false
               }
             ],
             options: { startPaused: true, retainPosition: false, playFromId: 'track_current' }
@@ -230,7 +218,14 @@ class AudioWrapper {
       await Playlist.play();
       this._paused = false;
     } else if (this.audio) {
-      return this.audio.play();
+      try {
+        await this.audio.play();
+      } catch (e: any) {
+        // Ignore AbortError caused by pause() interrupting play()
+        if (e.name !== 'AbortError') {
+          console.error("Audio play error:", e);
+        }
+      }
     }
   }
 
