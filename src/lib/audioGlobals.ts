@@ -36,25 +36,28 @@ class AudioWrapper {
     } else if (this.isNative) {
       Playlist.initialize();
       Playlist.addListener('status', (data: any) => {
-        const val = data.value as any;
-        if (val.currentPosition !== undefined) {
-          this._currentTime = val.currentPosition;
-          this._duration = val.duration || 0;
+        const val = data.value || {};
+        
+        // Handle playback position updates
+        if (data.msgType === 40 || val.currentPosition !== undefined || val.position !== undefined) {
+          this._currentTime = val.currentPosition !== undefined ? val.currentPosition : (val.position !== undefined ? val.position : this._currentTime);
+          this._duration = val.duration !== undefined ? val.duration : this._duration;
           this.emit('timeupdate', {});
         }
-        if (val.status === 'playing') {
+
+        if (val.status === 'playing' || data.msgType === 30) {
           this._paused = false;
           this._ended = false;
           this.emit('playing', {});
           this.emit('play', {});
-        } else if (val.status === 'paused') {
+        } else if (val.status === 'paused' || data.msgType === 35) {
           this._paused = true;
           this.emit('pause', {});
-        } else if (val.status === 'loading') {
+        } else if (val.status === 'loading' || data.msgType === 10 || data.msgType === 25) {
           this.emit('waiting', {});
-        } else if (val.status === 'ready') {
+        } else if (val.status === 'ready' || data.msgType === 11 || data.msgType === 15) {
           this.emit('canplay', {});
-        } else if (val.status === 'stopped' || (data.msgType === 'track_changed' && val.isAtEnd)) {
+        } else if (val.status === 'stopped' || data.msgType === 50 || data.msgType === 60 || (data.msgType === 100 && val.isAtEnd)) {
           this._paused = true;
           this._ended = true;
           this.emit('ended', {});
@@ -67,6 +70,12 @@ class AudioWrapper {
            } else if (val.command === 'previous' && globalAudioCallbacks?.onPrev) {
              globalAudioCallbacks.onPrev();
            }
+        } else if (data.msgType === 90 && globalAudioCallbacks?.onNext) {
+           // 90: RMX_STATUS_SKIP_FORWARD
+           globalAudioCallbacks.onNext();
+        } else if (data.msgType === 95 && globalAudioCallbacks?.onPrev) {
+           // 95: RMX_STATUS_SKIP_BACK
+           globalAudioCallbacks.onPrev();
         }
 
         if (data.msgType === 'error') {
@@ -103,7 +112,8 @@ class AudioWrapper {
               artist: this._metadata?.artist || 'बिश्नोई समाज',
               album: this._metadata?.album || 'सबदवाणी',
               albumArt: this._metadata?.artwork || 'https://bishnoi.co.in/logo.png',
-              isStream: cachedUrl.startsWith('http')
+              // Set isStream to false so lock screen shows progress bar and seek controls
+              isStream: false 
             }],
             options: { startPaused: true, retainPosition: false }
           });
