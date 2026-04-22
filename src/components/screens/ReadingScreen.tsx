@@ -262,6 +262,8 @@ export default function ReadingScreen(props: ReadingScreenProps) {
               handleSwipe("right");
             }}
             title={selectedSabad.title}
+            playingSabad={playingSabad}
+            selectedSabad={selectedSabad}
             showToast={showToast}
             variant="full"
             hideTitle={true}

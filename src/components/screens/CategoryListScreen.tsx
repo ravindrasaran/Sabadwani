@@ -16,12 +16,13 @@ export interface CategoryListScreenProps {
   handleBack: () => void;
   navigateTo: (screen: string) => void;
   setSelectedSabad: (sabad: any) => void;
+  setPlayingSabad?: (sabad: any) => void;
   setAutoPlayAudio: (play: boolean) => void;
 }
 
 export default function CategoryListScreen({ 
   isLoading, selectedCategory, aartis, bhajans, sakhis, mantras, 
-  handleBack, navigateTo, setSelectedSabad, setAutoPlayAudio 
+  handleBack, navigateTo, setSelectedSabad, setPlayingSabad, setAutoPlayAudio 
 }: CategoryListScreenProps) {
   
   const categoryData = {
@@ -84,6 +85,7 @@ export default function CategoryListScreen({
                     icon={Play}
                     onClick={() => {
                       setSelectedSabad(item);
+                      if (setPlayingSabad) setPlayingSabad(item);
                       setAutoPlayAudio(false);
                       navigateTo("audio_reading");
                     }}

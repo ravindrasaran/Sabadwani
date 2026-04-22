@@ -14,6 +14,7 @@ export interface CommunityPostsScreenProps {
   handleBack: () => void;
   navigateTo: (screen: string) => void;
   setSelectedSabad: (sabad: SabadItem) => void;
+  setPlayingSabad?: (sabad: SabadItem) => void;
   setSelectedCategory: (cat: 'aarti' | 'bhajan' | 'sakhi' | 'mantra') => void;
   setAutoPlayAudio: (play: boolean) => void;
 }
@@ -21,7 +22,7 @@ export interface CommunityPostsScreenProps {
 export default function CommunityPostsScreen(props: CommunityPostsScreenProps) {
   const {
     isLoading, recentApprovedPosts, myPendingPosts,
-    handleBack, navigateTo, setSelectedSabad, setSelectedCategory, setAutoPlayAudio
+    handleBack, navigateTo, setSelectedSabad, setPlayingSabad, setSelectedCategory, setAutoPlayAudio
   } = props;
 
   const listRef = useRef<HTMLDivElement>(null);
@@ -182,6 +183,7 @@ export default function CommunityPostsScreen(props: CommunityPostsScreenProps) {
                           <button
                             onClick={() => {
                               setSelectedSabad(item);
+                              if (setPlayingSabad) setPlayingSabad(item);
                               if (item.type === "शब्द") {
                                 navigateTo("reading");
                               } else {

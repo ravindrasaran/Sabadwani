@@ -39,13 +39,15 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
   const isDraggingRef = useRef(false);
   const callbacksRef = useRef<any>({ onEnded, onPlay, onPause, onNext, onPrev, showToast });
 
-  const handleSeek = (e: React.PointerEvent<HTMLDivElement>) => {
+  const handleSeekEvent = (e: React.PointerEvent<HTMLDivElement>, isFinal: boolean) => {
     if (globalAudio && globalAudio.duration && isFinite(globalAudio.duration)) {
       const rect = e.currentTarget.getBoundingClientRect();
       const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
       const clickedValue = x / rect.width;
       setProgress(clickedValue * 100);
-      globalAudio.currentTime = clickedValue * globalAudio.duration;
+      if (isFinal) {
+        globalAudio.currentTime = clickedValue * globalAudio.duration;
+      }
     }
   };
 
@@ -477,14 +479,21 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
           onPointerDown={(e) => {
             isDraggingRef.current = true;
             e.currentTarget.setPointerCapture(e.pointerId);
-            handleSeek(e);
+            handleSeekEvent(e, false);
           }}
           onPointerMove={(e) => {
             if (isDraggingRef.current) {
-              handleSeek(e);
+              handleSeekEvent(e, false);
             }
           }}
           onPointerUp={(e) => {
+            if (isDraggingRef.current) {
+              handleSeekEvent(e, true);
+            }
+            isDraggingRef.current = false;
+            e.currentTarget.releasePointerCapture(e.pointerId);
+          }}
+          onPointerCancel={(e) => {
             isDraggingRef.current = false;
             e.currentTarget.releasePointerCapture(e.pointerId);
           }}
