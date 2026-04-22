@@ -9,7 +9,7 @@ import { useSabadData } from "./hooks/useSabadData";
 import { generateAmavasyaForYear, getBichhudaList } from "./lib/astro";
 import { vibrate, checkIsOnline, getSearchSkeleton, getTransliteratedSearch } from "./lib/utils";
 import { globalAudio, setupGlobalMediaSessionListener, clearMediaSession } from "./lib/audioGlobals";
-import React, { useState, useEffect, useRef, useMemo, ReactNode, Suspense, lazy } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback, ReactNode, Suspense, lazy } from "react";
 import { useInitialSetup } from "./hooks/useInitialSetup";
 import { usePushNotifications } from "./hooks/usePushNotifications";
 import { useAppNotifications } from "./hooks/useAppNotifications";
@@ -163,12 +163,16 @@ function MainApp() {
     slideDir, setSlideDir
   } = useAppStore();
 
-  const showToast = (message: string) => {
+  const showToast = useCallback((message: string) => {
     setToastMessage(message);
     setTimeout(() => setToastMessage(null), 3000);
-  };
+  }, []);
 
-  useInitialSetup(paymentIntentPending, showToast, setupGlobalMediaSessionListener);
+  const setupMediaSession = useCallback(() => {
+    setupGlobalMediaSessionListener();
+  }, []);
+
+  useInitialSetup(paymentIntentPending, showToast, setupMediaSession);
   usePushNotifications(showToast);
 
   const navigate = useNavigate();
@@ -1133,7 +1137,12 @@ function MainApp() {
         }
         setSlideDir(1);
         const nextItem = currentList[nextIndex];
-        if (nextItem) setSelectedSabad(nextItem);
+        if (nextItem) {
+          setSelectedSabad(nextItem);
+          if (currentScreen === "audio_reading") {
+            setPlayingSabad(nextItem);
+          }
+        }
       } else if (direction === "right") {
         if (isSabadsList && currentIndex === 67) { // 68th sabad (index 67)
           prevIndex = 65; // Back to 66th (index 65)
@@ -1146,7 +1155,12 @@ function MainApp() {
         }
         setSlideDir(-1);
         const prevItem = currentList[prevIndex];
-        if (prevItem) setSelectedSabad(prevItem);
+        if (prevItem) {
+          setSelectedSabad(prevItem);
+          if (currentScreen === "audio_reading") {
+            setPlayingSabad(prevItem);
+          }
+        }
       }
     } catch (err) {
       console.error("Swipe error:", err);
@@ -1906,12 +1920,14 @@ function MainApp() {
                   variant="mini"
                   playingSabad={playingSabad}
                   selectedSabad={selectedSabad}
+                  preventAutoPause={true}
                   onClose={() => {
                     if (globalAudio) globalAudio.pause();
                     clearMediaSession();
                     setIsMiniPlayerDismissed(true);
                     setIsAudioActive(false);
                     setPlayingSabad(null);
+                    setAutoPlayAudio(false);
                   }}
                   onClick={() => {
                     setSelectedSabad(playingSabad);

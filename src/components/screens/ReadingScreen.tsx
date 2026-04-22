@@ -250,33 +250,22 @@ export default function ReadingScreen(props: ReadingScreenProps) {
           <AudioPlayer 
             url={selectedSabad.audioUrl} 
             onEnded={handleAudioEnded} 
-            autoPlay={autoPlayAudio && (!playingSabad || playingSabad.id === selectedSabad.id)}
+            autoPlay={autoPlayAudio}
             onPlay={() => { setIsAudioActive(true); setAutoPlayAudio(true); setPlayingSabad(selectedSabad); }}
             onPause={() => {
-              if (playingSabad?.id === selectedSabad.id) {
-                setAutoPlayAudio(false);
-              }
+              setAutoPlayAudio(false);
             }}
             onNext={() => {
-              if (playingSabad?.id === selectedSabad.id) {
-                handleAudioSwipe("left");
-              } else {
-                handleSwipe("left");
-              }
+              handleSwipe("left");
             }}
             onPrev={() => {
-              if (playingSabad?.id === selectedSabad.id) {
-                handleAudioSwipe("right");
-              } else {
-                handleSwipe("right");
-              }
+              handleSwipe("right");
             }}
             title={selectedSabad.title}
             showToast={showToast}
             variant="full"
             hideTitle={true}
             logoUrl={settings?.logoUrl}
-            preventAutoPause={playingSabad && playingSabad.id !== selectedSabad.id}
           />
         </div>
       )}

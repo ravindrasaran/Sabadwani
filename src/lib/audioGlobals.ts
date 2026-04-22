@@ -19,6 +19,8 @@ class AudioWrapper {
   public _playbackRate = 1;
   public _metadata: any = null;
 
+  private static isNativeSetup = false;
+
   constructor() {
     if (!this.isNative && typeof window !== 'undefined') {
       this.audio = new Audio();
@@ -35,7 +37,8 @@ class AudioWrapper {
           this.emit(evt, e);
         });
       });
-    } else if (this.isNative) {
+    } else if (this.isNative && !AudioWrapper.isNativeSetup) {
+      AudioWrapper.isNativeSetup = true;
       Playlist.initialize();
       Playlist.addListener('status', (data: any) => {
         const val = data.value || {};
