@@ -189,7 +189,7 @@ export default function CommunityPostsScreen(props: CommunityPostsScreenProps) {
                                 else if (item.type === "आरती") setSelectedCategory("aarti");
                                 else if (item.type === "मंत्र") setSelectedCategory("mantra");
                                 else if (item.type === "साखी") setSelectedCategory("sakhi");
-                                setAutoPlayAudio(false);
+                                setAutoPlayAudio(true);
                                 navigateTo("audio_reading");
                               }
                             }}

@@ -1,5 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { Playlist } from '@mustafaj/capacitor-plugin-playlist';
+import { MediaSession } from '@capgo/capacitor-media-session';
 import { AudioCacheService } from './AudioCacheService';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -343,7 +344,18 @@ export const updateMediaSessionMetadata = async (metadata: {
     artwork: artworkUrl,
   };
 
-  if ('mediaSession' in navigator) {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await MediaSession.setMetadata({
+        title: metadata.title,
+        artist: metadata.artist,
+        album: metadata.album,
+        artwork: [{ src: artworkUrl, sizes: '512x512', type: 'image/png' }]
+      });
+    } catch (e) {
+      console.error("MediaSession setMetadata error:", e);
+    }
+  } else if ('mediaSession' in navigator) {
     navigator.mediaSession.metadata = new MediaMetadata({
       title: metadata.title,
       artist: metadata.artist,
@@ -356,8 +368,38 @@ export const updateMediaSessionMetadata = async (metadata: {
 // ─── MediaSession playback state ───────────────────────────────────────────────
 export const updateMediaSessionState = async (state: 'playing' | 'paused' | 'none') => {
   if (isClearingSession && state !== 'none') return;
+  
+  // Handle Background Mode visually if using cordova-plugin-background-mode
+  if (Capacitor.isNativePlatform() && (window as any).cordova?.plugins?.backgroundMode) {
+    const bgMode = (window as any).cordova.plugins.backgroundMode;
+    if (state === 'playing') {
+      if (!bgMode.isActive()) {
+        bgMode.enable();
+        bgMode.overrideBackButton();
+        bgMode.setDefaults({
+          title: 'सबदवाणी प्लेयर सक्रिय है',
+          text: 'भजन/आरती बैकग्राउंड में चल रही है',
+          icon: 'icon',
+          color: 'F59E0B',
+          resume: true,
+          hidden: false,
+          bigText: true
+        });
+      }
+    } else if (state === 'none' || state === 'paused') {
+      if (state === 'none' && bgMode.isActive()) {
+        bgMode.disable();
+      }
+    }
+  }
 
-  if ('mediaSession' in navigator) {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await MediaSession.setPlaybackState({ playbackState: state });
+    } catch (e) {
+      console.error("MediaSession setPlaybackState error:", e);
+    }
+  } else if ('mediaSession' in navigator) {
     navigator.mediaSession.playbackState = state === 'none' ? 'none' : state;
   }
 };
@@ -375,9 +417,33 @@ export const clearMediaSession = async () => {
     try {
       await Playlist.clearAllItems();
     } catch (e) {}
+    try {
+      await MediaSession.setPlaybackState({ playbackState: 'none' });
+      await MediaSession.setMetadata({
+        title: '',
+        artist: '',
+        album: '',
+        artwork: []
+      });
+      const actions = [
+        'play', 'pause', 'seekbackward', 'seekforward', 'previoustrack', 'nexttrack', 'seekto', 'stop'
+      ];
+      for (const action of actions) {
+        await MediaSession.setActionHandler({ action: action as any }, null);
+      }
+    } catch(e) {}
   } else if ('mediaSession' in navigator) {
     navigator.mediaSession.playbackState = 'none';
     navigator.mediaSession.metadata = null;
+    
+    const actions: MediaSessionAction[] = [
+      'play', 'pause', 'seekbackward', 'seekforward', 'previoustrack', 'nexttrack', 'seekto', 'stop'
+    ];
+    actions.forEach(action => {
+      try {
+        navigator.mediaSession.setActionHandler(action, null);
+      } catch (e) {}
+    });
   }
 
   // BUG FIX: Increased from 500ms to 1500ms so rapid track-changes don't
@@ -403,7 +469,15 @@ export const updateMediaSessionPosition = async (
   if (now - lastPositionUpdate < 250) return;
   lastPositionUpdate = now;
 
-  if ('mediaSession' in navigator && navigator.mediaSession.setPositionState) {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await MediaSession.setPositionState({
+        duration: duration,
+        playbackRate: playbackRate,
+        position: position
+      });
+    } catch (e) {}
+  } else if ('mediaSession' in navigator && navigator.mediaSession.setPositionState) {
     try {
       // BUG FIX: Guard against NaN/Infinity/out-of-range values that cause
       // DOMException in some Android WebViews.
@@ -430,8 +504,6 @@ export const updateMediaSessionPosition = async (
 // flag prevented handler re-registration on new tracks, leaving lock-screen
 // Next / Prev / Seek wired to stale (already-unmounted) component callbacks.
 const _registerMediaSessionHandlers = () => {
-  if (!('mediaSession' in navigator)) return;
-
   const safeCallback = (cb: () => void) => {
     try { cb(); } catch (err) {}
   };
@@ -468,11 +540,22 @@ const _registerMediaSessionHandlers = () => {
       }),
   };
 
-  Object.entries(handlers).forEach(([action, handler]) => {
-    try {
-      navigator.mediaSession.setActionHandler(action as MediaSessionAction, handler);
-    } catch (e) {}
-  });
+  if (!Capacitor.isNativePlatform()) {
+    if (!('mediaSession' in navigator)) return;
+    Object.entries(handlers).forEach(([action, handler]) => {
+      try {
+        navigator.mediaSession.setActionHandler(action as MediaSessionAction, handler);
+      } catch (e) {}
+    });
+  } else {
+    Object.entries(handlers).forEach(async ([action, handler]) => {
+      try {
+        await MediaSession.setActionHandler({ action: action as any }, handler);
+      } catch (e) {
+        console.error("Native MediaSession setup error:", e);
+      }
+    });
+  }
 };
 
 // Public entry point — called from AudioPlayer on mount and on track change.

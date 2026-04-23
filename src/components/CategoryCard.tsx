@@ -19,7 +19,7 @@ const CategoryCard: React.FC<CategoryCardProps> = ({ onClick, icon: Icon, titleL
       </div>
       <span className="text-[10px] sm:text-xs md:text-sm font-bold text-ink text-center leading-tight">
         {titleLine1}
-        <br />
+        {titleLine2 && <br />}
         {titleLine2}
       </span>
     </button>

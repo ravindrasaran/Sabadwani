@@ -67,12 +67,13 @@ export default function CategoryListScreen({
             return (
               <div
                 key={virtualItem.key}
+                data-index={virtualItem.index}
+                ref={rowVirtualizer.measureElement}
                 style={{
                   position: 'absolute',
                   top: 0,
                   left: 0,
                   width: '100%',
-                  height: `${virtualItem.size}px`,
                   transform: `translateY(${virtualItem.start}px)`,
                 }}
               >
@@ -84,7 +85,7 @@ export default function CategoryListScreen({
                     icon={Play}
                     onClick={() => {
                       setSelectedSabad(item);
-                      setAutoPlayAudio(false);
+                      setAutoPlayAudio(true);
                       navigateTo("audio_reading");
                     }}
                     iconType="play"

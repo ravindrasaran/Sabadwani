@@ -353,9 +353,9 @@ export default function ReadingScreen(props: ReadingScreenProps) {
               </button>
               <button 
                 onClick={() => handleSwipe("left")}
-                disabled={readingList === sabads && readingIndex === 119 ? false : readingIndex >= totalCount - 1}
+                disabled={readingList === sabads && readingIndex === totalCount - 1 ? false : readingIndex >= totalCount - 1}
                 className={`flex items-center justify-center gap-1.5 px-5 sm:px-8 py-3.5 rounded-2xl font-medium border shadow-md transition-all active:scale-95 touch-manipulation ${
-                  (readingList === sabads && readingIndex === 119) ? '' : (readingIndex >= totalCount - 1 ? 'opacity-40 cursor-not-allowed' : '')
+                  (readingList === sabads && readingIndex === totalCount - 1) ? '' : (readingIndex >= totalCount - 1 ? 'opacity-40 cursor-not-allowed' : '')
                 } ${
                   readingTheme === 'dark' ? 'bg-[#1a1a1a] border-white/10 text-white hover:bg-white/5 active:bg-white/10' : 
                   readingTheme === 'sepia' ? 'bg-[#fdf8ed] border-[#5c4b37]/10 text-[#5c4b37] hover:bg-[#5c4b37]/5 active:bg-[#5c4b37]/10' : 

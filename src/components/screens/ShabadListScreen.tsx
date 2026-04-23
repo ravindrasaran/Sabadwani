@@ -48,12 +48,13 @@ export default function ShabadListScreen({ isLoading, sabads, handleBack, handle
             return (
               <div
                 key={virtualItem.key}
+                data-index={virtualItem.index}
+                ref={rowVirtualizer.measureElement}
                 style={{
                   position: 'absolute',
                   top: 0,
                   left: 0,
                   width: '100%',
-                  height: `${virtualItem.size}px`,
                   transform: `translateY(${virtualItem.start}px)`,
                 }}
               >

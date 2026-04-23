@@ -143,7 +143,7 @@ export default function SearchScreen(props: SearchScreenProps) {
                         } else {
                           setSelectedSabad(item);
                           setSelectedCategory(item.listType);
-                          setAutoPlayAudio(false);
+                          setAutoPlayAudio(true);
                           navigateTo('audio_reading');
                         }
                       }} 

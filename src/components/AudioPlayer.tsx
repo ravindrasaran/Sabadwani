@@ -129,7 +129,8 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
     const handlePauseEvent = () => {
       setIsPlaying(false);
       updateMediaSessionState('paused');
-      if (!globalAudio.ended) {
+      const isAtEnd = globalAudio.duration > 0 && Math.abs(globalAudio.duration - globalAudio.currentTime) < 0.5;
+      if (!globalAudio.ended && !isAtEnd) {
         try {
           if (callbacksRef.current.onPause) callbacksRef.current.onPause();
         } catch (e) {

@@ -1128,7 +1128,7 @@ function MainApp() {
       if (direction === "left") {
         if (isSabadsList && currentIndex === 65) { // 66th sabad (index 65)
           nextIndex = 67; // Skip 67th (index 66) to 68th (index 67)
-        } else if (isSabadsList && currentIndex === 119) { // 120th sabad (index 119)
+        } else if (isSabadsList && currentIndex === currentList.length - 1) { // last sabad
           nextIndex = 66; // Loop to 67th (index 66)
         } else if (currentIndex < currentList.length - 1) {
           nextIndex = currentIndex + 1;
@@ -1147,7 +1147,7 @@ function MainApp() {
         if (isSabadsList && currentIndex === 67) { // 68th sabad (index 67)
           prevIndex = 65; // Back to 66th (index 65)
         } else if (isSabadsList && currentIndex === 66) { // 67th sabad (index 66)
-          prevIndex = 119; // Back to 120th (index 119)
+          prevIndex = currentList.length - 1; // Back to last sabad
         } else if (currentIndex > 0) {
           prevIndex = currentIndex - 1;
         } else {
@@ -1207,7 +1207,7 @@ function MainApp() {
       if (direction === "left") {
         if (isSabadsList && currentIndex === 65) { // 66th sabad (index 65)
           nextIndex = 67; // Skip 67th (index 66) to 68th (index 67)
-        } else if (isSabadsList && currentIndex === 119) { // 120th sabad (index 119)
+        } else if (isSabadsList && currentIndex === currentList.length - 1) { // last sabad
           nextIndex = 66; // Loop to 67th (index 66)
         } else if (currentIndex < currentList.length - 1) {
           nextIndex = currentIndex + 1;
@@ -1226,7 +1226,7 @@ function MainApp() {
         if (isSabadsList && currentIndex === 67) { // 68th sabad (index 67)
           prevIndex = 65; // Back to 66th (index 65)
         } else if (isSabadsList && currentIndex === 66) { // 67th sabad (index 66)
-          prevIndex = 119; // Back to 120th (index 119)
+          prevIndex = currentList.length - 1; // Back to last sabad
         } else if (currentIndex > 0) {
           prevIndex = currentIndex - 1;
         } else {
@@ -1390,7 +1390,7 @@ function MainApp() {
   const handleSabadClick = (shabad: SabadItem) => {
     vibrate(10);
     setSelectedSabad(shabad);
-    setAutoPlayAudio(false);
+    setAutoPlayAudio(!!shabad.audioUrl);
     
     if (shabad.audioUrl) {
       navigateTo("audio_reading");
