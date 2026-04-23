@@ -49,7 +49,7 @@ export default function ReadingScreen(props: ReadingScreenProps) {
     autoScrollSpeed, cycleAutoScrollSpeed, toggleBookmark, bookmarks,
     handleShare, autoPlayAudio, setAutoPlayAudio, playingSabad,
     setPlayingSabad, setIsAudioActive, handleAudioEnded,
-    handleSwipe, handleAudioSwipe, showToast, settings, vibrate,
+    handleSwipe, showToast, settings, vibrate,
     slideDir, bindGestures
   } = props;
 

@@ -1139,7 +1139,7 @@ function MainApp() {
         const nextItem = currentList[nextIndex];
         if (nextItem) {
           setSelectedSabad(nextItem);
-          if (currentScreen === "audio_reading" || isAudioActive) {
+          if (currentScreen === "audio_reading") {
             setPlayingSabad(nextItem);
           }
         }
@@ -1157,7 +1157,7 @@ function MainApp() {
         const prevItem = currentList[prevIndex];
         if (prevItem) {
           setSelectedSabad(prevItem);
-          if (currentScreen === "audio_reading" || isAudioActive) {
+          if (currentScreen === "audio_reading") {
             setPlayingSabad(prevItem);
           }
         }
@@ -1390,7 +1390,6 @@ function MainApp() {
   const handleSabadClick = (shabad: SabadItem) => {
     vibrate(10);
     setSelectedSabad(shabad);
-    setPlayingSabad(shabad);
     setAutoPlayAudio(false);
     
     if (shabad.audioUrl) {

@@ -22,7 +22,7 @@ export interface CategoryListScreenProps {
 
 export default function CategoryListScreen({ 
   isLoading, selectedCategory, aartis, bhajans, sakhis, mantras, 
-  handleBack, navigateTo, setSelectedSabad, setPlayingSabad, setAutoPlayAudio 
+  handleBack, navigateTo, setSelectedSabad, setAutoPlayAudio 
 }: CategoryListScreenProps) {
   
   const categoryData = {
@@ -85,7 +85,6 @@ export default function CategoryListScreen({
                     icon={Play}
                     onClick={() => {
                       setSelectedSabad(item);
-                      if (setPlayingSabad) setPlayingSabad(item);
                       setAutoPlayAudio(false);
                       navigateTo("audio_reading");
                     }}
