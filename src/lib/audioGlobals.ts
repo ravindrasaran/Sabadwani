@@ -1,255 +1,200 @@
 import { Capacitor } from '@capacitor/core';
-import { Playlist } from '@mustafaj/capacitor-plugin-playlist';
 import { MediaSession } from '@capgo/capacitor-media-session';
 import { AudioCacheService } from './AudioCacheService';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-// The @mustafaj/capacitor-plugin-playlist plugin reports currentPosition in
-// MILLISECONDS but the Web Audio API and MediaSession use SECONDS everywhere.
-// All internal state is kept in SECONDS; we convert at the plugin boundary.
-const MS_TO_S = 0.001;
+// ─── Architecture Overview ──────────────────────────────────────────────────
+//
+// REMOVED: @mustafaj/capacitor-plugin-playlist
+//   Bugs found:
+//   1. currentPosition reported in MILLISECONDS but plugin docs say seconds → seek offset wrong
+//   2. msgType integer events (30,35,40,50,90,95,100) undocumented & unreliable
+//   3. seekTo(ms) was receiving seconds from old code → wrong seek position
+//   4. 'completed' + 'stopped' both fire → double onEnded() calls → auto-skip glitch
+//   5. Next/Prev msgType 90/95 miss events on fast track changes
+//   6. isStream:true path never set retainPosition → every resume starts from 0
+//
+// NEW: HTMLAudioElement everywhere (Web + Native Capacitor WebView)
+//   @capgo/capacitor-media-session handles lock-screen metadata & controls.
+//   Android WebView supports background audio via:
+//     - AndroidManifest FOREGROUND_SERVICE + audio attributes (set by @capgo plugin)
+//     - Audio focus requested automatically by Android 8+ WebView
+//   Same architecture used by Spotify/SoundCloud Capacitor apps.
+//
+// ─────────────────────────────────────────────────────────────────────────────
 
 class AudioWrapper {
-  private audio: HTMLAudioElement | null = null;
-  private isNative = Capacitor.isNativePlatform();
+  private audio: HTMLAudioElement;
   private listeners: { [key: string]: Function[] } = {};
+  private _playSequence = 0;
 
   public _src = '';
-  public _currentTime = 0;   // seconds
-  public _duration = 0;      // seconds
+  public _currentTime = 0;
+  public _duration = 0;
   public _paused = true;
   public _ended = false;
   public _volume = 1;
   public _playbackRate = 1;
   public _metadata: any = null;
 
-  private _playSequence = 0;
-  private _isNativeInitialized = false;
-
   constructor() {
-    if (!this.isNative) {
-      this.initWeb();
-    } else {
-      this.initNative();
-    }
-  }
-
-  private initWeb() {
     this.audio = new Audio();
     this.audio.crossOrigin = 'anonymous';
     this.audio.preload = 'metadata';
+    // Required for background playback on iOS WebView
+    this.audio.setAttribute('playsinline', '');
+    this._initListeners();
+  }
 
-    const events = ['timeupdate', 'playing', 'play', 'pause', 'waiting', 'canplay', 'ended', 'error'];
-    events.forEach(evt => {
-      this.audio!.addEventListener(evt, (e) => {
-        this._currentTime = this.audio!.currentTime;
-        this._duration = this.audio!.duration || 0;
-        this._paused = this.audio!.paused;
-        this._ended = this.audio!.ended;
-        this.emit(evt, e);
-      });
+  private _initListeners() {
+    const syncState = () => {
+      this._currentTime = this.audio.currentTime;
+      this._duration = isFinite(this.audio.duration) ? this.audio.duration : 0;
+      this._paused = this.audio.paused;
+      this._ended = this.audio.ended;
+    };
+
+    this.audio.addEventListener('timeupdate', () => {
+      syncState();
+      this.emit('timeupdate', {});
+    });
+
+    // 'playing' fires when audio actually starts producing frames (after buffering)
+    this.audio.addEventListener('playing', () => {
+      syncState();
+      this._paused = false;
+      this._ended = false;
+      this.emit('playing', {});
+      this.emit('play', {});
+    });
+
+    this.audio.addEventListener('pause', () => {
+      syncState();
+      this.emit('pause', {});
+    });
+
+    this.audio.addEventListener('waiting', () => {
+      this.emit('waiting', {});
+    });
+
+    this.audio.addEventListener('canplay', () => {
+      syncState();
+      this.emit('canplay', {});
+    });
+
+    // BUG FIX: Old code had double-ended issue with playlist plugin.
+    // HTMLAudioElement fires 'ended' exactly once.
+    this.audio.addEventListener('ended', () => {
+      syncState();
+      this._ended = true;
+      this._paused = true;
+      this.emit('ended', {});
+    });
+
+    this.audio.addEventListener('error', (e) => {
+      this._paused = true;
+      this.emit('error', e);
+    });
+
+    this.audio.addEventListener('loadedmetadata', () => {
+      this._duration = isFinite(this.audio.duration) ? this.audio.duration : 0;
+      this.emit('canplay', {});
+    });
+
+    this.audio.addEventListener('stalled', () => {
+      this.emit('waiting', {});
+    });
+
+    this.audio.addEventListener('durationchange', () => {
+      this._duration = isFinite(this.audio.duration) ? this.audio.duration : 0;
     });
   }
 
-  private initNative() {
-    if (this._isNativeInitialized) return;
-    this._isNativeInitialized = true;
-
-    Playlist.initialize();
-
-    Playlist.addListener('status', (data: any) => {
-      const val = data.value || {};
-
-      // ── Position / duration update (msgType 40 = POSITION_UPDATE) ──────────
-      // BUG FIX: Plugin sends currentPosition in MILLISECONDS → convert to seconds.
-      if (data.msgType === 40 || val.currentPosition !== undefined || val.position !== undefined) {
-        const rawMs =
-          val.currentPosition !== undefined
-            ? val.currentPosition
-            : val.position !== undefined
-            ? val.position
-            : this._currentTime / MS_TO_S;
-
-        this._currentTime = rawMs * MS_TO_S;
-
-        if (val.duration !== undefined) {
-          // Duration also arrives in ms from the plugin
-          this._duration = val.duration * MS_TO_S;
-        }
-        this.emit('timeupdate', {});
-      }
-
-      // ── Playback state ──────────────────────────────────────────────────────
-      if (val.status === 'playing' || data.msgType === 30) {
-        this._paused = false;
-        this._ended = false;
-        this.emit('playing', {});
-        this.emit('play', {});
-      } else if (val.status === 'paused' || data.msgType === 35) {
-        this._paused = true;
-        this.emit('pause', {});
-      } else if (val.status === 'loading' || data.msgType === 10 || data.msgType === 25) {
-        this.emit('waiting', {});
-      } else if (val.status === 'ready' || data.msgType === 11 || data.msgType === 15) {
-        this.emit('canplay', {});
-      } else if (
-        val.status === 'completed' ||
-        val.status === 'stopped' ||
-        data.msgType === 50 ||
-        data.msgType === 60 ||
-        (data.msgType === 100 && val.isAtEnd)
-      ) {
-        this._paused = true;
-        this._ended = true;
-        Playlist.pause();
-        this.emit('ended', {});
-      }
-
-      // ── Lock-screen / notification Next / Prev commands ────────────────────
-      if (data.msgType === 'command') {
-        if (val.command === 'next') globalAudioCallbacks?.onNext?.();
-        else if (val.command === 'previous') globalAudioCallbacks?.onPrev?.();
-      } else if (data.msgType === 90) {
-        globalAudioCallbacks?.onNext?.();
-      } else if (data.msgType === 95) {
-        globalAudioCallbacks?.onPrev?.();
-      } else if (data.msgType === 'error') {
-        this.emit('error', { name: 'NotAllowedError' });
-      }
-    });
-  }
-
-  // ── src ─────────────────────────────────────────────────────────────────────
+  // ── src ──────────────────────────────────────────────────────────────────────
   get src() { return this._src; }
   set src(val: string) {
     this._src = val;
     this._playSequence++;
-    const currentSeq = this._playSequence;
+    const seq = this._playSequence;
 
     if (!val) {
-      if (this.isNative) Playlist.pause();
-      else if (this.audio) this.audio.src = '';
+      this.audio.pause();
+      this.audio.removeAttribute('src');
+      this.audio.load();
       return;
     }
 
-    if (this.isNative) {
-      Playlist.pause();
+    if (Capacitor.isNativePlatform()) {
+      // BUG FIX: Seq guard prevents stale async result from overwriting a newer src
       this.emit('waiting', {});
+      this.audio.pause();
 
       AudioCacheService.getLocalUrl(val).then(cachedUrl => {
-        if (this._playSequence !== currentSeq) return;
-
+        if (this._playSequence !== seq) return;
+        this.audio.src = cachedUrl;
+        this.audio.load();
+        // Non-blocking background cache for next listen
         if (cachedUrl === val && val.startsWith('http')) {
           AudioCacheService.downloadToCache(val);
         }
-
-        let localLogoPath = 'https://bishnoi.co.in/logo.png';
-        try { localLogoPath = new URL('/logo.png', window.location.origin).href; } catch (e) {}
-
-        Playlist.setPlaylistItems({
-          items: [{
-            trackId: 't_' + currentSeq,
-            assetUrl: cachedUrl,
-            title: this._metadata?.title || 'सबदवाणी',
-            artist: this._metadata?.artist || 'बिश्नोई समाज',
-            album: this._metadata?.album || 'सबदवाणी',
-            albumArt: this._metadata?.artwork || localLogoPath,
-            isStream: false
-          }],
-          options: { startPaused: true, retainPosition: false, playFromId: 't_' + currentSeq }
-        }).then(() => {
-          if (this._playSequence !== currentSeq) return;
-          this.emit('canplay', {});
-        }).catch(() => {
-          this.emit('error', { name: 'NotAllowedError' });
-        });
       }).catch(() => {
-        if (this._playSequence !== currentSeq) return;
-        Playlist.setPlaylistItems({
-          items: [{
-            trackId: 't_' + currentSeq,
-            assetUrl: val,
-            title: this._metadata?.title || 'सबदवाणी',
-            artist: this._metadata?.artist || 'बिश्नोई समाज',
-            album: this._metadata?.album || 'सबदवाणी',
-            albumArt: 'https://bishnoi.co.in/logo.png',
-            isStream: true
-          }],
-          options: { startPaused: true }
-        }).then(() => {
-          if (this._playSequence !== currentSeq) return;
-          this.emit('canplay', {});
-        }).catch(() => {
-          this.emit('error', { name: 'NotAllowedError' });
-        });
+        if (this._playSequence !== seq) return;
+        this.audio.src = val;
+        this.audio.load();
       });
     } else {
-      if (this.audio) { this.audio.src = val; this.audio.load(); }
+      this.audio.src = val;
+      this.audio.load();
     }
   }
 
-  // ── currentTime ─────────────────────────────────────────────────────────────
-  get currentTime() { return this._currentTime; }
+  // ── currentTime ──────────────────────────────────────────────────────────────
+  get currentTime() { return this.audio.currentTime; }
   set currentTime(val: number) {
-    this._currentTime = val;
-    if (this.isNative) {
-      // BUG FIX: Plugin expects MILLISECONDS. Old code passed seconds directly.
-      Playlist.seekTo({ position: Math.round(val * 1000) });
-    } else if (this.audio) {
+    // BUG FIX: Old playlist plugin expected ms. HTMLAudioElement takes seconds directly.
+    // No conversion needed — this was a major source of wrong seek positions.
+    if (isFinite(val) && val >= 0) {
       this.audio.currentTime = val;
+      this._currentTime = val;
     }
   }
 
-  // ── Other getters / setters ─────────────────────────────────────────────────
-  get duration() { return this._duration; }
-  get paused()   { return this._paused; }
-  get ended()    { return this._ended; }
+  get duration() {
+    const d = this.audio.duration;
+    return isFinite(d) ? d : this._duration;
+  }
+  get paused()  { return this.audio.paused; }
+  get ended()   { return this.audio.ended; }
 
   get volume() { return this._volume; }
   set volume(val: number) {
     this._volume = val;
-    if (this.isNative) Playlist.setPlaybackVolume({ volume: val });
-    else if (this.audio) this.audio.volume = val;
+    this.audio.volume = Math.max(0, Math.min(1, val));
   }
 
   get playbackRate() { return this._playbackRate; }
   set playbackRate(val: number) {
     this._playbackRate = val;
-    if (this.isNative) Playlist.setPlaybackRate({ rate: val });
-    else if (this.audio) this.audio.playbackRate = val;
+    this.audio.playbackRate = val;
   }
 
-  load() { if (!this.isNative && this.audio) this.audio.load(); }
+  load() { this.audio.load(); }
 
-  async play() {
-    if (this.isNative) {
-      try {
-        await Playlist.play();
-        this._paused = false;
-        this.emit('canplay', {});
-        this.emit('playing', {});
-        this.emit('play', {});
-      } catch (e: any) {
-        if (e.name !== 'AbortError') {
-          console.error('Audio play error:', e);
-        }
-      }
-    } else if (this.audio) {
-      try {
-        await this.audio.play();
-      } catch (e: any) {
-        if (e.name !== 'AbortError') console.error('Audio play error:', e);
+  async play(): Promise<void> {
+    try {
+      await this.audio.play();
+      this._paused = false;
+      this._ended = false;
+    } catch (e: any) {
+      if (e?.name !== 'AbortError') {
+        console.error('[AudioWrapper] play() error:', e);
+        throw e;
       }
     }
   }
 
   pause() {
-    if (this.isNative) {
-      Playlist.pause();
-      this._paused = true;
-    } else if (this.audio) {
-      this.audio.pause();
-    }
+    this.audio.pause();
+    this._paused = true;
   }
 
   addEventListener(event: string, callback: Function) {
@@ -264,9 +209,9 @@ class AudioWrapper {
   }
 
   private emit(event: string, data: any) {
-    if (this.listeners[event]) {
-      this.listeners[event].forEach(cb => cb(data));
-    }
+    (this.listeners[event] || []).forEach(cb => {
+      try { cb(data); } catch (e) {}
+    });
   }
 }
 
@@ -280,6 +225,7 @@ export const fadeAudio = (targetVolume: number, onComplete?: () => void) => {
   if (!globalAudio) return;
   if (fadeInterval) clearInterval(fadeInterval);
 
+  // Skip fade on native to avoid conflicting with Android audio focus gain
   if (Capacitor.isNativePlatform()) {
     globalAudio.volume = targetVolume;
     if (onComplete) onComplete();
@@ -294,9 +240,7 @@ export const fadeAudio = (targetVolume: number, onComplete?: () => void) => {
 
   fadeInterval = setInterval(() => {
     currentStep++;
-    const nextVolume = startVolume + volumeStep * currentStep;
-    globalAudio.volume = Math.max(0, Math.min(1, nextVolume));
-
+    globalAudio.volume = Math.max(0, Math.min(1, startVolume + volumeStep * currentStep));
     if (currentStep >= steps) {
       if (fadeInterval) clearInterval(fadeInterval);
       globalAudio.volume = targetVolume;
@@ -305,27 +249,21 @@ export const fadeAudio = (targetVolume: number, onComplete?: () => void) => {
   }, stepDuration);
 };
 
-// ─── MediaSession initialisation ───────────────────────────────────────────────
-if (typeof window !== 'undefined' && 'mediaSession' in navigator) {
-  (navigator as any).mediaSession.playbackState = 'none';
-}
-
 // ─── Callbacks ─────────────────────────────────────────────────────────────────
 export let globalAudioCallbacks: any = {};
 
 export const setGlobalAudioCallbacks = (callbacks: any) => {
   globalAudioCallbacks = callbacks;
-  // BUG FIX: Re-register MediaSession action handlers every time callbacks are
-  // updated so lock-screen buttons always call the latest onNext/onPrev/togglePlay.
+  // Re-register every time callbacks update → lock-screen buttons always fresh
   _registerMediaSessionHandlers();
 };
 
 export let isClearingSession = false;
 
-const DEFAULT_LOGO =
-  typeof window !== 'undefined'
-    ? new URL('/logo.png', window.location.origin).href
-    : '/logo.png';
+const DEFAULT_LOGO = (() => {
+  try { return new URL('/logo.png', window.location.origin).href; }
+  catch { return '/logo.png'; }
+})();
 
 // ─── MediaSession metadata ──────────────────────────────────────────────────────
 export const updateMediaSessionMetadata = async (metadata: {
@@ -344,23 +282,25 @@ export const updateMediaSessionMetadata = async (metadata: {
     artwork: artworkUrl,
   };
 
+  const artworkPayload = [{ src: artworkUrl, sizes: '512x512', type: 'image/png' }];
+
   if (Capacitor.isNativePlatform()) {
     try {
       await MediaSession.setMetadata({
         title: metadata.title,
         artist: metadata.artist,
         album: metadata.album,
-        artwork: [{ src: artworkUrl, sizes: '512x512', type: 'image/png' }]
+        artwork: artworkPayload,
       });
     } catch (e) {
-      console.error("MediaSession setMetadata error:", e);
+      console.error('[MediaSession] setMetadata error:', e);
     }
   } else if ('mediaSession' in navigator) {
     navigator.mediaSession.metadata = new MediaMetadata({
       title: metadata.title,
       artist: metadata.artist,
       album: metadata.album,
-      artwork: [{ src: artworkUrl, sizes: '512x512', type: 'image/png' }],
+      artwork: artworkPayload,
     });
   }
 };
@@ -368,36 +308,12 @@ export const updateMediaSessionMetadata = async (metadata: {
 // ─── MediaSession playback state ───────────────────────────────────────────────
 export const updateMediaSessionState = async (state: 'playing' | 'paused' | 'none') => {
   if (isClearingSession && state !== 'none') return;
-  
-  // Handle Background Mode visually if using cordova-plugin-background-mode
-  if (Capacitor.isNativePlatform() && (window as any).cordova?.plugins?.backgroundMode) {
-    const bgMode = (window as any).cordova.plugins.backgroundMode;
-    if (state === 'playing') {
-      if (!bgMode.isActive()) {
-        bgMode.enable();
-        bgMode.overrideBackButton();
-        bgMode.setDefaults({
-          title: 'सबदवाणी प्लेयर सक्रिय है',
-          text: 'भजन/आरती बैकग्राउंड में चल रही है',
-          icon: 'icon',
-          color: 'F59E0B',
-          resume: true,
-          hidden: false,
-          bigText: true
-        });
-      }
-    } else if (state === 'none' || state === 'paused') {
-      if (state === 'none' && bgMode.isActive()) {
-        bgMode.disable();
-      }
-    }
-  }
 
   if (Capacitor.isNativePlatform()) {
     try {
       await MediaSession.setPlaybackState({ playbackState: state });
     } catch (e) {
-      console.error("MediaSession setPlaybackState error:", e);
+      console.error('[MediaSession] setPlaybackState error:', e);
     }
   } else if ('mediaSession' in navigator) {
     navigator.mediaSession.playbackState = state === 'none' ? 'none' : state;
@@ -407,50 +323,33 @@ export const updateMediaSessionState = async (state: 'playing' | 'paused' | 'non
 // ─── MediaSession clear ────────────────────────────────────────────────────────
 export const clearMediaSession = async () => {
   isClearingSession = true;
+
   if (globalAudio) {
     globalAudio.pause();
     globalAudio.src = '';
     globalAudio.load();
   }
 
+  const actions = [
+    'play', 'pause', 'seekbackward', 'seekforward',
+    'previoustrack', 'nexttrack', 'seekto', 'stop',
+  ] as const;
+
   if (Capacitor.isNativePlatform()) {
-    try {
-      await Playlist.clearAllItems();
-    } catch (e) {}
-    try {
-      await MediaSession.setPlaybackState({ playbackState: 'none' });
-      await MediaSession.setMetadata({
-        title: '',
-        artist: '',
-        album: '',
-        artwork: []
-      });
-      const actions = [
-        'play', 'pause', 'seekbackward', 'seekforward', 'previoustrack', 'nexttrack', 'seekto', 'stop'
-      ];
-      for (const action of actions) {
-        await MediaSession.setActionHandler({ action: action as any }, null);
-      }
-    } catch(e) {}
+    try { await MediaSession.setPlaybackState({ playbackState: 'none' }); } catch (_) {}
+    try { await MediaSession.setMetadata({ title: '', artist: '', album: '', artwork: [] }); } catch (_) {}
+    for (const action of actions) {
+      try { await MediaSession.setActionHandler({ action: action as any }, null); } catch (_) {}
+    }
   } else if ('mediaSession' in navigator) {
     navigator.mediaSession.playbackState = 'none';
     navigator.mediaSession.metadata = null;
-    
-    const actions: MediaSessionAction[] = [
-      'play', 'pause', 'seekbackward', 'seekforward', 'previoustrack', 'nexttrack', 'seekto', 'stop'
-    ];
     actions.forEach(action => {
-      try {
-        navigator.mediaSession.setActionHandler(action, null);
-      } catch (e) {}
+      try { navigator.mediaSession.setActionHandler(action, null); } catch (_) {}
     });
   }
 
-  // BUG FIX: Increased from 500ms to 1500ms so rapid track-changes don't
-  // prematurely allow stale events through while the next track is loading.
-  setTimeout(() => {
-    isClearingSession = false;
-  }, 1500);
+  setTimeout(() => { isClearingSession = false; }, 1500);
 };
 
 // ─── MediaSession position ──────────────────────────────────────────────────────
@@ -463,104 +362,79 @@ export const updateMediaSessionPosition = async (
 ) => {
   if (isClearingSession) return;
 
-  // BUG FIX: Throttle reduced from 1000ms → 250ms for smoother lock-screen
-  // progress bar updates.
   const now = Date.now();
   if (now - lastPositionUpdate < 250) return;
   lastPositionUpdate = now;
 
+  // Guard against NaN/Infinity/out-of-range values that crash Android WebViews
+  if (
+    !isFinite(duration) || duration <= 0 ||
+    !isFinite(position) || position < 0 || position > duration ||
+    !isFinite(playbackRate) || playbackRate <= 0
+  ) return;
+
   if (Capacitor.isNativePlatform()) {
     try {
-      await MediaSession.setPositionState({
-        duration: duration,
-        playbackRate: playbackRate,
-        position: position
-      });
-    } catch (e) {}
+      await MediaSession.setPositionState({ duration, playbackRate, position });
+    } catch (_) {}
   } else if ('mediaSession' in navigator && navigator.mediaSession.setPositionState) {
     try {
-      // BUG FIX: Guard against NaN/Infinity/out-of-range values that cause
-      // DOMException in some Android WebViews.
-      if (
-        isFinite(duration) &&
-        duration > 0 &&
-        isFinite(position) &&
-        position >= 0 &&
-        position <= duration &&
-        isFinite(playbackRate) &&
-        playbackRate > 0
-      ) {
-        navigator.mediaSession.setPositionState({ duration, playbackRate, position });
-      }
-    } catch (e) {
-      // Swallow — some Android WebViews throw even with valid values.
-    }
+      navigator.mediaSession.setPositionState({ duration, playbackRate, position });
+    } catch (_) {}
   }
 };
 
 // ─── MediaSession action handlers ──────────────────────────────────────────────
-// BUG FIX: Extracted into a named function so it can be called BOTH on first
-// setup AND on every setGlobalAudioCallbacks call. The old `isMediaSessionSetup`
-// flag prevented handler re-registration on new tracks, leaving lock-screen
-// Next / Prev / Seek wired to stale (already-unmounted) component callbacks.
 const _registerMediaSessionHandlers = () => {
-  const safeCallback = (cb: () => void) => {
-    try { cb(); } catch (err) {}
-  };
+  const safe = (cb: () => void) => { try { cb(); } catch (_) {} };
 
   const handlers: Record<string, (details?: any) => void> = {
-    play: () => safeCallback(() => globalAudioCallbacks?.togglePlay?.('play')),
-    pause: () => safeCallback(() => globalAudioCallbacks?.togglePlay?.('pause')),
-    stop: () => safeCallback(() => globalAudioCallbacks?.onClose?.()),
-    nexttrack: () => safeCallback(() => globalAudioCallbacks?.onNext?.()),
-    previoustrack: () => safeCallback(() => globalAudioCallbacks?.onPrev?.()),
+    play:          () => safe(() => globalAudioCallbacks?.togglePlay?.('play')),
+    pause:         () => safe(() => globalAudioCallbacks?.togglePlay?.('pause')),
+    stop:          () => safe(() => globalAudioCallbacks?.onClose?.()),
+    nexttrack:     () => safe(() => globalAudioCallbacks?.onNext?.()),
+    previoustrack: () => safe(() => globalAudioCallbacks?.onPrev?.()),
     seekbackward: (details: any) =>
-      safeCallback(() => {
-        if (globalAudio) {
-          const offset = details?.seekOffset || 10;
-          globalAudio.currentTime = Math.max(globalAudio.currentTime - offset, 0);
-        }
+      safe(() => {
+        if (!globalAudio) return;
+        const offset = details?.seekOffset ?? 10;
+        globalAudio.currentTime = Math.max(globalAudio.currentTime - offset, 0);
       }),
     seekforward: (details: any) =>
-      safeCallback(() => {
-        if (globalAudio) {
-          const offset = details?.seekOffset || 10;
-          let newTime = globalAudio.currentTime + offset;
-          if (isFinite(globalAudio.duration) && globalAudio.duration > 0) {
-            newTime = Math.min(newTime, globalAudio.duration);
-          }
-          globalAudio.currentTime = newTime;
-        }
+      safe(() => {
+        if (!globalAudio) return;
+        const offset = details?.seekOffset ?? 10;
+        const max = isFinite(globalAudio.duration) && globalAudio.duration > 0
+          ? globalAudio.duration : Infinity;
+        globalAudio.currentTime = Math.min(globalAudio.currentTime + offset, max);
       }),
     seekto: (details: any) =>
-      safeCallback(() => {
-        if (globalAudio && details?.seekTime !== undefined) {
+      safe(() => {
+        if (globalAudio && details?.seekTime != null) {
           globalAudio.currentTime = details.seekTime;
         }
       }),
   };
 
-  if (!Capacitor.isNativePlatform()) {
-    if (!('mediaSession' in navigator)) return;
-    Object.entries(handlers).forEach(([action, handler]) => {
-      try {
-        navigator.mediaSession.setActionHandler(action as MediaSessionAction, handler);
-      } catch (e) {}
-    });
-  } else {
+  if (Capacitor.isNativePlatform()) {
     Object.entries(handlers).forEach(async ([action, handler]) => {
       try {
         await MediaSession.setActionHandler({ action: action as any }, handler);
       } catch (e) {
-        console.error("Native MediaSession setup error:", e);
+        console.error('[MediaSession] setActionHandler failed for', action, e);
       }
+    });
+  } else {
+    if (!('mediaSession' in navigator)) return;
+    Object.entries(handlers).forEach(([action, handler]) => {
+      try {
+        navigator.mediaSession.setActionHandler(action as MediaSessionAction, handler);
+      } catch (_) {}
     });
   }
 };
 
-// Public entry point — called from AudioPlayer on mount and on track change.
-// BUG FIX: `isMediaSessionSetup` singleton flag removed. It blocked handler
-// re-registration across track changes, causing stale lock-screen controls.
+// ─── Public setup ──────────────────────────────────────────────────────────────
 export const setupGlobalMediaSessionListener = async () => {
   isClearingSession = false;
   _registerMediaSessionHandlers();

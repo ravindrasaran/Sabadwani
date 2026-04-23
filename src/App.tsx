@@ -207,23 +207,27 @@ function MainApp() {
       SplashScreen.hide().catch(() => {});
 
       // Handle app state changes (background/foreground)
-      CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+      // BUG FIX: addListener returns a Promise<PluginListenerHandle>.
+      // Old code never called .remove() on it → listener accumulated on every
+      // hot-reload / strict-mode double-mount → memory leak + duplicate handlers.
+      const stateListenerPromise = CapacitorApp.addListener('appStateChange', ({ isActive }) => {
         if (!isActive) {
-          // App is in background
-          if (globalAudio && globalAudio.paused) {
-            // If paused, maybe clear session to be safe
-            // updateMediaSessionState('paused');
-          }
+          // App went to background — nothing to do for audio (HTMLAudioElement
+          // continues playing via Android audio focus held by @capgo MediaSession)
         } else {
           // App returned to foreground
           if (paymentIntentPending.current) {
             paymentIntentPending.current = false;
             setTimeout(() => {
-              showToast("सहयोग के प्रयास के लिए आपका बहुत-बहुत धन्यवाद! 🙏");
+              showToast("सहयोग के प्रयास के लिए आपका बहुत-बहुत धन्यवाने! 🙏");
             }, 500);
           }
         }
       });
+
+      return () => {
+        stateListenerPromise.then(l => l.remove()).catch(() => {});
+      };
     }
   }, []);
 

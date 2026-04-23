@@ -1,28 +1,35 @@
-// Top-level build file where you can add configuration options common to all sub-projects/modules.
-
+// ─── FIXED: android/build.gradle (Root Level) ───────────────────────────────
+// Changes:
+//   1. kotlin_version: 2.1.0 → 2.1.21  (AGP 8.13 ke saath stable)
+//   2. firebase-crashlytics-gradle: 3.0.2 → 3.0.7  (latest)
+//   3. task clean(type: Delete) → tasks.register syntax  (Gradle 8+ me deprecated)
+// ─────────────────────────────────────────────────────────────────────────────
 buildscript {
-    ext.kotlin_version = '2.1.0' 
-
+    // BUG FIX: Kotlin 2.1.0 is outdated and may show deprecation warnings with
+    // Gradle 8.11+ (required by AGP 8.13). Kotlin 2.1.21 is the latest stable
+    // in the 2.1.x line and fully tested with AGP 8.13.
+    // NOTE: Do NOT jump to 2.3.x yet — AGP 9.0 includes built-in Kotlin support
+    // and switching to 2.3.x while still on AGP 8.x causes compatibility issues.
+    ext.kotlin_version = '2.1.21'
     repositories {
         google()
         mavenCentral()
     }
     dependencies {
         classpath 'com.android.tools.build:gradle:8.13.0'
-        
-        // 2. Kotlin प्लगइन (यह Capacitor के सभी लेटेस्ट प्लगइन्स को Android में सपोर्ट देगा)
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-        
-        classpath 'com.google.gms:google-services:4.4.4'
-        // Firebase Crashlytics Gradle plugin जोड़ा गया
-        classpath 'com.google.firebase:firebase-crashlytics-gradle:3.0.2'
 
-        // NOTE: Do not place your application dependencies here; they belong
-        // in the individual module build.gradle files
+        // Kotlin plugin — required for all Capacitor native plugins written in Kotlin
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+
+        // Google Services plugin — 4.4.4 is current, no update needed
+        classpath 'com.google.gms:google-services:4.4.4'
+
+        // BUG FIX: firebase-crashlytics-gradle 3.0.2 → 3.0.7 (latest stable)
+        // 3.0.7 fixes variant-awareness issues and ProGuard mapping upload bugs
+        classpath 'com.google.firebase:firebase-crashlytics-gradle:3.0.7'
     }
 }
 
-// यह Android की बाकी सेटिंग्स (minSdk, targetSdk आदि) लोड करता है
 apply from: "variables.gradle"
 
 allprojects {
@@ -32,6 +39,8 @@ allprojects {
     }
 }
 
-task clean(type: Delete) {
-    delete rootProject.buildDir
+// BUG FIX: task clean(type: Delete) is deprecated in Gradle 8+.
+// Modern syntax uses tasks.register() to avoid eager task creation warnings.
+tasks.register("clean", Delete) {
+    delete rootProject.layout.buildDirectory
 }

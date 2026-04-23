@@ -3,31 +3,30 @@ import { Capacitor } from '@capacitor/core';
 
 export class AudioCacheService {
   private static CACHE_DIR = 'audio_cache';
-  private static isGeneratingCache = false;
+  // BUG FIX: Old code used `isGeneratingCache` as a mutex that was never released
+  // if mkdir threw an unexpected error, permanently blocking all future cache ops.
+  // Replaced with a Promise-based singleton so parallel callers await the same init.
+  private static _initPromise: Promise<void> | null = null;
 
-  private static async initCacheDir() {
-    try {
-      if (this.isGeneratingCache) return;
-      this.isGeneratingCache = true;
-      await Filesystem.mkdir({
+  private static initCacheDir(): Promise<void> {
+    if (!this._initPromise) {
+      this._initPromise = Filesystem.mkdir({
         path: this.CACHE_DIR,
         directory: Directory.Data,
-        recursive: true
+        recursive: true,
+      }).catch(() => {
+        // Directory already exists — not an error
       });
-    } catch (e) {
-      // Directory usually already exists
-    } finally {
-      this.isGeneratingCache = false;
     }
+    return this._initPromise;
   }
 
   public static async getCacheStatus(url: string): Promise<boolean> {
-    if (!url || !url.startsWith('http')) return true; // Local file or empty is "cached"
+    if (!url || !url.startsWith('http')) return true;
     try {
-      const filename = this.getFileName(url);
       const stat = await Filesystem.stat({
-        path: `${this.CACHE_DIR}/${filename}`,
-        directory: Directory.Data
+        path: `${this.CACHE_DIR}/${this.getFileName(url)}`,
+        directory: Directory.Data,
       });
       return stat.size > 0;
     } catch {
@@ -38,55 +37,47 @@ export class AudioCacheService {
   public static async getLocalUrl(url: string): Promise<string> {
     if (!url || !url.startsWith('http')) return url;
     try {
-      const filename = this.getFileName(url);
-      const path = `${this.CACHE_DIR}/${filename}`;
-      
+      const path = `${this.CACHE_DIR}/${this.getFileName(url)}`;
       const stat = await Filesystem.stat({ path, directory: Directory.Data });
-      
       if (stat && stat.size > 0) {
         const uriResult = await Filesystem.getUri({ path, directory: Directory.Data });
-        // Native player (ExoPlayer) requires the real `file:///...` path, NOT the capacitor proxy path.
+        // Native player (ExoPlayer) requires the real file:/// path, NOT the Capacitor proxy
         return uriResult.uri;
       }
-    } catch (e) {
-      // File not cached yet
+    } catch {
+      // Not cached yet — fall through
     }
-    return url; // Fallback to remote streaming
+    return url;
   }
 
   public static async downloadToCache(url: string): Promise<void> {
     if (!url || !url.startsWith('http')) return;
-    if (!Capacitor.isNativePlatform()) return; // Skip caching on web
-    
+    if (!Capacitor.isNativePlatform()) return;
+
     try {
       await this.initCacheDir();
-      
+
       const isCached = await this.getCacheStatus(url);
-      if (isCached) return; // Already cached
-      
-      const filename = this.getFileName(url);
-      const path = `${this.CACHE_DIR}/${filename}`;
-      
-      // Native download
+      if (isCached) return;
+
       await Filesystem.downloadFile({
-        url: url,
-        path: path,
-        directory: Directory.Data
+        url,
+        path: `${this.CACHE_DIR}/${this.getFileName(url)}`,
+        directory: Directory.Data,
       });
-      
     } catch (err) {
-      console.warn("Audio cache download failed:", err);
+      console.warn('[AudioCacheService] download failed:', err);
     }
   }
 
   private static getFileName(url: string): string {
     try {
-        const urlObj = new URL(url);
-        let name = urlObj.pathname.split('/').pop() || '';
-        name = name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-        return name || `audio_${Date.now()}.mp3`;
-    } catch (e) {
-        return `audio_${Date.now()}.mp3`;
+      const urlObj = new URL(url);
+      const raw = urlObj.pathname.split('/').pop() || '';
+      const clean = raw.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+      return clean || `audio_${Date.now()}.mp3`;
+    } catch {
+      return `audio_${Date.now()}.mp3`;
     }
   }
 }

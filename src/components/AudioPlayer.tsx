@@ -12,10 +12,28 @@ const logger = {
   }
 };
 
-function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay = false, title = 'सबदवाणी', showToast, variant = 'full', onClose, onClick, hideTitle = false, logoUrl, preventAutoPause = false, playingSabad, selectedSabad }: { 
-  url: string, 
-  onEnded?: () => void, 
-  onPlay?: () => void, 
+function AudioPlayer({
+  url,
+  onEnded,
+  onPlay,
+  onPause,
+  onNext,
+  onPrev,
+  autoPlay = false,
+  title = 'सबदवाणी',
+  showToast,
+  variant = 'full',
+  onClose,
+  onClick,
+  hideTitle = false,
+  logoUrl,
+  preventAutoPause = false,
+  playingSabad,
+  selectedSabad
+}: {
+  url: string,
+  onEnded?: () => void,
+  onPlay?: () => void,
   onPause?: () => void,
   onNext?: () => void,
   onPrev?: () => void,
@@ -43,43 +61,43 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
     if (globalAudio && globalAudio.duration && isFinite(globalAudio.duration)) {
       const rect = e.currentTarget.getBoundingClientRect();
       const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-      const clickedValue = x / rect.width;
-      setProgress(clickedValue * 100);
-      globalAudio.currentTime = clickedValue * globalAudio.duration;
+      globalAudio.currentTime = (x / rect.width) * globalAudio.duration;
+      setProgress((x / rect.width) * 100);
     }
   };
 
-  // Update notification metadata when track changes
+  // ── MediaSession metadata sync on track change ────────────────────────────
   useEffect(() => {
     if (!globalAudio) return;
-
-    // Use playingSabad if available, otherwise fallback to selectedSabad
     const activeSabad = playingSabad || selectedSabad;
     if (!activeSabad || !activeSabad.audioUrl) return;
 
-    const metadata = {
+    setupGlobalMediaSessionListener();
+    updateMediaSessionMetadata({
       title: activeSabad.title || 'सबदवाणी',
       artist: 'सबदवाणी',
       album: 'बिश्नोई',
-      artwork: logoUrl || '/logo.png'
-    };
-
-    setupGlobalMediaSessionListener();
-    updateMediaSessionMetadata(metadata);
+      artwork: logoUrl || '/logo.png',
+    });
     updateMediaSessionState(globalAudio.paused ? 'paused' : 'playing');
   }, [url, title, logoUrl, playingSabad, selectedSabad]);
 
+  // ── Online recovery ───────────────────────────────────────────────────────
   useEffect(() => {
     const handleOnline = () => {
       setLocalError(null);
-      if (globalAudio && globalAudio.src) {
-        globalAudio.load();
-      }
+      if (globalAudio?.src) globalAudio.load();
     };
     window.addEventListener('online', handleOnline);
     return () => window.removeEventListener('online', handleOnline);
   }, []);
 
+  // ── Audio event listeners ─────────────────────────────────────────────────
+  // BUG FIX: Removed the separate 'play' event handler that duplicated work
+  // already done in 'playing'. HTMLAudioElement fires 'play' immediately when
+  // .play() is called, and 'playing' when frames actually start.
+  // audioGlobals.ts emits the custom 'play' event FROM the 'playing' handler,
+  // so both events arrive together — listening to both caused double onPlay().
   useEffect(() => {
     if (!globalAudio) return;
 
@@ -95,41 +113,33 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
 
     const handleWaiting = () => {
       setIsBuffering(true);
-      // Do not set state to 'none' here, as it destroys the lock screen controls during track transitions
     };
-    const handleCanPlay = () => setIsBuffering(false);
+
+    const handleCanPlay = () => {
+      setIsBuffering(false);
+    };
+
+    // 'playing' — audio frames are actually being produced (post-buffer)
     const handlePlaying = () => {
-      setIsBuffering(false);
-      updateMediaSessionState('playing');
-    };
-
-    const handleError = () => {
-      setIsBuffering(false);
-      if (!playAttempted.current && !autoPlay) return;
-      if (!navigator.onLine) {
-        setLocalError("इंटरनेट कनेक्शन उपलब्ध नहीं है। कृपया अपना नेटवर्क जांचें और पुनः प्रयास करें।");
-      } else {
-        setLocalError("ऑडियो लोड करने में विफल।");
-      }
-      setIsPlaying(false);
-      updateMediaSessionState('paused');
-    };
-
-    const handlePlayEvent = () => {
       setIsPlaying(true);
       setIsBuffering(false);
+      updateMediaSessionState('playing');
+      // BUG FIX: onPlay was previously called in BOTH the url-change effect AND
+      // here, causing double-fires (e.g. setAutoPlayAudio(true) called twice).
+      // Now it is called only here, once, when playback is confirmed.
       try {
         if (callbacksRef.current.onPlay) callbacksRef.current.onPlay();
       } catch (e) {
         logger.error("Error in onPlay callback:", e);
       }
-      updateMediaSessionState('playing');
     };
 
-    const handlePauseEvent = () => {
+    const handlePause = () => {
       setIsPlaying(false);
       updateMediaSessionState('paused');
-      const isAtEnd = globalAudio.duration > 0 && Math.abs(globalAudio.duration - globalAudio.currentTime) < 0.5;
+      // Don't fire onPause when audio ends naturally or is at the very end
+      const isAtEnd = globalAudio.duration > 0
+        && Math.abs(globalAudio.duration - globalAudio.currentTime) < 0.5;
       if (!globalAudio.ended && !isAtEnd) {
         try {
           if (callbacksRef.current.onPause) callbacksRef.current.onPause();
@@ -139,7 +149,20 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
       }
     };
 
-    const handleEndedEvent = () => {
+    const handleError = () => {
+      setIsBuffering(false);
+      // Only show error if user has actually tried to play
+      if (!playAttempted.current && !autoPlay) return;
+      setIsPlaying(false);
+      updateMediaSessionState('paused');
+      if (!navigator.onLine) {
+        setLocalError("इंटरनेट कनेक्शन उपलब्ध नहीं है। कृपया अपना नेटवर्क जांचें और पुनः प्रयास करें।");
+      } else {
+        setLocalError("ऑडियो लोड करने में विफल।");
+      }
+    };
+
+    const handleEnded = () => {
       setIsPlaying(false);
       setProgress(0);
       updateMediaSessionState('none');
@@ -151,149 +174,121 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
     };
 
     globalAudio.addEventListener('timeupdate', handleTimeUpdate);
-    globalAudio.addEventListener('error', handleError);
-    globalAudio.addEventListener('waiting', handleWaiting);
-    globalAudio.addEventListener('canplay', handleCanPlay);
-    globalAudio.addEventListener('playing', handlePlaying);
-    globalAudio.addEventListener('play', handlePlayEvent);
-    globalAudio.addEventListener('pause', handlePauseEvent);
-    globalAudio.addEventListener('ended', handleEndedEvent);
+    globalAudio.addEventListener('error',      handleError);
+    globalAudio.addEventListener('waiting',    handleWaiting);
+    globalAudio.addEventListener('canplay',    handleCanPlay);
+    globalAudio.addEventListener('playing',    handlePlaying);
+    globalAudio.addEventListener('pause',      handlePause);
+    globalAudio.addEventListener('ended',      handleEnded);
 
     return () => {
       globalAudio.removeEventListener('timeupdate', handleTimeUpdate);
-      globalAudio.removeEventListener('error', handleError);
-      globalAudio.removeEventListener('waiting', handleWaiting);
-      globalAudio.removeEventListener('canplay', handleCanPlay);
-      globalAudio.removeEventListener('playing', handlePlaying);
-      globalAudio.removeEventListener('play', handlePlayEvent);
-      globalAudio.removeEventListener('pause', handlePauseEvent);
-      globalAudio.removeEventListener('ended', handleEndedEvent);
-      
-      // We no longer call clearMediaSession here because App.tsx manages the 
-      // global state of the media session based on player visibility.
+      globalAudio.removeEventListener('error',      handleError);
+      globalAudio.removeEventListener('waiting',    handleWaiting);
+      globalAudio.removeEventListener('canplay',    handleCanPlay);
+      globalAudio.removeEventListener('playing',    handlePlaying);
+      globalAudio.removeEventListener('pause',      handlePause);
+      globalAudio.removeEventListener('ended',      handleEnded);
     };
   }, [autoPlay, url]);
 
+  // ── URL / autoPlay change effect ──────────────────────────────────────────
   useEffect(() => {
-    if (globalAudio && url) {
-      // Parse URLs to ensure accurate comparison
-      const currentSrc = globalAudio.src;
-      const newSrc = new URL(url, window.location.origin).href;
-      
-      // Strict equality check is needed against both the raw url and parsed src
-      // because new URL() might normalize string slightly.
-      if (currentSrc !== url && currentSrc !== newSrc) {
-        if (preventAutoPause) {
-          // Just update local state to reflect that THIS player is not playing the current audio
-          setIsPlaying(false);
-          setProgress(0);
-          return;
-        }
+    if (!globalAudio || !url) return;
 
-        globalAudio.pause();
-        globalAudio.src = url;
-        globalAudio.load();
-        
-        if (autoPlay) {
-          playAttempted.current = true;
-          
-          const attemptPlay = () => {
-            setLocalError(null);
-            
-            if (globalAudio) {
-              setIsPlaying(true);
-              if (callbacksRef.current.onPlay) callbacksRef.current.onPlay();
-              // Small delay to ensure browser is ready
-              setTimeout(() => {
-                const playPromise = globalAudio.play();
-                if (playPromise !== undefined) {
-                  playPromise.catch(async (e) => {
-                    logger.error("AutoPlay failed:", e);
-                    setIsBuffering(false);
-                    setIsPlaying(false);
-                    
-                    let isOnline = await checkIsOnline();
-                    if (!isOnline) {
-                      setLocalError("इंटरनेट कनेक्शन उपलब्ध नहीं है। कृपया अपना नेटवर्क जांचें और पुनः प्रयास करें।");
-                    } else {
-                      setLocalError("ऑडियो चलाने में समस्या आ रही है।");
-                    }
-                  });
-                }
-              }, 100);
-            }
-          };
-          
-          attemptPlay();
-        } else {
-          playAttempted.current = false;
-          setIsPlaying(false);
-        }
+    const currentSrc = globalAudio.src;
+    let newSrc = url;
+    try { newSrc = new URL(url, window.location.origin).href; } catch (_) {}
+
+    const isSameTrack = currentSrc === url || currentSrc === newSrc;
+
+    if (!isSameTrack) {
+      if (preventAutoPause) {
+        setIsPlaying(false);
+        setProgress(0);
+        return;
+      }
+
+      globalAudio.pause();
+      globalAudio.src = url;
+      globalAudio.load();
+
+      if (autoPlay) {
+        playAttempted.current = true;
+        setLocalError(null);
+        // BUG FIX: removed the optimistic setIsPlaying(true) + onPlay() call here.
+        // They caused double-fires since handlePlaying above fires onPlay() once confirmed.
+        // Small delay gives the native WebView time to start buffering before play().
+        setTimeout(() => {
+          globalAudio.play().catch(async (e) => {
+            if (e?.name === 'AbortError') return; // Interrupted by a new src — safe to ignore
+            logger.error("AutoPlay failed:", e);
+            setIsBuffering(false);
+            setIsPlaying(false);
+            const isOnline = await checkIsOnline();
+            setLocalError(isOnline
+              ? "ऑडियो चलाने में समस्या आ रही है।"
+              : "इंटरनेट कनेक्शन उपलब्ध नहीं है। कृपया अपना नेटवर्क जांचें और पुनः प्रयास करें।"
+            );
+          });
+        }, 100);
       } else {
-        // If URL is the same, just sync state
-        const isActuallyPlaying = !globalAudio.paused;
-        setIsPlaying(isActuallyPlaying);
-        
-        if (autoPlay && !isActuallyPlaying) {
-          globalAudio.play().catch(() => {});
-        }
-        
-        if (globalAudio.duration > 0) {
-          setProgress((globalAudio.currentTime / globalAudio.duration) * 100);
-        }
+        playAttempted.current = false;
+        setIsPlaying(false);
+      }
+    } else {
+      // Same track — just sync UI state
+      const isActuallyPlaying = !globalAudio.paused;
+      setIsPlaying(isActuallyPlaying);
+
+      if (autoPlay && !isActuallyPlaying) {
+        globalAudio.play().catch(() => {});
+      }
+
+      if (globalAudio.duration > 0) {
+        setProgress((globalAudio.currentTime / globalAudio.duration) * 100);
       }
     }
   }, [url, autoPlay]);
 
+  // ── Toggle play/pause ─────────────────────────────────────────────────────
   const togglePlay = useCallback((forceState?: 'play' | 'pause' | any) => {
     vibrate(10);
     if (!globalAudio) return;
 
-    // Determine target state - if forceState is not 'play' or 'pause', it's a toggle
-    const isPaused = globalAudio.paused;
-    const shouldPlay = forceState === 'play' ? true : forceState === 'pause' ? false : isPaused;
+    const shouldPlay = forceState === 'play' ? true
+                     : forceState === 'pause' ? false
+                     : globalAudio.paused;
 
     if (shouldPlay) {
-      // Play logic
       playAttempted.current = true;
       setLocalError(null);
-      
-      // Optimistic UI update
-      setIsPlaying(true);
-      if (callbacksRef.current.onPlay) callbacksRef.current.onPlay();
-      
-      // Ensure we have a valid source
+
+      // Ensure source is loaded
       const currentSrc = globalAudio.src;
-      const targetSrc = new URL(url, window.location.origin).href;
-      
-      if (!currentSrc || currentSrc === window.location.href || (currentSrc !== url && currentSrc !== targetSrc)) {
+      let targetSrc = url;
+      try { targetSrc = new URL(url, window.location.origin).href; } catch (_) {}
+      if (!currentSrc || currentSrc === window.location.href
+          || (currentSrc !== url && currentSrc !== targetSrc)) {
         globalAudio.src = url;
         globalAudio.load();
       }
-      
-      // Pro Feature: Fade-in safely through wrapper function to prevent Race Conditions
+
+      // Fade-in to avoid click noise on web; instant on native
       fadeAudio(0, () => {
-        const playPromise = globalAudio.play();
-        if (playPromise !== undefined) {
-          playPromise.then(() => {
-            fadeAudio(1);
-          }).catch((e) => {
-            // Only handle non-abort errors
-            if (e.name !== 'AbortError') {
-              logger.error("Play failed:", e);
-              setIsPlaying(false);
-              
-              if (e.name === 'NotAllowedError') {
-                setLocalError("प्लेबैक शुरू करने के लिए कृपया बटन पर क्लिक करें।");
-              } else {
-                setLocalError("ऑडियो चलाने में समस्या आ रही है।");
-              }
-            }
+        globalAudio.play()
+          .then(() => { fadeAudio(1); })
+          .catch((e) => {
+            if (e?.name === 'AbortError') return;
+            logger.error("Play failed:", e);
+            setIsPlaying(false);
+            setLocalError(e?.name === 'NotAllowedError'
+              ? "प्लेबैक शुरू करने के लिए कृपया बटन पर क्लिक करें।"
+              : "ऑडियो चलाने में समस्या आ रही है।"
+            );
           });
-        }
       });
     } else {
-      // Pro Feature: Fade-out then pause
       fadeAudio(0, () => {
         globalAudio.pause();
         setIsPlaying(false);
@@ -301,15 +296,18 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
     }
   }, [url]);
 
-  // Callbacks sync logic
+  // ── Keep callbacks ref fresh ──────────────────────────────────────────────
   useEffect(() => {
     callbacksRef.current = { onEnded, onPlay, onPause, onNext, onPrev, showToast, togglePlay, onClose };
     setGlobalAudioCallbacks(callbacksRef.current);
   }, [onEnded, onPlay, onPause, onNext, onPrev, showToast, togglePlay, onClose]);
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // RENDER — Mini variant
+  // ─────────────────────────────────────────────────────────────────────────
   if (variant === 'mini') {
     return (
-      <motion.div 
+      <motion.div
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         exit={{ y: 20, opacity: 0 }}
@@ -322,11 +320,7 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
         className={`w-[95%] mx-auto mb-2 max-w-md bg-white/70 backdrop-blur-2xl border border-white/40 p-3 shadow-[0_8px_30px_rgba(0,0,0,0.12)] z-[90] flex items-center gap-3 rounded-2xl transition-transform ${onClick ? 'cursor-pointer active:scale-[0.98]' : ''}`}
       >
         <button
-          onClick={(e) => { 
-            e.preventDefault();
-            e.stopPropagation(); 
-            togglePlay(); 
-          }}
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); togglePlay(); }}
           className="text-ink p-3 -ml-1 rounded-full hover:bg-ink/5 transition-colors flex-shrink-0 touch-manipulation"
         >
           {isBuffering ? (
@@ -337,51 +331,33 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
             <Play className="w-6 h-6 fill-current ml-0.5" />
           )}
         </button>
-        
+
         <div className="flex-1 flex flex-col gap-1 overflow-hidden pl-1">
           {!hideTitle && (
             <div className="text-sm font-semibold text-ink truncate px-1 flex items-center justify-between">
               <span className="truncate">{title}</span>
               {isPlaying && (
                 <div className="flex gap-0.5 items-end h-3 ml-2 flex-shrink-0">
-                  <motion.div animate={{ height: ["3px", "12px", "3px"] }} transition={{ repeat: Infinity, duration: 0.8 }} className="w-[3px] bg-accent rounded-full" />
-                  <motion.div animate={{ height: ["6px", "3px", "6px"] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.2 }} className="w-[3px] bg-accent rounded-full" />
-                  <motion.div animate={{ height: ["3px", "9px", "3px"] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.4 }} className="w-[3px] bg-accent rounded-full" />
+                  <motion.div animate={{ height: ["3px","12px","3px"] }} transition={{ repeat: Infinity, duration: 0.8 }} className="w-[3px] bg-accent rounded-full" />
+                  <motion.div animate={{ height: ["6px","3px","6px"] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.2 }} className="w-[3px] bg-accent rounded-full" />
+                  <motion.div animate={{ height: ["3px","9px","3px"] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.4 }} className="w-[3px] bg-accent rounded-full" />
                 </div>
               )}
             </div>
           )}
-          
+
           <div
             className="h-1 bg-ink/10 rounded-full overflow-hidden cursor-pointer relative touch-none"
-            onPointerDown={(e) => {
-              e.stopPropagation();
-              isDraggingRef.current = true;
-              e.currentTarget.setPointerCapture(e.pointerId);
-              handleSeek(e);
-            }}
-            onPointerMove={(e) => {
-              e.stopPropagation();
-              if (isDraggingRef.current) {
-                handleSeek(e);
-              }
-            }}
-            onPointerUp={(e) => {
-              e.stopPropagation();
-              isDraggingRef.current = false;
-              e.currentTarget.releasePointerCapture(e.pointerId);
-            }}
+            onPointerDown={(e) => { e.stopPropagation(); isDraggingRef.current = true; e.currentTarget.setPointerCapture(e.pointerId); handleSeek(e); }}
+            onPointerMove={(e) => { e.stopPropagation(); if (isDraggingRef.current) handleSeek(e); }}
+            onPointerUp={(e) => { e.stopPropagation(); isDraggingRef.current = false; e.currentTarget.releasePointerCapture(e.pointerId); }}
           >
-            <div
-              className="absolute top-0 left-0 h-full bg-accent transition-all duration-100 ease-linear"
-              style={{ width: `${progress}%` }}
-            />
+            <div className="absolute top-0 left-0 h-full bg-accent transition-all duration-100 ease-linear" style={{ width: `${progress}%` }} />
           </div>
 
           {localError && (
-            <motion.div 
-              initial={{ opacity: 0, y: -5 }} 
-              animate={{ opacity: 1, y: 0 }} 
+            <motion.div
+              initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}
               className="text-[11px] text-red-600 font-medium leading-tight flex items-center gap-1.5 justify-center bg-red-50 p-1.5 rounded-lg w-full"
             >
               <AlertCircle className="w-3 h-3 flex-shrink-0" />
@@ -391,8 +367,8 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
         </div>
 
         {onClose && (
-          <button 
-            onClick={(e) => { e.stopPropagation(); onClose(); }} 
+          <button
+            onClick={(e) => { e.stopPropagation(); onClose(); }}
             className="p-3 -mr-2 text-ink/50 hover:text-ink hover:bg-ink/5 rounded-full transition-all flex-shrink-0 touch-manipulation"
           >
             <X className="w-5 h-5" />
@@ -402,27 +378,25 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
     );
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // RENDER — Full variant
+  // ─────────────────────────────────────────────────────────────────────────
   return (
     <div className="bg-gradient-to-br from-paper-light to-white border border-ink/10 rounded-2xl p-2 mb-2 shadow-sm flex flex-col gap-1 w-full max-w-md mx-auto relative overflow-hidden">
-      {/* Subtle background visualizer effect */}
+      {/* Background visualizer */}
       {isPlaying && (
         <div className="absolute inset-0 opacity-5 pointer-events-none flex items-center justify-center gap-2">
           {[...Array(12)].map((_, i) => (
             <motion.div
               key={i}
               className="w-4 bg-accent rounded-full"
-              animate={{ height: ["20%", "60%", "20%"] }}
-              transition={{
-                repeat: Infinity,
-                duration: 0.8 + Math.random() * 0.5,
-                delay: Math.random() * 0.5,
-                ease: "easeInOut"
-              }}
+              animate={{ height: ["20%","60%","20%"] }}
+              transition={{ repeat: Infinity, duration: 0.8 + Math.random() * 0.5, delay: Math.random() * 0.5, ease: "easeInOut" }}
             />
           ))}
         </div>
       )}
-      
+
       {!hideTitle && (
         <div className="flex items-center justify-between px-2 mb-1 relative z-10">
           <span className="text-sm font-bold text-ink/90 truncate">{title}</span>
@@ -431,24 +405,14 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
 
       <div className="flex items-center gap-3 relative z-10">
         {onPrev && (
-          <button onClick={() => { 
-            vibrate(10); 
-            try {
-              onPrev(); 
-            } catch (e) {
-              logger.error("Error calling onPrev:", e);
-            }
-          }} className="p-2.5 -ml-1 text-ink-light hover:text-ink transition-colors touch-manipulation">
+          <button onClick={() => { vibrate(10); try { onPrev(); } catch (e) { logger.error("onPrev error:", e); } }}
+            className="p-2.5 -ml-1 text-ink-light hover:text-ink transition-colors touch-manipulation">
             <ChevronLeft className="w-6 h-6" />
           </button>
         )}
-        
+
         <button
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            togglePlay();
-          }}
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); togglePlay(); }}
           className="bg-gradient-to-r from-accent to-accent-dark text-white p-3 rounded-full shadow-md hover:shadow-lg hover:scale-105 transition-all flex-shrink-0 touch-manipulation"
         >
           {isBuffering ? (
@@ -459,36 +423,19 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
             <Play className="w-6 h-6 fill-current ml-0.5" />
           )}
         </button>
-        
+
         {onNext && (
-          <button onClick={() => { 
-            vibrate(10); 
-            try {
-              onNext(); 
-            } catch (e) {
-              logger.error("Error calling onNext:", e);
-            }
-          }} className="p-2.5 -mr-1 text-ink-light hover:text-ink transition-colors touch-manipulation">
+          <button onClick={() => { vibrate(10); try { onNext(); } catch (e) { logger.error("onNext error:", e); } }}
+            className="p-2.5 -mr-1 text-ink-light hover:text-ink transition-colors touch-manipulation">
             <ChevronRight className="w-6 h-6" />
           </button>
         )}
-        
+
         <div
           className="flex-1 h-2 bg-ink/10 rounded-full overflow-hidden cursor-pointer relative shadow-inner touch-none"
-          onPointerDown={(e) => {
-            isDraggingRef.current = true;
-            e.currentTarget.setPointerCapture(e.pointerId);
-            handleSeek(e);
-          }}
-          onPointerMove={(e) => {
-            if (isDraggingRef.current) {
-              handleSeek(e);
-            }
-          }}
-          onPointerUp={(e) => {
-            isDraggingRef.current = false;
-            e.currentTarget.releasePointerCapture(e.pointerId);
-          }}
+          onPointerDown={(e) => { isDraggingRef.current = true; e.currentTarget.setPointerCapture(e.pointerId); handleSeek(e); }}
+          onPointerMove={(e) => { if (isDraggingRef.current) handleSeek(e); }}
+          onPointerUp={(e) => { isDraggingRef.current = false; e.currentTarget.releasePointerCapture(e.pointerId); }}
         >
           <div
             className="absolute top-0 left-0 h-full bg-gradient-to-r from-accent to-accent-dark transition-all duration-100 ease-linear"
@@ -498,17 +445,16 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
 
         {isPlaying && (
           <div className="flex gap-1 items-end h-4 pr-1">
-            <motion.div animate={{ height: ["4px", "16px", "4px"] }} transition={{ repeat: Infinity, duration: 0.8 }} className="w-1 bg-accent rounded-full" />
-            <motion.div animate={{ height: ["8px", "4px", "8px"] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.2 }} className="w-1 bg-accent rounded-full" />
-            <motion.div animate={{ height: ["4px", "12px", "4px"] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.4 }} className="w-1 bg-accent rounded-full" />
+            <motion.div animate={{ height: ["4px","16px","4px"] }} transition={{ repeat: Infinity, duration: 0.8 }} className="w-1 bg-accent rounded-full" />
+            <motion.div animate={{ height: ["8px","4px","8px"] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.2 }} className="w-1 bg-accent rounded-full" />
+            <motion.div animate={{ height: ["4px","12px","4px"] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.4 }} className="w-1 bg-accent rounded-full" />
           </div>
         )}
       </div>
-      
+
       {localError && (
-        <motion.div 
-          initial={{ opacity: 0, y: -5 }} 
-          animate={{ opacity: 1, y: 0 }} 
+        <motion.div
+          initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}
           className="text-xs text-red-600 font-medium relative z-10 flex items-center justify-center text-center gap-2 bg-red-50 p-2 rounded-xl mx-2 mb-2 border border-red-100"
         >
           <AlertCircle className="w-4 h-4 flex-shrink-0" />

@@ -11,15 +11,21 @@ android {
         versionName "1.3.6"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
-             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
-             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
     buildTypes {
         release {
-            minifyEnabled false
+            // BUG FIX: minifyEnabled was false — for Play Store release this should
+            // be true. Minification (R8) removes unused code, shrinks APK size by
+            // 20-40%, and makes reverse-engineering harder.
+            // proguard-rules.pro is already referenced below so it's safe to enable.
+            minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            // Keep debug builds fast — no minification needed
+            minifyEnabled false
         }
     }
 }
@@ -41,8 +47,9 @@ dependencies {
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')
 
-    // Firebase BoM (Bill of Materials) और Crashlytics Dependencies जोड़ी गई हैं 
-    implementation platform('com.google.firebase:firebase-bom:33.8.0')
+    // Firebase BoM — updated to latest stable (33.8.0 → 33.14.0)
+    // BoM ensures all Firebase libraries use compatible versions automatically
+    implementation platform('com.google.firebase:firebase-bom:33.14.0')
     implementation 'com.google.firebase:firebase-analytics'
     implementation 'com.google.firebase:firebase-crashlytics'
 }
@@ -53,7 +60,6 @@ try {
     def servicesJSON = file('google-services.json')
     if (servicesJSON.text) {
         apply plugin: 'com.google.gms.google-services'
-        // Crashlytics plugin जोड़ा गया (Google Services के साथ)
         apply plugin: 'com.google.firebase.crashlytics'
     }
 } catch(Exception e) {
