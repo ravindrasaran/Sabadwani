@@ -14,7 +14,6 @@ export interface CommunityPostsScreenProps {
   handleBack: () => void;
   navigateTo: (screen: string) => void;
   setSelectedSabad: (sabad: SabadItem) => void;
-  setPlayingSabad?: (sabad: SabadItem) => void;
   setSelectedCategory: (cat: 'aarti' | 'bhajan' | 'sakhi' | 'mantra') => void;
   setAutoPlayAudio: (play: boolean) => void;
 }

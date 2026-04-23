@@ -6,9 +6,6 @@ class AudioWrapper {
   private audio: HTMLAudioElement | null = null;
   private isNative = Capacitor.isNativePlatform();
   private listeners: { [key: string]: Function[] } = {};
-  private _loadPromise: Promise<void> | null = null;
-  private _isTransitioning = false;
-  private _srcCounter = 0; // Prevent race conditions on fast next
   
   public _src = '';
   public _currentTime = 0;
@@ -19,179 +16,144 @@ class AudioWrapper {
   public _playbackRate = 1;
   public _metadata: any = null;
 
-  private static isNativeSetup = false;
+  private _playSequence = 0;
+  private _isNativeInitialized = false;
 
   constructor() {
-    if (!this.isNative && typeof window !== 'undefined') {
-      this.audio = new Audio();
-      this.audio.crossOrigin = "anonymous";
-      this.audio.preload = "metadata";
-      
-      const events = ['timeupdate', 'playing', 'play', 'pause', 'waiting', 'canplay', 'ended', 'error'];
-      events.forEach(evt => {
-        this.audio!.addEventListener(evt, (e) => {
-          this._currentTime = this.audio!.currentTime;
-          this._duration = this.audio!.duration;
-          this._paused = this.audio!.paused;
-          this._ended = this.audio!.ended;
-          this.emit(evt, e);
-        });
-      });
-    } else if (this.isNative && !AudioWrapper.isNativeSetup) {
-      AudioWrapper.isNativeSetup = true;
-      Playlist.initialize();
-      Playlist.addListener('status', (data: any) => {
-        const val = data.value || {};
-        
-        // Prevent duplicate trigger events during async loading
-        if (this._isTransitioning && data.msgType !== 40 && data.msgType !== 30 && data.msgType !== 35) {
-            return;
-        }
-
-        // Handle playback position updates
-        if (data.msgType === 40 || val.currentPosition !== undefined || val.position !== undefined) {
-          this._currentTime = val.currentPosition !== undefined ? val.currentPosition : (val.position !== undefined ? val.position : this._currentTime);
-          
-          let duration = val.duration;
-          if ((duration === undefined || duration <= 0) && val.track && val.track.duration) {
-            duration = val.track.duration;
-          }
-          
-          if (duration !== undefined && duration > 0) {
-            this._duration = duration;
-          }
-          this.emit('timeupdate', {});
-        }
-
-        if (data.msgType === 100) {
-           if (val.isAtEnd || val.currentIndex === 0 || val.status === 'completed' || val.status === 'stopped') {
-               this._isTransitioning = true;
-               Playlist.pause();
-               this._paused = true;
-               this._ended = true;
-               this.emit('ended', {});
-               return;
-           }
-        }
-
-        if (val.status === 'playing' || data.msgType === 30) {
-          this._paused = false;
-          this._ended = false;
-          this.emit('playing', {});
-          this.emit('play', {});
-        } else if (val.status === 'paused' || data.msgType === 35) {
-          this._paused = true;
-          this.emit('pause', {});
-        } else if (val.status === 'loading' || data.msgType === 10 || data.msgType === 25) {
-          this.emit('waiting', {});
-        } else if (val.status === 'ready' || data.msgType === 11 || data.msgType === 15) {
-          this.emit('canplay', {});
-        } else if (val.status === 'stopped' || data.msgType === 50 || data.msgType === 60 || (data.msgType === 100 && val.isAtEnd)) {
-          this._paused = true;
-          this._ended = true;
-          this.emit('ended', {});
-        }
-        
-        // Handle native media controls (Next/Prev from lock screen)
-        if (data.msgType === 'command') {
-           if (val.command === 'next') {
-             this._isTransitioning = true;
-             Playlist.pause();
-             if (globalAudioCallbacks?.onNext) globalAudioCallbacks.onNext();
-           } else if (val.command === 'previous') {
-             this._isTransitioning = true;
-             Playlist.pause();
-             if (globalAudioCallbacks?.onPrev) globalAudioCallbacks.onPrev();
-           }
-        } else if (data.msgType === 90) {
-           // 90: RMX_STATUS_SKIP_FORWARD
-           this._isTransitioning = true;
-           Playlist.pause();
-           if (globalAudioCallbacks?.onNext) globalAudioCallbacks.onNext();
-        } else if (data.msgType === 95) {
-           // 95: RMX_STATUS_SKIP_BACK
-           this._isTransitioning = true;
-           Playlist.pause();
-           if (globalAudioCallbacks?.onPrev) globalAudioCallbacks.onPrev();
-        }
-
-        if (data.msgType === 'error') {
-          this.emit('error', { name: 'NotAllowedError' });
-        }
-      });
+    if (!this.isNative) {
+      this.initWeb();
+    } else {
+      this.initNative();
     }
+  }
+
+  private initWeb() {
+    this.audio = new Audio();
+    this.audio.crossOrigin = "anonymous";
+    this.audio.preload = "metadata";
+    
+    const events = ['timeupdate', 'playing', 'play', 'pause', 'waiting', 'canplay', 'ended', 'error'];
+    events.forEach(evt => {
+      this.audio!.addEventListener(evt, (e) => {
+        this._currentTime = this.audio!.currentTime;
+        this._duration = this.audio!.duration;
+        this._paused = this.audio!.paused;
+        this._ended = this.audio!.ended;
+        this.emit(evt, e);
+      });
+    });
+  }
+
+  private initNative() {
+    if (this._isNativeInitialized) return;
+    this._isNativeInitialized = true;
+    
+    Playlist.initialize();
+    
+    Playlist.addListener('status', (data: any) => {
+      const val = data.value || {};
+      
+      if (data.msgType === 40 || val.currentPosition !== undefined || val.position !== undefined) {
+         this._currentTime = val.currentPosition !== undefined ? val.currentPosition : (val.position !== undefined ? val.position : this._currentTime);
+         this._duration = val.duration !== undefined ? val.duration : this._duration;
+         this.emit('timeupdate', {});
+      }
+
+      if (val.status === 'playing' || data.msgType === 30) {
+         this._paused = false;
+         this._ended = false;
+         this.emit('playing', {});
+         this.emit('play', {});
+      } else if (val.status === 'paused' || data.msgType === 35) {
+         this._paused = true;
+         this.emit('pause', {});
+      } else if (val.status === 'loading' || data.msgType === 10 || data.msgType === 25) {
+         this.emit('waiting', {});
+      } else if (val.status === 'ready' || data.msgType === 11 || data.msgType === 15) {
+         this.emit('canplay', {});
+      } else if (val.status === 'completed' || val.status === 'stopped' || data.msgType === 50 || data.msgType === 60 || (data.msgType === 100 && val.isAtEnd)) {
+         this._paused = true;
+         this._ended = true;
+         Playlist.pause();
+         this.emit('ended', {});
+      }
+
+      if (data.msgType === 'command') {
+         if (val.command === 'next') globalAudioCallbacks?.onNext?.();
+         else if (val.command === 'previous') globalAudioCallbacks?.onPrev?.();
+      } else if (data.msgType === 90) {
+         globalAudioCallbacks?.onNext?.();
+      } else if (data.msgType === 95) {
+         globalAudioCallbacks?.onPrev?.();
+      } else if (data.msgType === 'error') {
+         this.emit('error', { name: 'NotAllowedError' });
+      }
+    });
   }
 
   get src() { return this._src; }
   set src(val: string) {
     this._src = val;
-    this._isTransitioning = false; // Reset transition lock
-    this._srcCounter++; // Increment counter for race condition check
-    const currentSrcCount = this._srcCounter;
+    this._playSequence++;
+    const currentSeq = this._playSequence;
     
     if (!val) {
-      if (this.audio) this.audio.src = '';
       if (this.isNative) Playlist.pause();
+      else if (this.audio) this.audio.src = '';
       return;
     }
 
     if (this.isNative) {
-      Playlist.pause(); // Pause instantly to stop any currently running audio
-
-      // Async wrapper to handle caching logic safely
-      this._loadPromise = (async () => {
-        try {
-          const cachedUrl = await AudioCacheService.getLocalUrl(val);
-          
-          // ABORT if the user clicked Next again before the fetch finished!
-          if (this._srcCounter !== currentSrcCount) {
-             console.log("Fast next detected. Aborting old async load:", val);
-             return;
-          }
-          
-          // If we fallback to remote, optionally trigger background cache
-          if (cachedUrl === val && val.startsWith('http')) {
-            AudioCacheService.downloadToCache(val);
-          }
-
-          let localLogoPath = 'https://bishnoi.co.in/logo.png';
-          if (typeof window !== 'undefined') {
-            localLogoPath = new URL('/logo.png', window.location.origin).href;
-          }
-
-          // Single item without dummy arrays
-          await Playlist.setPlaylistItems({
-            items: [
-              {
-                trackId: 'track_current',
-                assetUrl: cachedUrl,
-                title: this._metadata?.title || 'सबदवाणी',
-                artist: this._metadata?.artist || 'बिश्नोई समाज',
-                album: this._metadata?.album || 'सबदवाणी',
-                albumArt: this._metadata?.artwork || localLogoPath,
-                isStream: false 
-              }
-            ],
-            options: { startPaused: true, retainPosition: false, playFromId: 'track_current' }
-          });
-        } catch (err) {
-          console.warn("Error setting playlist items with cache:", err);
+      Playlist.pause();
+      this.emit('waiting', {});
+      
+      AudioCacheService.getLocalUrl(val).then(cachedUrl => {
+        if (this._playSequence !== currentSeq) return;
+        
+        if (cachedUrl === val && val.startsWith('http')) {
+          AudioCacheService.downloadToCache(val);
         }
-      })();
-    } else if (this.audio) {
-      this.audio.src = val;
+        
+        let localLogoPath = 'https://bishnoi.co.in/logo.png';
+        try { localLogoPath = new URL('/logo.png', window.location.origin).href; } catch(e){}
+
+        Playlist.setPlaylistItems({
+          items: [{
+            trackId: 't_' + currentSeq,
+            assetUrl: cachedUrl,
+            title: this._metadata?.title || 'सबदवाणी',
+            artist: this._metadata?.artist || 'बिश्नोई समाज',
+            album: this._metadata?.album || 'सबदवाणी',
+            albumArt: this._metadata?.artwork || localLogoPath,
+            isStream: false 
+          }],
+          options: { startPaused: true, retainPosition: false, playFromId: 't_' + currentSeq }
+        });
+      }).catch(() => {
+        if (this._playSequence !== currentSeq) return;
+        Playlist.setPlaylistItems({
+          items: [{
+            trackId: 't_' + currentSeq,
+            assetUrl: val,
+            title: this._metadata?.title || 'सबदवाणी',
+            artist: this._metadata?.artist || 'बिश्नोई समाज',
+            album: this._metadata?.album || 'सबदवाणी',
+            albumArt: 'https://bishnoi.co.in/logo.png',
+            isStream: true
+          }],
+          options: { startPaused: true }
+        });
+      });
+    } else {
+      if (this.audio) { this.audio.src = val; this.audio.load(); }
     }
   }
 
   get currentTime() { return this._currentTime; }
-  set currentTime(val: number) {
-    if (isNaN(val) || !isFinite(val)) return;
+  set currentTime(val: number) { 
     this._currentTime = val;
-    if (this.isNative) {
-      Playlist.seekTo({ position: val }).catch(e => console.error("Native seek error:", e));
-    } else if (this.audio) {
-      this.audio.currentTime = val;
-    }
+    if (this.isNative) Playlist.seekTo({ position: val });
+    else if (this.audio) this.audio.currentTime = val;
   }
 
   get duration() { return this._duration; }
@@ -199,54 +161,40 @@ class AudioWrapper {
   get ended() { return this._ended; }
 
   get volume() { return this._volume; }
-  set volume(val: number) {
+  set volume(val: number) { 
     this._volume = val;
-    if (this.isNative) {
-      Playlist.setPlaybackVolume({ volume: val });
-    } else if (this.audio) {
-      this.audio.volume = val;
-    }
+    if (this.isNative) Playlist.setPlaybackVolume({ volume: val });
+    else if (this.audio) this.audio.volume = val;
   }
 
   get playbackRate() { return this._playbackRate; }
-  set playbackRate(val: number) {
+  set playbackRate(val: number) { 
     this._playbackRate = val;
-    if (this.isNative) {
-      Playlist.setPlaybackRate({ rate: val });
-    } else if (this.audio) {
-      this.audio.playbackRate = val;
-    }
+    if (this.isNative) Playlist.setPlaybackRate({ rate: val });
+    else if (this.audio) this.audio.playbackRate = val;
   }
 
-  load() {
-    if (this.audio) this.audio.load();
-  }
+  load() { if (!this.isNative && this.audio) this.audio.load(); }
 
   async play() {
     if (this.isNative) {
-      if (this._loadPromise) {
-        await this._loadPromise;
-      }
       await Playlist.play();
       this._paused = false;
     } else if (this.audio) {
       try {
         await this.audio.play();
       } catch (e: any) {
-        // Ignore AbortError caused by pause() interrupting play()
-        if (e.name !== 'AbortError') {
-          console.error("Audio play error:", e);
-        }
+        if (e.name !== 'AbortError') console.error("Audio play error:", e);
       }
     }
   }
 
-  pause() {
+  pause() { 
     if (this.isNative) {
       Playlist.pause();
       this._paused = true;
     } else if (this.audio) {
-      this.audio.pause();
+      this.audio.pause(); 
     }
   }
 
@@ -319,7 +267,7 @@ export const updateMediaSessionMetadata = async (metadata: { title: string; arti
   isClearingSession = false;
   const artworkUrl = metadata.artwork || DEFAULT_LOGO;
   
-  // Save metadata for native plugin
+  // Save metadata
   globalAudio._metadata = {
     title: metadata.title,
     artist: metadata.artist,
@@ -327,7 +275,7 @@ export const updateMediaSessionMetadata = async (metadata: { title: string; arti
     artwork: artworkUrl
   };
 
-  if (!Capacitor.isNativePlatform() && 'mediaSession' in navigator) {
+  if ('mediaSession' in navigator) {
     navigator.mediaSession.metadata = new MediaMetadata({
       title: metadata.title,
       artist: metadata.artist,
@@ -340,7 +288,7 @@ export const updateMediaSessionMetadata = async (metadata: { title: string; arti
 export const updateMediaSessionState = async (state: 'playing' | 'paused' | 'none') => {
   if (isClearingSession && state !== 'none') return;
   
-  if (!Capacitor.isNativePlatform() && 'mediaSession' in navigator) {
+  if ('mediaSession' in navigator) {
     navigator.mediaSession.playbackState = state === 'none' ? 'none' : state;
   }
 };
@@ -372,7 +320,7 @@ export const updateMediaSessionPosition = async (position: number, duration: num
   if (now - lastPositionUpdate < 1000) return;
   lastPositionUpdate = now;
 
-  if (!Capacitor.isNativePlatform() && 'mediaSession' in navigator && navigator.mediaSession.setPositionState) {
+  if ('mediaSession' in navigator && navigator.mediaSession.setPositionState) {
     try {
       navigator.mediaSession.setPositionState({ duration, playbackRate, position });
     } catch (e) {}
@@ -419,11 +367,9 @@ export const setupGlobalMediaSessionListener = async () => {
     })
   };
 
-  if (!Capacitor.isNativePlatform()) {
-    if ('mediaSession' in navigator) {
-      Object.entries(handlers).forEach(([action, handler]) => {
-        try { navigator.mediaSession.setActionHandler(action as MediaSessionAction, handler); } catch (e) {}
-      });
-    }
+  if ('mediaSession' in navigator) {
+    Object.entries(handlers).forEach(([action, handler]) => {
+      try { navigator.mediaSession.setActionHandler(action as MediaSessionAction, handler); } catch (e) {}
+    });
   }
 };

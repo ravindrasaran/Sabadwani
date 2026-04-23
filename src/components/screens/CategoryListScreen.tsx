@@ -16,7 +16,6 @@ export interface CategoryListScreenProps {
   handleBack: () => void;
   navigateTo: (screen: string) => void;
   setSelectedSabad: (sabad: any) => void;
-  setPlayingSabad?: (sabad: any) => void;
   setAutoPlayAudio: (play: boolean) => void;
 }
 

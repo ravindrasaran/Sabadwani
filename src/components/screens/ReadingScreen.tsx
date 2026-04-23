@@ -47,7 +47,7 @@ export default function ReadingScreen(props: ReadingScreenProps) {
     readingTheme, setReadingTheme, hasSeenSwipeHint, handleBack,
     fontSize, setFontSize, isAutoScrolling, toggleAutoScroll,
     autoScrollSpeed, cycleAutoScrollSpeed, toggleBookmark, bookmarks,
-    handleShare, autoPlayAudio, setAutoPlayAudio, playingSabad,
+    handleShare, autoPlayAudio, setAutoPlayAudio,
     setPlayingSabad, setIsAudioActive, handleAudioEnded,
     handleSwipe, showToast, settings, vibrate,
     slideDir, bindGestures
@@ -248,7 +248,6 @@ export default function ReadingScreen(props: ReadingScreenProps) {
       {currentScreen === "audio_reading" && selectedSabad?.audioUrl && (
         <div className="w-full max-w-md mx-auto px-5 pt-2 shrink-0 z-10 relative">
           <AudioPlayer 
-            key={selectedSabad.id}
             url={selectedSabad.audioUrl} 
             onEnded={handleAudioEnded} 
             autoPlay={autoPlayAudio}
@@ -263,8 +262,6 @@ export default function ReadingScreen(props: ReadingScreenProps) {
               handleSwipe("right");
             }}
             title={selectedSabad.title}
-            playingSabad={playingSabad}
-            selectedSabad={selectedSabad}
             showToast={showToast}
             variant="full"
             hideTitle={true}

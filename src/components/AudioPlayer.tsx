@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "motion/react";
 import { Play, Pause, ChevronLeft, ChevronRight, Loader2, AlertCircle, X } from "lucide-react";
 import { globalAudio, setGlobalAudioCallbacks, updateMediaSessionMetadata, updateMediaSessionState, updateMediaSessionPosition, setupGlobalMediaSessionListener, fadeAudio } from "../lib/audioGlobals";
@@ -33,26 +33,21 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
 }) {
   const [isPlaying, setIsPlaying] = useState(globalAudio ? !globalAudio.paused : false);
   const [isBuffering, setIsBuffering] = useState(false);
-  const rangeRef = useRef<HTMLInputElement>(null);
-  const syncRef = useRef<{ time: number, realTimestamp: number }>({ time: 0, realTimestamp: 0 });
-
-  useEffect(() => {
-    if (globalAudio) {
-      setIsPlaying(!globalAudio.paused);
-      if (rangeRef.current && globalAudio.duration > 0 && isFinite(globalAudio.duration)) {
-        const pct = (globalAudio.currentTime / globalAudio.duration) * 100;
-        rangeRef.current.value = pct.toString();
-        rangeRef.current.style.background = `linear-gradient(to right, #eab308 ${pct}%, rgba(0, 0, 0, 0.1) ${pct}%)`;
-      } else if (rangeRef.current) {
-        rangeRef.current.value = "0";
-        rangeRef.current.style.background = `linear-gradient(to right, #eab308 0%, rgba(0, 0, 0, 0.1) 0%)`;
-      }
-    }
-  }, [playingSabad?.id, selectedSabad?.id]);
+  const [progress, setProgress] = useState(0);
   const [localError, setLocalError] = useState<string | null>(null);
   const playAttempted = useRef(false);
   const isDraggingRef = useRef(false);
   const callbacksRef = useRef<any>({ onEnded, onPlay, onPause, onNext, onPrev, showToast });
+
+  const handleSeek = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (globalAudio && globalAudio.duration && isFinite(globalAudio.duration)) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+      const clickedValue = x / rect.width;
+      setProgress(clickedValue * 100);
+      globalAudio.currentTime = clickedValue * globalAudio.duration;
+    }
+  };
 
   // Update notification metadata when track changes
   useEffect(() => {
@@ -86,41 +81,6 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
   }, []);
 
   useEffect(() => {
-    let animationFrameId: number;
-
-    const renderLoop = () => {
-      if (!isDraggingRef.current && globalAudio && globalAudio.duration > 0 && isFinite(globalAudio.duration)) {
-        const now = performance.now();
-        
-        // Sync with native time occasionally or when it changes
-        if (globalAudio.currentTime !== syncRef.current.time) {
-          syncRef.current = { time: globalAudio.currentTime, realTimestamp: now };
-        }
-
-        let displayTime = syncRef.current.time;
-        if (isPlaying) {
-          const elapsed = (now - syncRef.current.realTimestamp) / 1000;
-          if (elapsed < 1.0) { // Extrapolate max 1 sec to avoid running away if paused natively without event
-            displayTime += elapsed;
-          }
-        }
-        
-        displayTime = Math.min(displayTime, globalAudio.duration);
-        const percent = (displayTime / globalAudio.duration) * 100;
-        
-        if (rangeRef.current) {
-          rangeRef.current.value = percent.toString();
-          rangeRef.current.style.background = `linear-gradient(to right, #eab308 ${percent}%, rgba(0, 0, 0, 0.1) ${percent}%)`;
-        }
-      }
-      animationFrameId = requestAnimationFrame(renderLoop);
-    };
-
-    animationFrameId = requestAnimationFrame(renderLoop);
-    return () => cancelAnimationFrame(animationFrameId);
-  }, [isPlaying]);
-
-  useEffect(() => {
     if (!globalAudio) return;
 
     const handleTimeUpdate = () => {
@@ -128,6 +88,7 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
       const current = globalAudio.currentTime;
       const duration = globalAudio.duration;
       if (duration > 0 && isFinite(duration)) {
+        setProgress((current / duration) * 100);
         updateMediaSessionPosition(current, duration, globalAudio.playbackRate);
       }
     };
@@ -179,10 +140,7 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
 
     const handleEndedEvent = () => {
       setIsPlaying(false);
-      if (rangeRef.current) {
-        rangeRef.current.value = "0";
-        rangeRef.current.style.background = `linear-gradient(to right, #eab308 0%, rgba(0, 0, 0, 0.1) 0%)`;
-      }
+      setProgress(0);
       updateMediaSessionState('none');
       try {
         if (callbacksRef.current.onEnded) callbacksRef.current.onEnded();
@@ -217,68 +175,71 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
 
   useEffect(() => {
     if (globalAudio && url) {
+      // Parse URLs to ensure accurate comparison
       const currentSrc = globalAudio.src;
       const newSrc = new URL(url, window.location.origin).href;
       
-      // If the global audio is already pointing to this URL, don't stop!
-      if (currentSrc === url || currentSrc === newSrc) {
-        setIsPlaying(!globalAudio.paused);
-        
-        if (rangeRef.current && globalAudio.duration > 0 && isFinite(globalAudio.duration)) {
-          const pct = (globalAudio.currentTime / globalAudio.duration) * 100;
-          rangeRef.current.value = pct.toString();
-          rangeRef.current.style.background = `linear-gradient(to right, #eab308 ${pct}%, rgba(0, 0, 0, 0.1) ${pct}%)`;
+      // Strict equality check is needed against both the raw url and parsed src
+      // because new URL() might normalize string slightly.
+      if (currentSrc !== url && currentSrc !== newSrc) {
+        if (preventAutoPause) {
+          // Just update local state to reflect that THIS player is not playing the current audio
+          setIsPlaying(false);
+          setProgress(0);
+          return;
         }
-        return;
-      }
 
-      if (preventAutoPause || !autoPlay) {
-        setIsPlaying(false);
-        if (rangeRef.current) {
-          rangeRef.current.value = "0";
-          rangeRef.current.style.background = `linear-gradient(to right, #eab308 0%, rgba(0, 0, 0, 0.1) 0%)`;
-        }
-        return;
-      }
-
-      globalAudio.pause();
-      globalAudio.src = url;
-      globalAudio.load();
-      
-      if (autoPlay) {
-        playAttempted.current = true;
+        globalAudio.pause();
+        globalAudio.src = url;
+        globalAudio.load();
         
-        const attemptPlay = () => {
-          setLocalError(null);
+        if (autoPlay) {
+          playAttempted.current = true;
           
-          if (globalAudio) {
-            setIsPlaying(true);
-            if (callbacksRef.current.onPlay) callbacksRef.current.onPlay();
-            // Small delay to ensure browser is ready
-            setTimeout(() => {
-              const playPromise = globalAudio.play();
-              if (playPromise !== undefined) {
-                playPromise.catch(async (e) => {
-                  logger.error("AutoPlay failed:", e);
-                  setIsBuffering(false);
-                  setIsPlaying(false);
-                  
-                  let isOnline = await checkIsOnline();
-                  if (!isOnline) {
-                    setLocalError("इंटरनेट कनेक्शन उपलब्ध नहीं है। कृपया अपना नेटवर्क जांचें और पुनः प्रयास करें।");
-                  } else {
-                    setLocalError("ऑडियो चलाने में समस्या आ रही है।");
-                  }
-                });
-              }
-            }, 100);
-          }
-        };
-        
-        attemptPlay();
+          const attemptPlay = () => {
+            setLocalError(null);
+            
+            if (globalAudio) {
+              setIsPlaying(true);
+              if (callbacksRef.current.onPlay) callbacksRef.current.onPlay();
+              // Small delay to ensure browser is ready
+              setTimeout(() => {
+                const playPromise = globalAudio.play();
+                if (playPromise !== undefined) {
+                  playPromise.catch(async (e) => {
+                    logger.error("AutoPlay failed:", e);
+                    setIsBuffering(false);
+                    setIsPlaying(false);
+                    
+                    let isOnline = await checkIsOnline();
+                    if (!isOnline) {
+                      setLocalError("इंटरनेट कनेक्शन उपलब्ध नहीं है। कृपया अपना नेटवर्क जांचें और पुनः प्रयास करें।");
+                    } else {
+                      setLocalError("ऑडियो चलाने में समस्या आ रही है।");
+                    }
+                  });
+                }
+              }, 100);
+            }
+          };
+          
+          attemptPlay();
+        } else {
+          playAttempted.current = false;
+          setIsPlaying(false);
+        }
       } else {
-        playAttempted.current = false;
-        setIsPlaying(false);
+        // If URL is the same, just sync state
+        const isActuallyPlaying = !globalAudio.paused;
+        setIsPlaying(isActuallyPlaying);
+        
+        if (autoPlay && !isActuallyPlaying) {
+          globalAudio.play().catch(() => {});
+        }
+        
+        if (globalAudio.duration > 0) {
+          setProgress((globalAudio.currentTime / globalAudio.duration) * 100);
+        }
       }
     }
   }, [url, autoPlay]);
@@ -342,20 +303,8 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
   // Callbacks sync logic
   useEffect(() => {
     callbacksRef.current = { onEnded, onPlay, onPause, onNext, onPrev, showToast, togglePlay, onClose };
-    
-    // Only register global lock screen callbacks if THIS player is currently the active one
-    if (globalAudio) {
-      try {
-        const currentSrc = globalAudio.src;
-        const thisSrc = new URL(url, window.location.origin).href;
-        if (currentSrc === url || currentSrc === thisSrc) {
-           setGlobalAudioCallbacks(callbacksRef.current);
-        }
-      } catch(e) {
-        setGlobalAudioCallbacks(callbacksRef.current);
-      }
-    }
-  }, [onEnded, onPlay, onPause, onNext, onPrev, showToast, togglePlay, onClose, url, isPlaying]);
+    setGlobalAudioCallbacks(callbacksRef.current);
+  }, [onEnded, onPlay, onPause, onNext, onPrev, showToast, togglePlay, onClose]);
 
   if (variant === 'mini') {
     return (
@@ -388,58 +337,43 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
           )}
         </button>
         
-        <div className="flex-1 flex flex-col gap-1.5 overflow-hidden pl-1 justify-center">
+        <div className="flex-1 flex flex-col gap-1 overflow-hidden pl-1">
           {!hideTitle && (
-            <div className="text-xs font-bold text-ink truncate px-1 flex items-center justify-between">
+            <div className="text-sm font-semibold text-ink truncate px-1 flex items-center justify-between">
               <span className="truncate">{title}</span>
               {isPlaying && (
                 <div className="flex gap-0.5 items-end h-3 ml-2 flex-shrink-0">
-                  <motion.div animate={{ height: ["3px", "10px", "3px"] }} transition={{ repeat: Infinity, duration: 0.8 }} className="w-[2.5px] bg-accent rounded-full" />
-                  <motion.div animate={{ height: ["5px", "3px", "5px"] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.2 }} className="w-[2.5px] bg-accent rounded-full" />
-                  <motion.div animate={{ height: ["3px", "8px", "3px"] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.4 }} className="w-[2.5px] bg-accent rounded-full" />
+                  <motion.div animate={{ height: ["3px", "12px", "3px"] }} transition={{ repeat: Infinity, duration: 0.8 }} className="w-[3px] bg-accent rounded-full" />
+                  <motion.div animate={{ height: ["6px", "3px", "6px"] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.2 }} className="w-[3px] bg-accent rounded-full" />
+                  <motion.div animate={{ height: ["3px", "9px", "3px"] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.4 }} className="w-[3px] bg-accent rounded-full" />
                 </div>
               )}
             </div>
           )}
           
-          <div className="px-1 relative h-1.5 w-full">
-            <input
-              ref={rangeRef}
-              type="range"
-              min={0}
-              max={100}
-              step={0.1}
-              defaultValue={0}
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                isDraggingRef.current = true;
-              }}
-              onChange={(e) => {
-                if (rangeRef.current) {
-                  const pct = e.target.value;
-                  rangeRef.current.style.background = `linear-gradient(to right, #eab308 ${pct}%, rgba(0, 0, 0, 0.1) ${pct}%)`;
-                }
-              }}
-              onPointerUp={(e) => {
-                isDraggingRef.current = false;
-                const val = parseFloat(e.currentTarget.value);
-                if (globalAudio && globalAudio.duration > 0 && isFinite(globalAudio.duration)) {
-                  globalAudio.currentTime = (val / 100) * globalAudio.duration;
-                }
-              }}
-              onTouchEnd={(e) => {
-                isDraggingRef.current = false;
-                const val = parseFloat(e.currentTarget.value);
-                if (globalAudio && globalAudio.duration > 0 && isFinite(globalAudio.duration)) {
-                  globalAudio.currentTime = (val / 100) * globalAudio.duration;
-                }
-              }}
-              className="w-full h-1 cursor-pointer outline-none p-0 appearance-none rounded-full bg-transparent [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-0 [&::-webkit-slider-thumb]:h-0 [&::-moz-range-thumb]:w-0 [&::-moz-range-thumb]:h-0 [&::-moz-range-thumb]:border-none"
-              style={{
-                background: `linear-gradient(to right, #eab308 0%, rgba(0, 0, 0, 0.1) 0%)`,
-                WebkitAppearance: 'none'
-              }}
-              onClick={(e) => e.stopPropagation()} 
+          <div
+            className="h-1 bg-ink/10 rounded-full overflow-hidden cursor-pointer relative touch-none"
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              isDraggingRef.current = true;
+              e.currentTarget.setPointerCapture(e.pointerId);
+              handleSeek(e);
+            }}
+            onPointerMove={(e) => {
+              e.stopPropagation();
+              if (isDraggingRef.current) {
+                handleSeek(e);
+              }
+            }}
+            onPointerUp={(e) => {
+              e.stopPropagation();
+              isDraggingRef.current = false;
+              e.currentTarget.releasePointerCapture(e.pointerId);
+            }}
+          >
+            <div
+              className="absolute top-0 left-0 h-full bg-accent transition-all duration-100 ease-linear"
+              style={{ width: `${progress}%` }}
             />
           </div>
 
@@ -538,39 +472,28 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
           </button>
         )}
         
-        <input
-          ref={rangeRef}
-          type="range"
-          min={0}
-          max={100}
-          step={0.1}
-          defaultValue={0}
-          onPointerDown={() => isDraggingRef.current = true}
-          onChange={(e) => {
-            if (rangeRef.current) {
-              const pct = e.target.value;
-              rangeRef.current.style.background = `linear-gradient(to right, #eab308 ${pct}%, rgba(0, 0, 0, 0.1) ${pct}%)`;
+        <div
+          className="flex-1 h-2 bg-ink/10 rounded-full overflow-hidden cursor-pointer relative shadow-inner touch-none"
+          onPointerDown={(e) => {
+            isDraggingRef.current = true;
+            e.currentTarget.setPointerCapture(e.pointerId);
+            handleSeek(e);
+          }}
+          onPointerMove={(e) => {
+            if (isDraggingRef.current) {
+              handleSeek(e);
             }
           }}
           onPointerUp={(e) => {
             isDraggingRef.current = false;
-            const val = parseFloat(e.currentTarget.value);
-            if (globalAudio && globalAudio.duration > 0 && isFinite(globalAudio.duration)) {
-              globalAudio.currentTime = (val / 100) * globalAudio.duration;
-            }
+            e.currentTarget.releasePointerCapture(e.pointerId);
           }}
-          onTouchEnd={(e) => {
-            isDraggingRef.current = false;
-            const val = parseFloat(e.currentTarget.value);
-            if (globalAudio && globalAudio.duration > 0 && isFinite(globalAudio.duration)) {
-              globalAudio.currentTime = (val / 100) * globalAudio.duration;
-            }
-          }}
-          className="flex-1 h-2 cursor-pointer outline-none appearance-none rounded-full bg-transparent [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-accent [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:drop-shadow-sm [&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:bg-accent [&::-moz-range-thumb]:border-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:shadow-md"
-          style={{
-            background: `linear-gradient(to right, #eab308 0%, rgba(0, 0, 0, 0.1) 0%)`
-          }}
-        />
+        >
+          <div
+            className="absolute top-0 left-0 h-full bg-gradient-to-r from-accent to-accent-dark transition-all duration-100 ease-linear"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
 
         {isPlaying && (
           <div className="flex gap-1 items-end h-4 pr-1">
