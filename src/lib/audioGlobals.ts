@@ -51,7 +51,15 @@ class AudioWrapper {
         // Handle playback position updates
         if (data.msgType === 40 || val.currentPosition !== undefined || val.position !== undefined) {
           this._currentTime = val.currentPosition !== undefined ? val.currentPosition : (val.position !== undefined ? val.position : this._currentTime);
-          this._duration = val.duration !== undefined ? val.duration : this._duration;
+          
+          let duration = val.duration;
+          if ((duration === undefined || duration <= 0) && val.track && val.track.duration) {
+            duration = val.track.duration;
+          }
+          
+          if (duration !== undefined && duration > 0) {
+            this._duration = duration;
+          }
           this.emit('timeupdate', {});
         }
 
@@ -177,9 +185,10 @@ class AudioWrapper {
 
   get currentTime() { return this._currentTime; }
   set currentTime(val: number) {
+    if (isNaN(val) || !isFinite(val)) return;
     this._currentTime = val;
     if (this.isNative) {
-      Playlist.seekTo({ position: val });
+      Playlist.seekTo({ position: val }).catch(e => console.error("Native seek error:", e));
     } else if (this.audio) {
       this.audio.currentTime = val;
     }

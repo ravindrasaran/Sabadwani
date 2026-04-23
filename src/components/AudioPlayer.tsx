@@ -34,19 +34,32 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
   const [isPlaying, setIsPlaying] = useState(globalAudio ? !globalAudio.paused : false);
   const [isBuffering, setIsBuffering] = useState(false);
   const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    if (globalAudio) {
+      setIsPlaying(!globalAudio.paused);
+      if (globalAudio.duration > 0 && isFinite(globalAudio.duration)) {
+        setProgress((globalAudio.currentTime / globalAudio.duration) * 100);
+      } else {
+        setProgress(0);
+      }
+    }
+  }, [playingSabad?.id, selectedSabad?.id]);
   const [localError, setLocalError] = useState<string | null>(null);
   const playAttempted = useRef(false);
   const isDraggingRef = useRef(false);
   const callbacksRef = useRef<any>({ onEnded, onPlay, onPause, onNext, onPrev, showToast });
 
   const handleSeekEvent = (e: React.PointerEvent<HTMLDivElement>, isFinal: boolean) => {
-    if (globalAudio && globalAudio.duration && isFinite(globalAudio.duration)) {
+    if (globalAudio && globalAudio.duration && isFinite(globalAudio.duration) && globalAudio.duration > 0) {
       const rect = e.currentTarget.getBoundingClientRect();
       const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
       const clickedValue = x / rect.width;
-      setProgress(clickedValue * 100);
+      const newProgress = clickedValue * 100;
+      setProgress(newProgress);
       if (isFinal) {
-        globalAudio.currentTime = clickedValue * globalAudio.duration;
+        const newTime = clickedValue * globalAudio.duration;
+        globalAudio.currentTime = newTime;
       }
     }
   };
@@ -177,71 +190,63 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
 
   useEffect(() => {
     if (globalAudio && url) {
-      // Parse URLs to ensure accurate comparison
       const currentSrc = globalAudio.src;
       const newSrc = new URL(url, window.location.origin).href;
       
-      // Strict equality check is needed against both the raw url and parsed src
-      // because new URL() might normalize string slightly.
-      if (currentSrc !== url && currentSrc !== newSrc) {
-        if (preventAutoPause) {
-          // Just update local state to reflect that THIS player is not playing the current audio
-          setIsPlaying(false);
-          setProgress(0);
-          return;
-        }
-
-        globalAudio.pause();
-        globalAudio.src = url;
-        globalAudio.load();
+      // If the global audio is already pointing to this URL, don't stop!
+      if (currentSrc === url || currentSrc === newSrc) {
+        setIsPlaying(!globalAudio.paused);
         
-        if (autoPlay) {
-          playAttempted.current = true;
-          
-          const attemptPlay = () => {
-            setLocalError(null);
-            
-            if (globalAudio) {
-              setIsPlaying(true);
-              if (callbacksRef.current.onPlay) callbacksRef.current.onPlay();
-              // Small delay to ensure browser is ready
-              setTimeout(() => {
-                const playPromise = globalAudio.play();
-                if (playPromise !== undefined) {
-                  playPromise.catch(async (e) => {
-                    logger.error("AutoPlay failed:", e);
-                    setIsBuffering(false);
-                    setIsPlaying(false);
-                    
-                    let isOnline = await checkIsOnline();
-                    if (!isOnline) {
-                      setLocalError("इंटरनेट कनेक्शन उपलब्ध नहीं है। कृपया अपना नेटवर्क जांचें और पुनः प्रयास करें।");
-                    } else {
-                      setLocalError("ऑडियो चलाने में समस्या आ रही है।");
-                    }
-                  });
-                }
-              }, 100);
-            }
-          };
-          
-          attemptPlay();
-        } else {
-          playAttempted.current = false;
-          setIsPlaying(false);
-        }
-      } else {
-        // If URL is the same, just sync state
-        const isActuallyPlaying = !globalAudio.paused;
-        setIsPlaying(isActuallyPlaying);
-        
-        if (autoPlay && !isActuallyPlaying) {
-          globalAudio.play().catch(() => {});
-        }
-        
-        if (globalAudio.duration > 0) {
+        if (globalAudio.duration > 0 && isFinite(globalAudio.duration)) {
           setProgress((globalAudio.currentTime / globalAudio.duration) * 100);
         }
+        return;
+      }
+
+      if (preventAutoPause) {
+        setIsPlaying(false);
+        setProgress(0);
+        return;
+      }
+
+      globalAudio.pause();
+      globalAudio.src = url;
+      globalAudio.load();
+      
+      if (autoPlay) {
+        playAttempted.current = true;
+        
+        const attemptPlay = () => {
+          setLocalError(null);
+          
+          if (globalAudio) {
+            setIsPlaying(true);
+            if (callbacksRef.current.onPlay) callbacksRef.current.onPlay();
+            // Small delay to ensure browser is ready
+            setTimeout(() => {
+              const playPromise = globalAudio.play();
+              if (playPromise !== undefined) {
+                playPromise.catch(async (e) => {
+                  logger.error("AutoPlay failed:", e);
+                  setIsBuffering(false);
+                  setIsPlaying(false);
+                  
+                  let isOnline = await checkIsOnline();
+                  if (!isOnline) {
+                    setLocalError("इंटरनेट कनेक्शन उपलब्ध नहीं है। कृपया अपना नेटवर्क जांचें और पुनः प्रयास करें।");
+                  } else {
+                    setLocalError("ऑडियो चलाने में समस्या आ रही है।");
+                  }
+                });
+              }
+            }, 100);
+          }
+        };
+        
+        attemptPlay();
+      } else {
+        playAttempted.current = false;
+        setIsPlaying(false);
       }
     }
   }, [url, autoPlay]);
@@ -359,22 +364,25 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
               e.stopPropagation();
               isDraggingRef.current = true;
               e.currentTarget.setPointerCapture(e.pointerId);
-              handleSeek(e);
+              handleSeekEvent(e, false);
             }}
             onPointerMove={(e) => {
               e.stopPropagation();
               if (isDraggingRef.current) {
-                handleSeek(e);
+                handleSeekEvent(e, false);
               }
             }}
             onPointerUp={(e) => {
               e.stopPropagation();
+              if (isDraggingRef.current) {
+                handleSeekEvent(e, true);
+              }
               isDraggingRef.current = false;
               e.currentTarget.releasePointerCapture(e.pointerId);
             }}
           >
-            <div
-              className="absolute top-0 left-0 h-full bg-accent transition-all duration-100 ease-linear"
+          <div
+              className="absolute top-0 left-0 h-full bg-accent"
               style={{ width: `${progress}%` }}
             />
           </div>
@@ -499,7 +507,7 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
           }}
         >
           <div
-            className="absolute top-0 left-0 h-full bg-gradient-to-r from-accent to-accent-dark transition-all duration-100 ease-linear"
+            className="absolute top-0 left-0 h-full bg-gradient-to-r from-accent to-accent-dark shadow-[0_0_8px_rgba(234,179,8,0.4)]"
             style={{ width: `${progress}%` }}
           />
         </div>

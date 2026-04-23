@@ -1139,7 +1139,7 @@ function MainApp() {
         const nextItem = currentList[nextIndex];
         if (nextItem) {
           setSelectedSabad(nextItem);
-          if (currentScreen === "audio_reading") {
+          if (currentScreen === "audio_reading" || isAudioActive) {
             setPlayingSabad(nextItem);
           }
         }
@@ -1157,7 +1157,7 @@ function MainApp() {
         const prevItem = currentList[prevIndex];
         if (prevItem) {
           setSelectedSabad(prevItem);
-          if (currentScreen === "audio_reading") {
+          if (currentScreen === "audio_reading" || isAudioActive) {
             setPlayingSabad(prevItem);
           }
         }
@@ -1916,6 +1916,7 @@ function MainApp() {
             {isAudioActive && playingSabad?.audioUrl && !isMiniPlayerDismissed && (currentScreen !== "audio_reading" || playingSabad.id !== selectedSabad?.id) && (
               <div className={settings.isAdEnabled !== false ? "mb-0" : "mb-2"}>
                 <AudioPlayer
+                  key={playingSabad.id}
                   url={playingSabad.audioUrl}
                   title={playingSabad.title}
                   variant="mini"
