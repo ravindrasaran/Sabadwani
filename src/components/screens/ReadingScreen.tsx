@@ -264,6 +264,7 @@ export default function ReadingScreen(props: ReadingScreenProps) {
             title={selectedSabad.title}
             showToast={showToast}
             variant="full"
+            preventAutoPause={true}
             hideTitle={true}
             logoUrl={settings?.logoUrl}
           />
