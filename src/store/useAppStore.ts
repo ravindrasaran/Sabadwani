@@ -2,7 +2,21 @@ import { create } from 'zustand';
 import { Screen, SabadItem } from '../types';
 import { Preferences } from '@capacitor/preferences';
 
-interface AppState {
+// ─── Audio Playback State (Single Source of Truth) ──────────────────────────
+// These fields are written ONLY by AudioEngine (audioEngine.ts).
+// All UI components (MainPlayer, MiniPlayer, LockScreen) read from here.
+// This guarantees perfect sync — one store, one truth.
+export interface AudioPlaybackState {
+  audioIsPlaying: boolean;
+  audioIsBuffering: boolean;
+  audioProgress: number;     // 0–100 (percentage)
+  audioCurrentTime: number;  // seconds
+  audioDuration: number;     // seconds
+  audioError: string | null;
+  audioLoadedUrl: string;    // which URL is currently loaded in globalAudio
+}
+
+interface AppState extends AudioPlaybackState {
   currentScreen: Screen;
   setCurrentScreen: (screen: Screen) => void;
 
@@ -35,11 +49,20 @@ interface AppState {
 
   slideDir: number;
   setSlideDir: (dir: number) => void;
-  
+
+  // ── Audio Engine interface ────────────────────────────────────────────────
+  // Atomic action: sets playingSabad + autoPlay + isAudioActive + dismisses MiniPlayer.
+  // AudioEngine subscribes to playingSabad changes and loads the new track automatically.
+  // Call this whenever a new track should start playing.
+  startTrack: (sabad: SabadItem) => void;
+
+  // Called exclusively by AudioEngine to push playback state to the store.
+  setAudioPlaybackState: (state: Partial<AudioPlaybackState>) => void;
+
   hydrateStore: () => Promise<void>;
 }
 
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>((set, get) => ({
   currentScreen: 'home',
   setCurrentScreen: (screen) => set({ currentScreen: screen }),
 
@@ -83,17 +106,47 @@ export const useAppStore = create<AppState>((set) => ({
   slideDir: 0,
   setSlideDir: (dir) => set({ slideDir: dir }),
 
+  // ── Audio Playback State (initial values) ──────────────────────────────────
+  audioIsPlaying: false,
+  audioIsBuffering: false,
+  audioProgress: 0,
+  audioCurrentTime: 0,
+  audioDuration: 0,
+  audioError: null,
+  audioLoadedUrl: '',
+
+  // ── startTrack — single entry point for all track changes ─────────────────
+  // Atomically updates the store so AudioEngine sees a consistent snapshot.
+  startTrack: (sabad: SabadItem) => {
+    set({
+      playingSabad: sabad,
+      isAudioActive: true,
+      isMiniPlayerDismissed: false,
+      autoPlayAudio: true,
+      // Reset playback state immediately so UI shows loading state
+      audioIsPlaying: false,
+      audioIsBuffering: !!sabad.audioUrl,
+      audioProgress: 0,
+      audioCurrentTime: 0,
+      audioError: null,
+    });
+    // AudioEngine is subscribed to store — it will detect playingSabad change
+    // and call loadTrack() automatically (see audioEngine.ts)
+  },
+
+  // ── setAudioPlaybackState — AudioEngine → Store ───────────────────────────
+  setAudioPlaybackState: (state) => set(state as any),
+
   hydrateStore: async () => {
     try {
       const themeRes = await Preferences.get({ key: 'sabadwani_readingTheme' });
-      const sizeRes = await Preferences.get({ key: 'sabadwani_fontSize' });
-      const hintRes = await Preferences.get({ key: 'sabadwani_swipeHint' });
-      
-      set((state) => ({
-        readingTheme: (themeRes.value as any) || state.readingTheme,
-        fontSize: sizeRes.value ? parseInt(sizeRes.value) : state.fontSize,
-        hasSeenSwipeHint: hintRes.value === 'true'
+      const sizeRes  = await Preferences.get({ key: 'sabadwani_fontSize' });
+      const hintRes  = await Preferences.get({ key: 'sabadwani_swipeHint' });
+      set((s) => ({
+        readingTheme: (themeRes.value as any) || s.readingTheme,
+        fontSize: sizeRes.value ? parseInt(sizeRes.value) : s.fontSize,
+        hasSeenSwipeHint: hintRes.value === 'true',
       }));
-    } catch(e) {}
-  }
+    } catch (_) {}
+  },
 }));

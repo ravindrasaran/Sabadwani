@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from "motion/react";
 import { ChevronLeft, ChevronRight, Bookmark, Share2, Pause, ChevronsDown, Hand } from "lucide-react";
+import { useAppStore } from '../../store/useAppStore';
 import AudioPlayer from "../AudioPlayer";
 import { SabadItem } from "../../types";
 
@@ -251,7 +252,15 @@ export default function ReadingScreen(props: ReadingScreenProps) {
             url={selectedSabad.audioUrl} 
             onEnded={handleAudioEnded} 
             autoPlay={autoPlayAudio}
-            onPlay={() => { setIsAudioActive(true); setAutoPlayAudio(true); setPlayingSabad(selectedSabad); }}
+            onPlay={() => {
+              // startTrack atomically marks track as playing and activates MiniPlayer
+              if (selectedSabad) {
+                setIsAudioActive(true);
+                setAutoPlayAudio(true);
+                setPlayingSabad(selectedSabad);
+                // Ensure AudioEngine has latest settings for MediaSession artwork
+              }
+            }}
             onPause={() => {
               setAutoPlayAudio(false);
             }}

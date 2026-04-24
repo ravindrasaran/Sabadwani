@@ -8,7 +8,8 @@ import { useWakeLock } from "./hooks/useWakeLock";
 import { useSabadData } from "./hooks/useSabadData";
 import { generateAmavasyaForYear, getBichhudaList } from "./lib/astro";
 import { vibrate, checkIsOnline, getSearchSkeleton, getTransliteratedSearch } from "./lib/utils";
-import { globalAudio, setupGlobalMediaSessionListener, clearMediaSession } from "./lib/audioGlobals";
+import { globalAudio, clearMediaSession } from "./lib/audioGlobals";
+import { audioEngine } from "./lib/audioEngine";
 import React, { useState, useEffect, useRef, useMemo, useCallback, ReactNode, Suspense, lazy } from "react";
 import { useInitialSetup } from "./hooks/useInitialSetup";
 import { usePushNotifications } from "./hooks/usePushNotifications";
@@ -168,11 +169,13 @@ function MainApp() {
     setTimeout(() => setToastMessage(null), 3000);
   }, []);
 
-  const setupMediaSession = useCallback(() => {
-    setupGlobalMediaSessionListener();
+  // AudioEngine is initialized here — it subscribes to the store and handles
+  // all audio loading, MediaSession updates, and event routing automatically.
+  useEffect(() => {
+    audioEngine.init();
   }, []);
 
-  useInitialSetup(paymentIntentPending, showToast, setupMediaSession);
+  useInitialSetup(paymentIntentPending, showToast, () => {});
   usePushNotifications(showToast);
 
   const navigate = useNavigate();
@@ -219,7 +222,7 @@ function MainApp() {
           if (paymentIntentPending.current) {
             paymentIntentPending.current = false;
             setTimeout(() => {
-              showToast("सहयोग के प्रयास के लिए आपका बहुत-बहुत धन्यवाने! 🙏");
+              showToast("सहयोग के प्रयास के लिए आपका बहुत-बहुत धन्यवाद! 🙏");
             }, 500);
           }
         }
@@ -233,19 +236,8 @@ function MainApp() {
 
   useWakeLock(currentScreen, isAudioActive);
 
-  // Global safety: Manage media session based on player visibility
-  // This ensures lock screen controls EXACTLY match the mini player's presence
-  useEffect(() => {
-    const isPlayerVisible = (isAudioActive && !isMiniPlayerDismissed) || (currentScreen === "audio_reading" && selectedSabad?.audioUrl);
-    
-    // If player is visible and we have an audio source, setup session
-    if (isPlayerVisible && (playingSabad?.audioUrl || selectedSabad?.audioUrl)) {
-      setupGlobalMediaSessionListener();
-    } else {
-      // If player is NOT visible, clear session to hide lock screen controls
-      clearMediaSession();
-    }
-  }, [isAudioActive, currentScreen, isMiniPlayerDismissed, playingSabad, selectedSabad]);
+  // AudioEngine manages MediaSession automatically — no manual setupGlobalMediaSessionListener needed.
+  // We only clear the session when the player is completely closed by the user.
 
   useEffect(() => {
     setIsMiniPlayerDismissed(false);
@@ -394,6 +386,11 @@ function MainApp() {
   };
 
   const { isLoading, sabads, aartis, bhajans, sakhis, mantras, thoughts, meles, notices, badhais, pendingPosts, settings, setSettings } = useSabadData();
+
+  // Keep AudioEngine up to date with settings (logoUrl for MediaSession artwork)
+  useEffect(() => {
+    if (settings) audioEngine.setSettings(settings);
+  }, [settings]);
 
   const recentApprovedPosts = useMemo(() => {
     const getRecent = (arr: SabadItem[], type: string) => 
@@ -1220,7 +1217,12 @@ function MainApp() {
         }
         const nextItem = currentList[nextIndex];
         if (nextItem) {
-          setPlayingSabad(nextItem);
+          // Use startTrack so AudioEngine loads immediately (single click, no delay)
+          if (nextItem.audioUrl) {
+            useAppStore.getState().startTrack(nextItem);
+          } else {
+            setPlayingSabad(nextItem);
+          }
           if ((currentScreen === "audio_reading" || currentScreen === "reading") && selectedSabad?.id === playingSabad.id) {
             setSlideDir(1);
             setSelectedSabad(nextItem);
@@ -1238,7 +1240,11 @@ function MainApp() {
         }
         const prevItem = currentList[prevIndex];
         if (prevItem) {
-          setPlayingSabad(prevItem);
+          if (prevItem.audioUrl) {
+            useAppStore.getState().startTrack(prevItem);
+          } else {
+            setPlayingSabad(prevItem);
+          }
           if ((currentScreen === "audio_reading" || currentScreen === "reading") && selectedSabad?.id === playingSabad.id) {
             setSlideDir(-1);
             setSelectedSabad(prevItem);
@@ -1251,7 +1257,7 @@ function MainApp() {
   };
 
   const handleAudioEnded = () => {
-    setAutoPlayAudio(true);
+    // autoPlayAudio is already true via startTrack — just advance to next
     handleAudioSwipe("left");
   };
 
@@ -1394,11 +1400,14 @@ function MainApp() {
   const handleSabadClick = (shabad: SabadItem) => {
     vibrate(10);
     setSelectedSabad(shabad);
-    setAutoPlayAudio(!!shabad.audioUrl);
-    
+
     if (shabad.audioUrl) {
+      // startTrack atomically sets playingSabad + autoPlay + isAudioActive.
+      // AudioEngine detects the store change and loads the track instantly.
+      useAppStore.getState().startTrack(shabad);
       navigateTo("audio_reading");
     } else {
+      setAutoPlayAudio(false);
       navigateTo("reading");
     }
   };
@@ -1926,8 +1935,7 @@ function MainApp() {
                   selectedSabad={selectedSabad}
                   preventAutoPause={true}
                   onClose={() => {
-                    if (globalAudio) globalAudio.pause();
-                    clearMediaSession();
+                    audioEngine.stopAndClear();
                     setIsMiniPlayerDismissed(true);
                     setIsAudioActive(false);
                     setPlayingSabad(null);
