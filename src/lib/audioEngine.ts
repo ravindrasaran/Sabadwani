@@ -1,23 +1,22 @@
 /**
  * ─── AudioEngine — Premium Audio Playback Singleton ──────────────────────────
  *
- * This is the ONLY place that touches globalAudio directly.
- * It subscribes to useAppStore for track changes and pushes playback
- * state back into the store so all UI components stay in sync.
+ * PERFORMANCE FIX v2.1:
+ *   Bug 1: await updateMediaSessionMetadata() was blocking src assignment by
+ *          50-200ms (Capacitor bridge call) → audio never started feeling instant
+ *   Bug 2: await setTimeout(80ms) — explicit delay before play() — removed
+ *   Bug 3: togglePlay() didn't set audioIsBuffering=true immediately →
+ *          no spinner shown until 'waiting' event (100-500ms later)
+ *   Bug 4: AudioWrapper src setter is async (cache lookup) but play() was
+ *          called before the cache resolved → AbortError on fast network
  *
- * Architecture:
- *   useAppStore.startTrack(sabad)
- *         ↓ (store subscription fires)
- *   audioEngine._loadTrack(url, autoPlay, sabad)
- *         ↓ (HTMLAudioElement events)
- *   useAppStore.setAudioPlaybackState({ isPlaying, progress, ... })
- *         ↓ (Zustand re-render, shallow compare)
- *   MainPlayer + MiniPlayer + LockScreen all update simultaneously
+ *   Fix: loadAndPlay() on AudioWrapper handles src + play atomically.
+ *        MediaSession updated fire-and-forget (not awaited).
+ *        Spinner shown immediately on click (< 16ms).
  *
  * ────────────────────────────────────────────────────────────────────────────
  */
 
-import { Capacitor } from '@capacitor/core';
 import {
   globalAudio,
   globalAudioCallbacks,
@@ -38,21 +37,19 @@ class AudioEngine {
   private _positionUpdateTimer = 0;
   private _initialized = false;
   private _unsubStore: (() => void) | null = null;
+  private _settings: any = null;
 
-  // ── init — call once on app startup ────────────────────────────────────────
+  // ── init — call once on app startup ──────────────────────────────────────
   init() {
     if (this._initialized) return;
     this._initialized = true;
-
     setupGlobalMediaSessionListener();
     this._attachGlobalAudioListeners();
     this._subscribeToStoreChanges();
   }
 
-  // ── _attachGlobalAudioListeners ────────────────────────────────────────────
-  // globalAudio events → useAppStore (all UI reads from store)
+  // ── _attachGlobalAudioListeners ───────────────────────────────────────────
   private _attachGlobalAudioListeners() {
-    // playing — audio frames actually started
     globalAudio.addEventListener('playing', () => {
       useAppStore.getState().setAudioPlaybackState({
         audioIsPlaying: true,
@@ -60,19 +57,13 @@ class AudioEngine {
         audioError: null,
       });
       updateMediaSessionState('playing');
-
-      // Fire registered onPlay callback (e.g. setAutoPlayAudio(true))
       try { globalAudioCallbacks?.onPlay?.(); } catch (_) {}
     });
 
-    // pause — audio paused by user or system
     globalAudio.addEventListener('pause', () => {
       useAppStore.getState().setAudioPlaybackState({ audioIsPlaying: false });
-
       if (isClearingSession) return;
       updateMediaSessionState('paused');
-
-      // Don't fire onPause when audio reached the end naturally
       const isAtEnd = globalAudio.duration > 0
         && Math.abs(globalAudio.duration - globalAudio.currentTime) < 0.5;
       if (!globalAudio.ended && !isAtEnd) {
@@ -80,31 +71,23 @@ class AudioEngine {
       }
     });
 
-    // waiting — buffering
     globalAudio.addEventListener('waiting', () => {
       useAppStore.getState().setAudioPlaybackState({ audioIsBuffering: true });
     });
 
-    // canplay — enough data to start
     globalAudio.addEventListener('canplay', () => {
       useAppStore.getState().setAudioPlaybackState({ audioIsBuffering: false });
     });
 
-    // timeupdate — position changed
     globalAudio.addEventListener('timeupdate', () => {
       const current  = globalAudio.currentTime;
       const duration = globalAudio.duration;
-
       if (duration > 0 && isFinite(duration)) {
-        const progress = (current / duration) * 100;
-
         useAppStore.getState().setAudioPlaybackState({
           audioCurrentTime: current,
           audioDuration: duration,
-          audioProgress: progress,
+          audioProgress: (current / duration) * 100,
         });
-
-        // Throttle MediaSession position update to 250ms
         const now = Date.now();
         if (now - this._positionUpdateTimer >= 250) {
           this._positionUpdateTimer = now;
@@ -113,7 +96,6 @@ class AudioEngine {
       }
     });
 
-    // ended — track finished → fire onEnded callback (auto-next)
     globalAudio.addEventListener('ended', () => {
       useAppStore.getState().setAudioPlaybackState({
         audioIsPlaying: false,
@@ -124,14 +106,12 @@ class AudioEngine {
       try { globalAudioCallbacks?.onEnded?.(); } catch (_) {}
     });
 
-    // error — network / decode failure
     globalAudio.addEventListener('error', async () => {
       useAppStore.getState().setAudioPlaybackState({
         audioIsPlaying: false,
         audioIsBuffering: false,
       });
       updateMediaSessionState('paused');
-
       const isOnline = await checkIsOnline();
       useAppStore.getState().setAudioPlaybackState({
         audioError: isOnline
@@ -140,55 +120,40 @@ class AudioEngine {
       });
     });
 
-    // durationchange — update duration once metadata loads
     globalAudio.addEventListener('loadedmetadata', () => {
-      const duration = globalAudio.duration;
-      if (isFinite(duration) && duration > 0) {
-        useAppStore.getState().setAudioPlaybackState({ audioDuration: duration });
+      const d = globalAudio.duration;
+      if (isFinite(d) && d > 0) {
+        useAppStore.getState().setAudioPlaybackState({ audioDuration: d });
       }
     });
   }
 
-  // ── _subscribeToStoreChanges ────────────────────────────────────────────────
-  // Watch playingSabad — when it changes, load the new track.
-  // This is the ONLY place that reacts to track changes, preventing
-  // race conditions and double-loads.
+  // ── _subscribeToStoreChanges ──────────────────────────────────────────────
   private _subscribeToStoreChanges() {
-    let prevPlayingSabadId: string | undefined;
+    let prevId: string | undefined;
 
     this._unsubStore = useAppStore.subscribe((state, prevState) => {
       const sabad = state.playingSabad;
-      const prevSabad = prevState.playingSabad;
-
-      // Only react when playingSabad actually changed to a new track
-      if (!sabad || sabad === prevSabad || sabad.id === prevPlayingSabadId) return;
+      if (!sabad || sabad === prevState.playingSabad || sabad.id === prevId) return;
       if (!sabad.audioUrl) return;
-
-      prevPlayingSabadId = sabad.id;
-      const autoPlay = state.autoPlayAudio;
-
-      // Load the new track (settings passed via setSettings() for MediaSession artwork)
-      this._loadTrack(sabad.audioUrl, autoPlay, sabad, this._settings);
+      prevId = sabad.id;
+      this._loadTrack(sabad.audioUrl, state.autoPlayAudio, sabad);
     });
   }
 
-  // ── _loadTrack — internal track loader ─────────────────────────────────────
-  private async _loadTrack(
-    url: string,
-    autoPlay: boolean,
-    sabad: SabadItem,
-    settings?: any,
-  ) {
+  // ── _loadTrack ────────────────────────────────────────────────────────────
+  // PERFORMANCE: No awaits before audio starts. MediaSession is fire-and-forget.
+  private async _loadTrack(url: string, autoPlay: boolean, sabad: SabadItem) {
     this._playSequence++;
     const seq = this._playSequence;
 
-    // Step 1: Immediately stop current audio (< 1ms)
+    // ① Stop current audio immediately (< 1ms)
     globalAudio.pause();
 
-    // Step 2: Reset UI state
+    // ② Show spinner instantly — user sees feedback in < 16ms
     useAppStore.getState().setAudioPlaybackState({
       audioIsPlaying: false,
-      audioIsBuffering: autoPlay, // show spinner only if auto-playing
+      audioIsBuffering: true,   // ← always true here, not conditional on autoPlay
       audioProgress: 0,
       audioCurrentTime: 0,
       audioDuration: 0,
@@ -196,106 +161,84 @@ class AudioEngine {
       audioLoadedUrl: url,
     });
 
-    // Step 3: Update lock-screen metadata immediately
-    await updateMediaSessionMetadata({
+    // ③ Update MediaSession metadata — FIRE AND FORGET (not awaited!)
+    //    Old code awaited this — Capacitor bridge call = 50-200ms blocking delay.
+    updateMediaSessionMetadata({
       title: sabad.title || 'सबदवाणी',
       artist: 'सबदवाणी',
       album: 'बिश्नोई',
-      artwork: settings?.logoUrl || '/logo.png',
-    });
+      artwork: this._settings?.logoUrl || '/logo.png',
+    }).catch(() => {});
 
-    // Step 4: Set source (AudioWrapper handles cache lookup internally)
-    globalAudio.src = url;
-
-    // Step 5: Auto-play if requested
-    if (!autoPlay) return;
-
-    // Small delay for Android WebView to initialize audio context
-    await new Promise(r => setTimeout(r, Capacitor.isNativePlatform() ? 80 : 10));
-
-    // Stale check — a newer track was requested while we were waiting
-    if (this._playSequence !== seq) return;
-
-    try {
-      await globalAudio.play();
-    } catch (e: any) {
-      if (e?.name === 'AbortError') return; // Interrupted by newer track — safe
-
-      const isOnline = await checkIsOnline();
-      useAppStore.getState().setAudioPlaybackState({
-        audioIsPlaying: false,
-        audioIsBuffering: false,
-        audioError: isOnline
-          ? 'ऑडियो चलाने में समस्या आ रही है।'
-          : 'इंटरनेट कनेक्शन उपलब्ध नहीं है। नेटवर्क जांचें।',
-      });
+    // ④ Set source and play atomically (handles cache + seq guard internally)
+    if (autoPlay) {
+      // loadAndPlay() sets src → waits for cache → calls play()
+      // No external setTimeout needed — everything resolved inside
+      await (globalAudio as any).loadAndPlay(url, () => this._playSequence !== seq);
+    } else {
+      globalAudio.src = url;
     }
   }
 
-  // ── Public API (called by AudioPlayer UI) ──────────────────────────────────
-
-  /**
-   * Toggle play/pause for the currently loaded track.
-   * @param forceState - 'play' | 'pause' to force a specific state
-   */
+  // ── togglePlay ────────────────────────────────────────────────────────────
   togglePlay(forceState?: 'play' | 'pause') {
     const shouldPlay = forceState === 'play' ? true
                      : forceState === 'pause' ? false
                      : globalAudio.paused;
 
     if (shouldPlay) {
-      // If nothing is loaded, load the current playingSabad
-      const { playingSabad, autoPlayAudio } = useAppStore.getState();
+      // ① Immediate spinner — user sees feedback < 16ms from click
+      useAppStore.getState().setAudioPlaybackState({
+        audioIsBuffering: true,
+        audioError: null,
+      });
+
+      // ② If no src loaded yet, load and play from current playingSabad
+      const { playingSabad } = useAppStore.getState();
       if (!globalAudio.src && playingSabad?.audioUrl) {
         this._loadTrack(playingSabad.audioUrl, true, playingSabad);
         return;
       }
 
-      useAppStore.getState().setAudioPlaybackState({ audioError: null });
+      // ③ Src already loaded — just play
       globalAudio.play().catch((e) => {
         if (e?.name === 'AbortError') return;
         useAppStore.getState().setAudioPlaybackState({
           audioIsPlaying: false,
+          audioIsBuffering: false,
           audioError: e?.name === 'NotAllowedError'
             ? 'प्लेबैक के लिए कृपया बटन दबाएं।'
             : 'ऑडियो चलाने में समस्या आ रही है।',
         });
       });
     } else {
+      // Immediate pause feedback
+      useAppStore.getState().setAudioPlaybackState({
+        audioIsPlaying: false,
+        audioIsBuffering: false,
+      });
       globalAudio.pause();
     }
   }
 
-  /**
-   * Seek to a specific time in seconds.
-   */
   seek(seconds: number) {
     if (!isFinite(seconds) || seconds < 0) return;
     globalAudio.currentTime = seconds;
-    const duration = globalAudio.duration;
-    if (isFinite(duration) && duration > 0) {
+    const d = globalAudio.duration;
+    if (isFinite(d) && d > 0) {
       useAppStore.getState().setAudioPlaybackState({
         audioCurrentTime: seconds,
-        audioProgress: (seconds / duration) * 100,
+        audioProgress: (seconds / d) * 100,
       });
     }
   }
 
-  /**
-   * Seek by progress ratio (0–100).
-   * Called from AudioPlayer seek bar during drag.
-   */
   seekByProgress(progress: number) {
-    const duration = globalAudio.duration;
-    if (!isFinite(duration) || duration <= 0) return;
-    const seconds = (progress / 100) * duration;
-    this.seek(seconds);
+    const d = globalAudio.duration;
+    if (!isFinite(d) || d <= 0) return;
+    this.seek((progress / 100) * d);
   }
 
-  /**
-   * Completely stop and clear the audio session.
-   * Called when user closes the player.
-   */
   async stopAndClear() {
     await clearMediaSession();
     useAppStore.getState().setAudioPlaybackState({
@@ -309,11 +252,6 @@ class AudioEngine {
     });
   }
 
-  /**
-   * Register UI callbacks (onPlay/onPause/onEnded/onNext/onPrev).
-   * AudioEngine calls these at the right time (on events from globalAudio).
-   * Pass in null for any callback you want to unregister.
-   */
   registerCallbacks(callbacks: {
     onPlay?: (() => void) | null;
     onPause?: (() => void) | null;
@@ -323,19 +261,13 @@ class AudioEngine {
     onClose?: (() => void) | null;
     showToast?: ((msg: string) => void) | null;
   }) {
-    // Build full callbacks object merging with existing ones
-    const merged = {
+    setGlobalAudioCallbacks({
       ...globalAudioCallbacks,
       ...callbacks,
-      // Lock-screen play/pause/seek go through togglePlay (already registered in audioGlobals.ts)
       togglePlay: (forceState?: 'play' | 'pause') => this.togglePlay(forceState),
-    };
-    setGlobalAudioCallbacks(merged);
+    });
   }
 
-  // ── settings passthrough (for MediaSession artwork) ────────────────────────
-  // Called from App.tsx when settings load
-  private _settings: any = null;
   setSettings(settings: any) {
     this._settings = settings;
   }
@@ -346,5 +278,4 @@ class AudioEngine {
   }
 }
 
-// Export singleton
 export const audioEngine = new AudioEngine();

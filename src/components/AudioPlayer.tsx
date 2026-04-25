@@ -64,10 +64,16 @@ function AudioPlayer({
   const audioError       = useAppStore(s => s.audioError);
   const storePlayingSabad = useAppStore(s => s.playingSabad);
 
-  // Is THIS player's track the one currently loaded in the engine?
-  const isActiveTrack = !!url && (url === storePlayingSabad?.audioUrl);
+  // Is THIS player's track the one currently loaded/loading in the engine?
+  // Also match on audioLoadedUrl to catch the brief window while the track
+  // is loading but playingSabad may not have updated yet.
+  const audioLoadedUrl = useAppStore(s => s.audioLoadedUrl);
+  const isActiveTrack = !!url && (
+    url === storePlayingSabad?.audioUrl ||
+    url === audioLoadedUrl
+  );
 
-  // Use global state if this is the active track, otherwise show idle
+  // Use global state when active, idle otherwise
   const isPlaying   = isActiveTrack ? audioIsPlaying   : false;
   const isBuffering = isActiveTrack ? audioIsBuffering : false;
   const progress    = isActiveTrack ? audioProgress    : 0;

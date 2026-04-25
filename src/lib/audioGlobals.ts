@@ -197,6 +197,49 @@ class AudioWrapper {
     this._paused = true;
   }
 
+  // ── loadAndPlay (atomic) ─────────────────────────────────────────────────
+  // Sets src with cache lookup AND plays only after cache resolves.
+  // Replaces the old "set src then setTimeout(80) then play()" pattern.
+  // isStale() lets AudioEngine cancel if a newer track was requested.
+  async loadAndPlay(url: string, isStale: () => boolean): Promise<void> {
+    this.pause();
+    if (!url) return;
+
+    this._src = url;
+    this._playSequence++;
+
+    let resolvedUrl = url;
+
+    if ((await import('@capacitor/core')).Capacitor.isNativePlatform()) {
+      try {
+        const { AudioCacheService } = await import('./AudioCacheService');
+        resolvedUrl = await AudioCacheService.getLocalUrl(url);
+        // Non-blocking background download for next time
+        if (resolvedUrl === url && url.startsWith('http')) {
+          AudioCacheService.downloadToCache(url).catch(() => {});
+        }
+      } catch (_) {
+        resolvedUrl = url;
+      }
+    }
+
+    if (isStale()) return;
+
+    this.audio.src = resolvedUrl;
+    this.audio.load();
+
+    if (isStale()) return;
+
+    try {
+      await this.audio.play();
+      this._paused = false;
+      this._ended  = false;
+    } catch (e: any) {
+      if (e?.name !== 'AbortError') throw e;
+      // AbortError = interrupted by newer play() — safe to ignore
+    }
+  }
+
   addEventListener(event: string, callback: Function) {
     if (!this.listeners[event]) this.listeners[event] = [];
     this.listeners[event].push(callback);
