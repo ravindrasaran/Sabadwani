@@ -117,21 +117,23 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // ── startTrack — single entry point for all track changes ─────────────────
   // Atomically updates the store so AudioEngine sees a consistent snapshot.
+  // Works for NEW tracks AND same-track replay (e.g. after pause+navigate back).
   startTrack: (sabad: SabadItem) => {
+    const currentId = get().playingSabad?.id;
     set({
-      playingSabad: sabad,
+      // IMPORTANT: always spread a new object so Zustand subscribers detect
+      // a reference change even when the same track is selected again.
+      // Without this, _watchStore sees sabad === prevSabad → skips load.
+      playingSabad: { ...sabad },
       isAudioActive: true,
       isMiniPlayerDismissed: false,
       autoPlayAudio: true,
-      // Reset playback state immediately so UI shows loading state
       audioIsPlaying: false,
       audioIsBuffering: !!sabad.audioUrl,
       audioProgress: 0,
       audioCurrentTime: 0,
       audioError: null,
     });
-    // AudioEngine is subscribed to store — it will detect playingSabad change
-    // and call loadTrack() automatically (see audioEngine.ts)
   },
 
   // ── setAudioPlaybackState — AudioEngine → Store ───────────────────────────

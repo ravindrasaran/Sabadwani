@@ -222,7 +222,7 @@ function MainApp() {
           if (paymentIntentPending.current) {
             paymentIntentPending.current = false;
             setTimeout(() => {
-              showToast("सहयोग के प्रयास के लिए आपका बहुत-बहुत धन्यवाद! 🙏");
+              showToast("सहयोग के प्रयास के लिए आपका बहुत-बहुत धन्यवाने! 🙏");
             }, 500);
           }
         }

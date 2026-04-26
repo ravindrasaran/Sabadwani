@@ -253,22 +253,22 @@ export default function ReadingScreen(props: ReadingScreenProps) {
             onEnded={handleAudioEnded} 
             autoPlay={autoPlayAudio}
             onPlay={() => {
-              // startTrack atomically marks track as playing and activates MiniPlayer
-              if (selectedSabad) {
-                setIsAudioActive(true);
-                setAutoPlayAudio(true);
-                setPlayingSabad(selectedSabad);
-                // Ensure AudioEngine has latest settings for MediaSession artwork
-              }
+              // Only update UI flags — do NOT call setPlayingSabad here.
+              // startTrack already set playingSabad before navigation.
+              // Calling setPlayingSabad again could trigger _watchStore to reload.
+              setIsAudioActive(true);
+              setAutoPlayAudio(true);
             }}
             onPause={() => {
               setAutoPlayAudio(false);
             }}
             onNext={() => {
-              handleSwipe("left");
+              // Use handleAudioSwipe (not handleSwipe) so lock-screen Next/Prev
+              // actually changes the playing track, not just the text scroll.
+              props.handleAudioSwipe("left");
             }}
             onPrev={() => {
-              handleSwipe("right");
+              props.handleAudioSwipe("right");
             }}
             title={selectedSabad.title}
             showToast={showToast}
