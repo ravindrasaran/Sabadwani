@@ -127,10 +127,11 @@ export function AmavasyaScreen({ amavasyaList, selectedYear, setSelectedYear, ha
 // --- ChoghadiyaScreen ---
 export function ChoghadiyaScreen({ 
   choghadiyaDate, setChoghadiyaDate, 
-  choghadiyaLocation, setChoghadiyaLocation, 
+  choghadiyaLocation,
   handleGetLocation, calculateChoghadiya, 
   choghadiyaLoading, choghadiyaError, 
-  choghadiyaSlots, handleBack 
+  choghadiyaSlots, handleBack,
+  locationSuggestions, handleLocationInput, handleSelectSuggestion,
 }: any) {
   return (
     <motion.div
@@ -155,7 +156,7 @@ export function ChoghadiyaScreen({
               className="w-full p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none font-medium"
             />
           </div>
-          <div>
+          <div className="relative">
             <label className="block font-bold text-sm mb-1">
               स्थान (Location)
             </label>
@@ -163,30 +164,49 @@ export function ChoghadiyaScreen({
               <input
                 type="text"
                 value={choghadiyaLocation}
-                onChange={(e) => setChoghadiyaLocation(e.target.value)}
-                placeholder="शहर का नाम दर्ज करें..."
+                onChange={(e) => handleLocationInput(e.target.value)}
+                onBlur={() => setTimeout(() => handleSelectSuggestion && handleSelectSuggestion(null), 200)}
+                placeholder="शहर का नाम लिखें..."
+                autoComplete="off"
                 className="flex-1 p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none font-medium"
               />
               <button
                 onClick={handleGetLocation}
-                className="p-3 bg-accent/10 text-accent-dark rounded-xl hover:bg-accent/20 transition-colors"
-                title="मेरी वर्तमान लोकेशन"
+                disabled={choghadiyaLoading}
+                className="p-3 bg-accent/10 text-accent-dark rounded-xl hover:bg-accent/20 transition-colors disabled:opacity-50 flex items-center justify-center"
+                title="GPS से मेरी लोकेशन"
               >
-                <MapPin className="w-5 h-5" />
+                {choghadiyaLoading
+                  ? <Loader2 className="w-5 h-5 animate-spin" />
+                  : <MapPin className="w-5 h-5" />}
               </button>
             </div>
+            {locationSuggestions && locationSuggestions.length > 0 && (
+              <div className="absolute z-50 left-0 right-10 top-full mt-1 bg-white border border-ink/15 rounded-xl shadow-lg overflow-hidden">
+                {locationSuggestions.map((s: any, i: number) => (
+                  <button
+                    key={i}
+                    onMouseDown={() => handleSelectSuggestion(s)}
+                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-accent/10 active:bg-accent/20 flex items-center gap-2 border-b border-ink/5 last:border-0 transition-colors"
+                  >
+                    <MapPin className="w-3.5 h-3.5 text-accent flex-shrink-0" />
+                    <span className="truncate">{s.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <button
             onClick={() => calculateChoghadiya()}
             disabled={choghadiyaLoading}
-            className="w-full p-3 bg-accent text-white font-bold rounded-xl hover:bg-accent-dark transition-colors flex items-center justify-center gap-2 shadow-sm"
+            className="w-full p-3 bg-accent text-white font-bold rounded-xl hover:bg-accent-dark transition-colors flex items-center justify-center gap-2 shadow-sm active:scale-[0.98] touch-manipulation"
           >
             {choghadiyaLoading ? (
               <Loader2 className="w-5 h-5 animate-spin" />
             ) : (
               <Sun className="w-5 h-5" />
             )}
-            मुहूर्त निकालें
+            {choghadiyaLoading ? "खोज रहे हैं..." : "मुहूर्त निकालें"}
           </button>
         </div>
 

@@ -54,7 +54,7 @@ interface AppState extends AudioPlaybackState {
   // Atomic action: sets playingSabad + autoPlay + isAudioActive + dismisses MiniPlayer.
   // AudioEngine subscribes to playingSabad changes and loads the new track automatically.
   // Call this whenever a new track should start playing.
-  startTrack: (sabad: SabadItem) => void;
+  startTrack: (sabad: SabadItem, autoPlay?: boolean) => void;
 
   // Called exclusively by AudioEngine to push playback state to the store.
   setAudioPlaybackState: (state: Partial<AudioPlaybackState>) => void;
@@ -118,8 +118,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   // ── startTrack — single entry point for all track changes ─────────────────
   // Atomically updates the store so AudioEngine sees a consistent snapshot.
   // Works for NEW tracks AND same-track replay (e.g. after pause+navigate back).
-  startTrack: (sabad: SabadItem) => {
-    const currentId = get().playingSabad?.id;
+  startTrack: (sabad: SabadItem, autoPlay: boolean = true) => {
     set({
       // IMPORTANT: always spread a new object so Zustand subscribers detect
       // a reference change even when the same track is selected again.
@@ -127,7 +126,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       playingSabad: { ...sabad },
       isAudioActive: true,
       isMiniPlayerDismissed: false,
-      autoPlayAudio: true,
+      autoPlayAudio: autoPlay,
       audioIsPlaying: false,
       audioIsBuffering: !!sabad.audioUrl,
       audioProgress: 0,

@@ -1,10 +1,11 @@
 import { useRef } from "react";
 import { motion } from "motion/react";
-import { Music, BookOpenText, Play } from "lucide-react";
+import { Music, BookOpenText, Play, Book } from "lucide-react";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import PremiumHeader from "../PremiumHeader";
 import { ShabadSkeleton } from "../Skeleton";
 import ShabadCard from "../ShabadCard";
+import { useAppStore } from "../../store/useAppStore";
 
 export interface CategoryListScreenProps {
   isLoading: boolean;
@@ -82,13 +83,25 @@ export default function CategoryListScreen({
                 ) : (
                   <ShabadCard
                     title={item.title}
-                    icon={Play}
+                    icon={item.audioUrl ? Play : Book}
                     onClick={() => {
                       setSelectedSabad(item);
-                      setAutoPlayAudio(true);
-                      navigateTo("audio_reading");
+                      if (item.audioUrl) {
+                        useAppStore.getState().setAudioPlaybackState({
+                          playingSabad: item,
+                          isAudioActive: true,
+                          isMiniPlayerDismissed: false,
+                          autoPlayAudio: false,
+                          audioProgress: 0,
+                          audioCurrentTime: 0,
+                        });
+                        navigateTo("audio_reading");
+                      } else {
+                        setAutoPlayAudio(false);
+                        navigateTo("reading");
+                      }
                     }}
-                    iconType="play"
+                    iconType={item.audioUrl ? "play" : "book"}
                   />
                 )}
               </div>

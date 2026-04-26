@@ -872,39 +872,92 @@ function MainApp() {
 
   const bichhudaList = useMemo(() => getBichhudaList(bichhudaYear), [bichhudaYear]);
 
+  // ── Location autocomplete state ────────────────────────────────────────────
+  const [locationSuggestions, setLocationSuggestions] = useState<{name: string; lat: number; lon: number}[]>([]);
+  const [locationSearchTimer, setLocationSearchTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+
+  // Debounced city name → coordinates lookup for autocomplete
+  const handleLocationInput = (val: string) => {
+    setChoghadiyaLocation(val);
+    setLocationSuggestions([]);
+    if (locationSearchTimer) clearTimeout(locationSearchTimer);
+    if (val.length < 2) return;
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(val)}&format=json&limit=5&accept-language=hi,en&addressdetails=1&countrycodes=in`,
+          { headers: { 'User-Agent': 'SabadwaniApp/1.0' } }
+        );
+        const data = await res.json();
+        const suggestions = data
+          .filter((d: any) => d.lat && d.lon)
+          .map((d: any) => {
+            const addr = d.address || {};
+            const city = addr.city || addr.town || addr.village || addr.suburb || d.display_name.split(",")[0];
+            const state = addr.state || "";
+            return {
+              name: city + (state ? ", " + state : ""),
+              lat: parseFloat(d.lat),
+              lon: parseFloat(d.lon),
+            };
+          })
+          .filter((s: any, i: number, arr: any[]) => arr.findIndex(x => x.name === s.name) === i); // deduplicate
+        setLocationSuggestions(suggestions);
+      } catch (_) {}
+    }, 500);
+    setLocationSearchTimer(timer);
+  };
+
+  const handleSelectSuggestion = (s: {name: string; lat: number; lon: number} | null) => {
+    if (!s) { setLocationSuggestions([]); return; } // Called from onBlur to dismiss
+    setChoghadiyaLocation(s.name);
+    setLocationSuggestions([]);
+    calculateChoghadiya(s.name, choghadiyaDate, { lat: s.lat, lon: s.lon });
+  };
+
   const handleGetLocation = async () => {
     setChoghadiyaLoading(true);
     setChoghadiyaError("");
+    setLocationSuggestions([]);
 
     try {
       let position;
       if (Capacitor.isNativePlatform()) {
-        // Native approach: Request permission if needed, then get position
         const permission = await Geolocation.checkPermissions();
         if (permission.location !== 'granted') {
           const request = await Geolocation.requestPermissions();
           if (request.location !== 'granted') {
+            // BUG FIX: Old code just showed error text. Now opens Settings directly.
             setChoghadiyaError("लोकेशन की अनुमति नहीं मिली। कृपया सेटिंग्स में जाकर अनुमति दें या सीधे अपने शहर का नाम लिखकर खोजें।");
             setChoghadiyaLoading(false);
+            // Open app settings so user can grant permission in one tap
+            try { await CapacitorApp.openUrl({ url: 'app-settings:' }); } catch (_) {}
             return;
           }
         }
-        position = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 20000 });
+        position = await Geolocation.getCurrentPosition({
+          enableHighAccuracy: false, // COARSE first — faster, less battery
+          timeout: 15000,
+        });
       } else {
-        // Web approach
         if (!navigator.geolocation) {
           setChoghadiyaError("आपके डिवाइस में लोकेशन की सुविधा उपलब्ध नहीं है।");
           setChoghadiyaLoading(false);
           return;
         }
-        position = await new Promise((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 20000, maximumAge: 60000 });
+        position = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            timeout: 15000,
+            maximumAge: 300000, // 5 min cache — enough for choghadiya
+          });
         });
       }
 
       const { latitude, longitude } = position.coords;
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&accept-language=en&addressdetails=1`,
+        `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&accept-language=hi,en&addressdetails=1`,
+        { headers: { 'User-Agent': 'SabadwaniApp/1.0' } }
       );
       const data = await res.json();
       const addr = data.address || {};
@@ -912,15 +965,16 @@ function MainApp() {
       const state = addr.state || "";
       const country = addr.country || "";
       const resolvedName = [city, state, country === "India" ? "" : country]
-        .filter(Boolean)
-        .join(", ");
+        .filter(Boolean).join(", ");
       setChoghadiyaLocation(resolvedName);
       calculateChoghadiya(resolvedName, choghadiyaDate, { lat: latitude, lon: longitude });
     } catch (error: any) {
-      console.error("Location error:", error);
       const errorMsg = error.message?.toLowerCase() || "";
-      if (error.code === 2 || errorMsg.includes("disabled") || errorMsg.includes("unavailable") || errorMsg.includes("location services")) {
+      if (error.code === 2 || errorMsg.includes("disabled") || errorMsg.includes("unavailable")) {
         setChoghadiyaError("कृपया अपने मोबाइल की लोकेशन (GPS) चालू करें।");
+      } else if (error.code === 1) {
+        // Permission denied by user in browser dialog
+        setChoghadiyaError("लोकेशन की अनुमति नहीं मिली। कृपया सेटिंग्स में जाकर अनुमति दें या सीधे अपने शहर का नाम लिखकर खोजें।");
       } else {
         setChoghadiyaError("लोकेशन की अनुमति नहीं मिली। कृपया सेटिंग्स में जाकर अनुमति दें या सीधे अपने शहर का नाम लिखकर खोजें।");
       }
@@ -1095,22 +1149,27 @@ function MainApp() {
       }
 
       let currentList: SabadItem[] = [];
-      if (currentScreen === "reading") currentList = sabads;
-      else if (currentScreen === "audio_reading") {
+      if (currentScreen === "community_posts") {
+        currentList = recentApprovedPosts;
+      } else if (selectedSabad.type === "शब्द") {
+        currentList = sabads;
+      } else if (selectedSabad.type === "आरती") {
+        currentList = aartis;
+      } else if (selectedSabad.type === "भजन") {
+        currentList = bhajans;
+      } else if (selectedSabad.type === "साखी") {
+        currentList = sakhis;
+      } else if (selectedSabad.type === "मंत्र") {
+        currentList = mantras;
+      }
+      
+      // Fallback if list is empty or not found
+      if (!currentList || currentList.length === 0) {
         if (selectedCategory === "aarti") currentList = aartis;
         else if (selectedCategory === "bhajan") currentList = bhajans;
         else if (selectedCategory === "sakhi") currentList = sakhis;
         else if (selectedCategory === "mantra") currentList = mantras;
-      }
-      else if (currentScreen === "community_posts") currentList = recentApprovedPosts;
-
-      // Fallback if list is empty or not found
-      if (!currentList || currentList.length === 0) {
-        if (selectedSabad.type === "शब्द") currentList = sabads;
-        else if (selectedSabad.type === "आरती" || selectedCategory === "aarti") currentList = aartis;
-        else if (selectedSabad.type === "भजन" || selectedCategory === "bhajan") currentList = bhajans;
-        else if (selectedSabad.type === "साखी" || selectedCategory === "sakhi") currentList = sakhis;
-        else if (selectedSabad.type === "मंत्र" || selectedCategory === "mantra") currentList = mantras;
+        else currentList = sabads;
       }
 
       if (!currentList || currentList.length === 0) return;
@@ -1141,7 +1200,12 @@ function MainApp() {
         if (nextItem) {
           setSelectedSabad(nextItem);
           if (currentScreen === "audio_reading") {
-            setPlayingSabad(nextItem);
+            if (nextItem.audioUrl) {
+              const state = useAppStore.getState();
+              state.startTrack(nextItem, state.audioIsPlaying || state.autoPlayAudio);
+            } else {
+              setPlayingSabad(nextItem);
+            }
           }
         }
       } else if (direction === "right") {
@@ -1159,7 +1223,12 @@ function MainApp() {
         if (prevItem) {
           setSelectedSabad(prevItem);
           if (currentScreen === "audio_reading") {
-            setPlayingSabad(prevItem);
+            if (prevItem.audioUrl) {
+              const state = useAppStore.getState();
+              state.startTrack(prevItem, state.audioIsPlaying || state.autoPlayAudio);
+            } else {
+              setPlayingSabad(prevItem);
+            }
           }
         }
       }
@@ -1168,7 +1237,7 @@ function MainApp() {
     }
   };
 
-  const handleAudioSwipe = (direction: "left" | "right") => {
+  const handleAudioSwipe = (direction: "left" | "right", isAutoNext: boolean = false) => {
     try {
       // If nothing is playing, fallback to regular swipe
       if (!playingSabad) {
@@ -1219,7 +1288,8 @@ function MainApp() {
         if (nextItem) {
           // Use startTrack so AudioEngine loads immediately (single click, no delay)
           if (nextItem.audioUrl) {
-            useAppStore.getState().startTrack(nextItem);
+            const state = useAppStore.getState();
+            state.startTrack(nextItem, isAutoNext || state.audioIsPlaying || state.autoPlayAudio);
           } else {
             setPlayingSabad(nextItem);
           }
@@ -1241,7 +1311,8 @@ function MainApp() {
         const prevItem = currentList[prevIndex];
         if (prevItem) {
           if (prevItem.audioUrl) {
-            useAppStore.getState().startTrack(prevItem);
+            const state = useAppStore.getState();
+            state.startTrack(prevItem, state.audioIsPlaying || state.autoPlayAudio);
           } else {
             setPlayingSabad(prevItem);
           }
@@ -1258,7 +1329,7 @@ function MainApp() {
 
   const handleAudioEnded = () => {
     // autoPlayAudio is already true via startTrack — just advance to next
-    handleAudioSwipe("left");
+    handleAudioSwipe("left", true);
   };
 
   const bindGestures = useGesture(
@@ -1890,7 +1961,7 @@ function MainApp() {
             <Route path="/about" element={<AboutScreen navigateTo={navigateTo} settings={settings} />} />
             <Route path="/privacy" element={<PrivacyScreen navigateTo={navigateTo} />} />
             <Route path="/contribute" element={<ContributeScreen handleBack={handleBack} contribAuthor={contribAuthor} setContribAuthor={setContribAuthor} contribTitle={contribTitle} setContribTitle={setContribTitle} contribType={contribType} setContribType={setContribType} contribAudio={contribAudio} setContribAudio={setContribAudio} contribAudioFile={contribAudioFile} setContribAudioFile={setContribAudioFile} contribAudioError={contribAudioError} setContribAudioError={setContribAudioError} contribText={contribText} setContribText={setContribText} captchaQuestion={captchaQuestion} captchaAnswer={captchaAnswer} setCaptchaAnswer={setCaptchaAnswer} contribError={contribError} isSubmitting={isSubmitting} uploadProgress={uploadProgress} handleContributeSubmit={handleContributeSubmit} handleFileSelect={handleFileSelect} />} />
-            <Route path="/choghadiya" element={<ChoghadiyaScreen choghadiyaDate={choghadiyaDate} setChoghadiyaDate={setChoghadiyaDate} choghadiyaLocation={choghadiyaLocation} setChoghadiyaLocation={setChoghadiyaLocation} handleGetLocation={handleGetLocation} calculateChoghadiya={calculateChoghadiya} choghadiyaLoading={choghadiyaLoading} choghadiyaError={choghadiyaError} choghadiyaSlots={choghadiyaSlots} handleBack={() => navigateTo("home")} />} />
+            <Route path="/choghadiya" element={<ChoghadiyaScreen choghadiyaDate={choghadiyaDate} setChoghadiyaDate={setChoghadiyaDate} choghadiyaLocation={choghadiyaLocation} handleGetLocation={handleGetLocation} calculateChoghadiya={calculateChoghadiya} choghadiyaLoading={choghadiyaLoading} choghadiyaError={choghadiyaError} choghadiyaSlots={choghadiyaSlots} handleBack={() => navigateTo("home")} locationSuggestions={locationSuggestions} handleLocationInput={handleLocationInput} handleSelectSuggestion={handleSelectSuggestion} />} />
             <Route path="/bichhuda" element={<BichhudaScreen bichhudaMonth={bichhudaMonth} setBichhudaMonth={setBichhudaMonth} bichhudaYear={bichhudaYear} setBichhudaYear={setBichhudaYear} bichhudaList={bichhudaList} handleBack={() => navigateTo("home")} />} />
             <Route path="/mele" element={<MelesScreen isLoading={isLoading} meles={meles} processedMeles={processedMeles} navigateTo={navigateTo} />} />
             <Route path="/admin_login" element={<AdminLoginScreen isAdminLoggingIn={isAdminLoggingIn} adminLoginError={adminLoginError} adminPasswordInput={adminPasswordInput} auth={auth} setIsAdminLoggingIn={setIsAdminLoggingIn} setAdminLoginError={setAdminLoginError} setAdminPasswordInput={setAdminPasswordInput} setIsAdminAuthenticated={setIsAdminAuthenticated} navigateTo={navigateTo} />} />

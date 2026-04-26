@@ -5,6 +5,7 @@ import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import PremiumHeader from "../PremiumHeader";
 import { ShabadSkeleton } from "../Skeleton";
 import { SabadItem } from "../../types";
+import { useAppStore } from "../../store/useAppStore";
 
 export interface SearchScreenProps {
   searchQuery: string;
@@ -143,8 +144,20 @@ export default function SearchScreen(props: SearchScreenProps) {
                         } else {
                           setSelectedSabad(item);
                           setSelectedCategory(item.listType);
-                          setAutoPlayAudio(true);
-                          navigateTo('audio_reading');
+                          if (item.audioUrl) {
+                            useAppStore.getState().setAudioPlaybackState({
+                              playingSabad: item,
+                              isAudioActive: true,
+                              isMiniPlayerDismissed: false,
+                              autoPlayAudio: false,
+                              audioProgress: 0,
+                              audioCurrentTime: 0,
+                            });
+                            navigateTo("audio_reading");
+                          } else {
+                            setAutoPlayAudio(false);
+                            navigateTo("reading");
+                          }
                         }
                       }} 
                       className="w-full text-left bg-white p-4 rounded-2xl shadow-sm border border-ink/5"

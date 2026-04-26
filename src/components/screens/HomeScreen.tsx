@@ -40,16 +40,12 @@ export default function HomeScreen({
     >
       {/* Premium Rotating Banner System */}
       <div className="shrink-0">
-        {isLoading ? (
-          <BannerSkeleton />
-        ) : (
-          <PremiumBanner 
-            meles={processedMeles} 
-            badhais={badhais} 
-            dailyThought={dailyThought} 
-            notices={notices}
-          />
-        )}
+        <PremiumBanner 
+          meles={processedMeles} 
+          badhais={badhais} 
+          dailyThought={dailyThought} 
+          notices={notices}
+        />
       </div>
 
       {/* Premium Daily Panchang Summary */}
@@ -79,7 +75,6 @@ export default function HomeScreen({
 
       {/* Premium Grid Layout for Main Categories - Compact 3-Column Design */}
       <CategoryGrid 
-        isLoading={isLoading} 
         handleOpenCategory={handleOpenCategory} 
         navigateTo={navigateTo} 
       />

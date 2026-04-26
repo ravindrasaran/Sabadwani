@@ -55,21 +55,21 @@ export default function ReadingScreen(props: ReadingScreenProps) {
   } = props;
 
   let readingList: SabadItem[] = [];
-  if (currentScreen === "reading") readingList = sabads;
-  else if (currentScreen === "audio_reading") {
-    if (selectedCategory === "aarti") readingList = aartis;
-    else if (selectedCategory === "bhajan") readingList = bhajans;
-    else if (selectedCategory === "sakhi") readingList = sakhis;
-    else if (selectedCategory === "mantra") readingList = mantras;
-  }
-
-  // Fallback to ensure navigation works even if category is not set
-  if (readingList.length === 0 && selectedSabad) {
+  if (selectedSabad) {
     if (selectedSabad.type === "शब्द") readingList = sabads;
     else if (selectedSabad.type === "आरती") readingList = aartis;
     else if (selectedSabad.type === "भजन") readingList = bhajans;
     else if (selectedSabad.type === "साखी") readingList = sakhis;
     else if (selectedSabad.type === "मंत्र") readingList = mantras;
+  }
+
+  // Fallback to ensure navigation works
+  if (readingList.length === 0 && selectedCategory) {
+    if (selectedCategory === "aarti") readingList = aartis;
+    else if (selectedCategory === "bhajan") readingList = bhajans;
+    else if (selectedCategory === "sakhi") readingList = sakhis;
+    else if (selectedCategory === "mantra") readingList = mantras;
+    else readingList = sabads;
   }
 
   const readingIndex = selectedSabad ? readingList.findIndex(item => item.id === selectedSabad.id) : -1;

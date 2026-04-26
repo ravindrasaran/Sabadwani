@@ -6,6 +6,7 @@ import PremiumHeader from "../PremiumHeader";
 import { PostSkeleton } from "../Skeleton";
 import { auth } from "../../firebase";
 import { SabadItem } from "../../types";
+import { useAppStore } from "../../store/useAppStore";
 
 export interface CommunityPostsScreenProps {
   isLoading: boolean;
@@ -183,14 +184,28 @@ export default function CommunityPostsScreen(props: CommunityPostsScreenProps) {
                             onClick={() => {
                               setSelectedSabad(item);
                               if (item.type === "शब्द") {
+                                setAutoPlayAudio(false);
                                 navigateTo("reading");
                               } else {
                                 if (item.type === "भजन") setSelectedCategory("bhajan");
                                 else if (item.type === "आरती") setSelectedCategory("aarti");
                                 else if (item.type === "मंत्र") setSelectedCategory("mantra");
                                 else if (item.type === "साखी") setSelectedCategory("sakhi");
-                                setAutoPlayAudio(true);
-                                navigateTo("audio_reading");
+                                
+                                if (item.audioUrl) {
+                                  useAppStore.getState().setAudioPlaybackState({
+                                    playingSabad: item,
+                                    isAudioActive: true,
+                                    isMiniPlayerDismissed: false,
+                                    autoPlayAudio: false,
+                                    audioProgress: 0,
+                                    audioCurrentTime: 0,
+                                  });
+                                  navigateTo("audio_reading");
+                                } else {
+                                  setAutoPlayAudio(false);
+                                  navigateTo("reading");
+                                }
                               }
                             }}
                             className="w-full py-4 bg-ink/5 hover:bg-accent hover:text-white active:bg-accent-dark active:scale-[0.98] text-ink font-bold rounded-2xl transition-all duration-300 flex items-center justify-center gap-2 group/btn"
