@@ -1,8 +1,8 @@
 import { motion, AnimatePresence } from "motion/react";
 import { ChevronLeft, ChevronRight, Bookmark, Share2, Pause, ChevronsDown, Hand } from "lucide-react";
-import { useAppStore } from '../../store/useAppStore';
 import AudioPlayer from "../AudioPlayer";
 import { SabadItem } from "../../types";
+import { useAppStore } from "../../store/useAppStore";
 
 export interface ReadingScreenProps {
   currentScreen: string;
@@ -49,7 +49,7 @@ export default function ReadingScreen(props: ReadingScreenProps) {
     fontSize, setFontSize, isAutoScrolling, toggleAutoScroll,
     autoScrollSpeed, cycleAutoScrollSpeed, toggleBookmark, bookmarks,
     handleShare, autoPlayAudio, setAutoPlayAudio,
-    setPlayingSabad, setIsAudioActive, handleAudioEnded,
+    setIsAudioActive, handleAudioEnded,
     handleSwipe, showToast, settings, vibrate,
     slideDir, bindGestures
   } = props;
@@ -258,6 +258,7 @@ export default function ReadingScreen(props: ReadingScreenProps) {
               // Calling setPlayingSabad again could trigger _watchStore to reload.
               setIsAudioActive(true);
               setAutoPlayAudio(true);
+              useAppStore.getState().setIsMiniPlayerDismissed(false);
             }}
             onPause={() => {
               setAutoPlayAudio(false);

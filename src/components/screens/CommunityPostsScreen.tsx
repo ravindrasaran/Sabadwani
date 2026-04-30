@@ -193,14 +193,7 @@ export default function CommunityPostsScreen(props: CommunityPostsScreenProps) {
                                 else if (item.type === "साखी") setSelectedCategory("sakhi");
                                 
                                 if (item.audioUrl) {
-                                  useAppStore.getState().setAudioPlaybackState({
-                                    playingSabad: item,
-                                    isAudioActive: true,
-                                    isMiniPlayerDismissed: false,
-                                    autoPlayAudio: false,
-                                    audioProgress: 0,
-                                    audioCurrentTime: 0,
-                                  });
+                                  useAppStore.getState().startTrack(item, false);
                                   navigateTo("audio_reading");
                                 } else {
                                   setAutoPlayAudio(false);

@@ -5,15 +5,18 @@ import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import PremiumHeader from "../PremiumHeader";
 import { ShabadSkeleton } from "../Skeleton";
 import ShabadCard from "../ShabadCard";
+import { useAppStore } from "../../store/useAppStore";
+import { globalAudio } from "../../lib/audioGlobals";
 
 export interface ShabadListScreenProps {
   isLoading: boolean;
   sabads: any[];
   handleBack: () => void;
   handleSabadClick: (sabad: any) => void;
+  setIsAudioActive?: (active: boolean) => void;
 }
 
-export default function ShabadListScreen({ isLoading, sabads, handleBack, handleSabadClick }: ShabadListScreenProps) {
+export default function ShabadListScreen({ isLoading, sabads, handleBack, handleSabadClick, setIsAudioActive }: ShabadListScreenProps) {
   const listRef = useRef<HTMLDivElement>(null);
 
   const rowVirtualizer = useWindowVirtualizer({
@@ -65,7 +68,18 @@ export default function ShabadListScreen({ isLoading, sabads, handleBack, handle
                     title={item.title}
                     icon={item.icon}
                     onClick={() => handleSabadClick(item)}
-                    iconType="book"
+                    onIconClick={item.audioUrl ? () => {
+                      if (globalAudio) {
+                        globalAudio.pause();
+                        globalAudio.src = item.audioUrl;
+                        globalAudio.load();
+                        globalAudio.play().catch(() => {});
+                      }
+                      if (setIsAudioActive) setIsAudioActive(true);
+                      // Call store to start playing immediately and show mini player
+                      useAppStore.getState().startTrack(item, true);
+                    } : undefined}
+                    iconType={item.audioUrl ? "play" : "book"}
                   />
                 )}
               </div>

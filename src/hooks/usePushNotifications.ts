@@ -16,8 +16,7 @@ export const usePushNotifications = (showToast: (msg: string) => void) => {
             await PushNotifications.register();
           }
 
-          PushNotifications.addListener('registration', (token) => {
-            console.log('Push registration success, token: ' + token.value);
+          PushNotifications.addListener('registration', () => {
             // Optionally save this token to Firestore for the user if authenticated
           });
 
@@ -26,13 +25,11 @@ export const usePushNotifications = (showToast: (msg: string) => void) => {
           });
 
           PushNotifications.addListener('pushNotificationReceived', (notification) => {
-            console.log('Push received: ' + JSON.stringify(notification));
             // Show local notification or toast if app is in foreground
             showToast(`नई सूचना: ${notification.title}`);
           });
 
-          PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
-            console.log('Push action performed: ' + JSON.stringify(notification));
+          PushNotifications.addListener('pushNotificationActionPerformed', () => {
             // Handle navigation or action when user taps notification
           });
 

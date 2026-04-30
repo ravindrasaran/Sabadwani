@@ -145,14 +145,7 @@ export default function SearchScreen(props: SearchScreenProps) {
                           setSelectedSabad(item);
                           setSelectedCategory(item.listType);
                           if (item.audioUrl) {
-                            useAppStore.getState().setAudioPlaybackState({
-                              playingSabad: item,
-                              isAudioActive: true,
-                              isMiniPlayerDismissed: false,
-                              autoPlayAudio: false,
-                              audioProgress: 0,
-                              audioCurrentTime: 0,
-                            });
+                            useAppStore.getState().startTrack(item, false);
                             navigateTo("audio_reading");
                           } else {
                             setAutoPlayAudio(false);

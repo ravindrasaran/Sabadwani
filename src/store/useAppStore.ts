@@ -62,7 +62,7 @@ interface AppState extends AudioPlaybackState {
   hydrateStore: () => Promise<void>;
 }
 
-export const useAppStore = create<AppState>((set, get) => ({
+export const useAppStore = create<AppState>((set) => ({
   currentScreen: 'home',
   setCurrentScreen: (screen) => set({ currentScreen: screen }),
 
@@ -124,7 +124,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       // a reference change even when the same track is selected again.
       // Without this, _watchStore sees sabad === prevSabad → skips load.
       playingSabad: { ...sabad },
-      isAudioActive: true,
+      isAudioActive: autoPlay,
       isMiniPlayerDismissed: false,
       autoPlayAudio: autoPlay,
       audioIsPlaying: false,

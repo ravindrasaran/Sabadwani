@@ -6,6 +6,7 @@ import PremiumHeader from "../PremiumHeader";
 import { ShabadSkeleton } from "../Skeleton";
 import ShabadCard from "../ShabadCard";
 import { useAppStore } from "../../store/useAppStore";
+import { globalAudio } from "../../lib/audioGlobals";
 
 export interface CategoryListScreenProps {
   isLoading: boolean;
@@ -18,11 +19,12 @@ export interface CategoryListScreenProps {
   navigateTo: (screen: string) => void;
   setSelectedSabad: (sabad: any) => void;
   setAutoPlayAudio: (play: boolean) => void;
+  setIsAudioActive?: (active: boolean) => void;
 }
 
 export default function CategoryListScreen({ 
   isLoading, selectedCategory, aartis, bhajans, sakhis, mantras, 
-  handleBack, navigateTo, setSelectedSabad, setAutoPlayAudio 
+  handleBack, navigateTo, setSelectedSabad, setAutoPlayAudio, setIsAudioActive
 }: CategoryListScreenProps) {
   
   const categoryData = {
@@ -87,20 +89,24 @@ export default function CategoryListScreen({
                     onClick={() => {
                       setSelectedSabad(item);
                       if (item.audioUrl) {
-                        useAppStore.getState().setAudioPlaybackState({
-                          playingSabad: item,
-                          isAudioActive: true,
-                          isMiniPlayerDismissed: false,
-                          autoPlayAudio: false,
-                          audioProgress: 0,
-                          audioCurrentTime: 0,
-                        });
+                        useAppStore.getState().startTrack(item, false);
                         navigateTo("audio_reading");
                       } else {
                         setAutoPlayAudio(false);
                         navigateTo("reading");
                       }
                     }}
+                    onIconClick={item.audioUrl ? () => {
+                      if (globalAudio) {
+                        globalAudio.pause();
+                        globalAudio.src = item.audioUrl;
+                        globalAudio.load();
+                        globalAudio.play().catch(() => {});
+                      }
+                      setSelectedSabad(item);
+                      if (setIsAudioActive) setIsAudioActive(true);
+                      useAppStore.getState().startTrack(item, true); // Play instantly, show mini player
+                    } : undefined}
                     iconType={item.audioUrl ? "play" : "book"}
                   />
                 )}

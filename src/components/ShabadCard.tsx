@@ -5,10 +5,11 @@ interface ShabadCardProps {
   title: string;
   icon?: any;
   onClick: () => void;
+  onIconClick?: () => void;
   iconType?: "book" | "play";
 }
 
-const ShabadCard: React.FC<ShabadCardProps> = React.memo(({ title, icon: Icon, onClick, iconType = "book" }) => {
+const ShabadCard: React.FC<ShabadCardProps> = React.memo(({ title, icon: Icon, onClick, onIconClick, iconType = "book" }) => {
   return (
     <button
       onClick={onClick}
@@ -17,7 +18,16 @@ const ShabadCard: React.FC<ShabadCardProps> = React.memo(({ title, icon: Icon, o
       <div className="absolute inset-0 bg-gradient-to-r from-accent/0 via-accent/0 to-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
       
       {iconType === "play" ? (
-        <div className="bg-gradient-to-br from-accent/10 to-accent/20 p-2.5 rounded-full group-hover:scale-110 group-active:scale-95 transition-all shrink-0 shadow-sm border border-accent/10 relative z-10">
+        <div 
+          onClick={(e) => {
+            if (onIconClick) {
+              e.stopPropagation();
+              e.preventDefault();
+              onIconClick();
+            }
+          }}
+          className="bg-gradient-to-br from-accent/10 to-accent/20 p-2.5 rounded-full group-hover:scale-110 group-active:scale-95 transition-all shrink-0 shadow-sm border border-accent/10 relative z-10"
+        >
           <Icon className="w-4 h-4 text-accent-dark ml-0.5" />
         </div>
       ) : (

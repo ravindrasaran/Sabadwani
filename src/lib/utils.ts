@@ -12,19 +12,9 @@ export const checkIsOnline = async () => {
     }
   }
   
-  if (!navigator.onLine) return false;
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1500);
-    await fetch("https://1.1.1.1/cdn-cgi/trace", { 
-      mode: "no-cors", 
-      signal: controller.signal 
-    });
-    clearTimeout(timeoutId);
-    return true;
-  } catch (error) {
-    return false;
-  }
+  // On web/iframe, navigator.onLine can be buggy and falsely report false.
+  // We'll return true to let the actual network requests fail naturally if offline.
+  return true;
 };
 
 export const vibrate = (pattern: number | number[] = 50) => {

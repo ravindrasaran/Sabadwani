@@ -1,6 +1,7 @@
 import { motion } from "motion/react";
-import { ShieldCheck, PlusCircle, CheckCircle, XCircle, Edit3, Pause, Play, Settings, BookOpenText, Upload, AlertCircle } from "lucide-react";
+import { ShieldCheck, PlusCircle, CheckCircle, XCircle, Edit3, Pause, Play, Settings, BookOpenText, Upload, AlertCircle, Ban } from "lucide-react";
 import PremiumHeader from "./PremiumHeader";
+import { useState } from "react";
 
 export default function AdminScreen(props: any) {
   const {
@@ -8,9 +9,20 @@ export default function AdminScreen(props: any) {
     setContribAudioError, setContribPhotoError, setIsSubmitting, contribTitle, contribType, contribAudio,
     contribText, contribAuthor, contribDate, contribLocation, contribPhotoUrl, setContribTitle, setContribType,
     setContribAudio, setContribText, setContribAuthor, setContribDate, setContribLocation, setContribPhotoUrl,
-    addDoc, collection, sabads, openEditModal, handleDelete, aartis, bhajans, sakhis, mantras, thoughts, meles, badhais, toggleBadhaiStatus, notices, toggleNoticeStatus, settings, setSettings, setSettingsLogoFile, settingsLogoFile, setSettingsQrCodeFile, settingsQrCodeFile, setSettingsJaapAudioFile, settingsJaapAudioFile, handleSaveSettings, pendingPosts, approvePost, rejectPost, editItemData, handleEditSave, setEditItemData,
+    addDoc, collection, sabads, openEditModal, handleDelete, aartis, bhajans, sakhis, mantras, thoughts, meles, badhais, toggleBadhaiStatus, notices, toggleNoticeStatus, settings, setSettings, setSettingsLogoFile, settingsLogoFile, setSettingsQrCodeFile, settingsQrCodeFile, setSettingsJaapAudioFile, settingsJaapAudioFile, handleSaveSettings, pendingPosts, approvePost, rejectPost, blockUser, editItemData, handleEditSave, setEditItemData,
     contribAudioFile, uploadFileToStorage, contribPhotoFile, contribSequence, setContribSequence, setContribAudioFile, setContribPhotoFile, handleFileSelect, uploadProgress, editModalOpen, setEditModalOpen, editAudioError, editPhotoError, setEditAudioError, setEditPhotoError
   } = props;
+
+  const [actionError, setActionError] = useState<{ id: string, msg: string } | null>(null);
+  const [addContentError, setAddContentError] = useState("");
+
+  const handleAction = async (actionFn: Function, post: any) => {
+    setActionError(null);
+    const res = await actionFn(post);
+    if (res === "offline") {
+      setActionError({ id: post.id, msg: "इंटरनेट कनेक्शन उपलब्ध नहीं है। कृपया अपना नेटवर्क जांचें और पुनः प्रयास करें।" });
+    }
+  };
 
   return (
 <motion.div
@@ -32,18 +44,19 @@ export default function AdminScreen(props: any) {
                 <form
                   onSubmit={async (e) => {
                     e.preventDefault();
+                    setAddContentError("");
                     if (isSubmitting) return;
                     if (contribAudioError || contribPhotoError) {
-                      showToast("कृपया पहले फाइल से जुड़ी त्रुटि को ठीक करें।");
+                      setAddContentError("कृपया पहले फाइल से जुड़ी त्रुटि को ठीक करें।");
                       return;
                     }
                     const isOnline = await checkIsOnline();
                     if (!isOnline) {
-                      showToast("इंटरनेट कनेक्शन उपलब्ध नहीं है। कृपया अपना नेटवर्क जांचें और पुनः प्रयास करें।");
+                      setAddContentError("इंटरनेट कनेक्शन उपलब्ध नहीं है। कृपया अपना नेटवर्क जांचें और पुनः प्रयास करें।");
                       return;
                     }
                     if (!db) {
-                      showToast("Firebase is not configured.");
+                      setAddContentError("Firebase is not configured.");
                       return;
                     }
                     
@@ -399,11 +412,18 @@ export default function AdminScreen(props: any) {
                       placeholder="यहाँ लिखें..."
                     ></textarea>
                   </div>
+                  {addContentError && (
+                    <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm flex items-center gap-2 justify-center text-center mt-2 border border-red-100">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                      <span>{addContentError}</span>
+                    </div>
+                  )}
                   <button
                     type="submit"
-                    className="w-full bg-gradient-to-r from-accent to-accent-dark text-white font-bold py-3.5 rounded-xl shadow-md hover:shadow-lg transition-all"
+                    disabled={isSubmitting}
+                    className={`w-full bg-gradient-to-r from-accent to-accent-dark text-white font-bold py-3.5 mt-4 rounded-xl shadow-md hover:shadow-lg transition-all ${isSubmitting ? 'opacity-70 cursor-not-allowed' : ''}`}
                   >
-                    जोड़ें (Add)
+                    {isSubmitting ? 'जोड़ा जा रहा है...' : 'जोड़ें (Add)'}
                   </button>
                 </form>
               </div>
@@ -923,20 +943,35 @@ export default function AdminScreen(props: any) {
                             <audio controls src={post.audioUrl} crossOrigin="anonymous" className="w-full h-10" />
                           </div>
                         )}
-                        <div className="flex gap-2">
+                        <div className="grid grid-cols-2 gap-2 mb-2">
                           <button
-                            onClick={() => approvePost(post)}
-                            className="flex-1 bg-green-500 text-white py-2 rounded-lg font-bold flex items-center justify-center gap-1"
+                            onClick={() => handleAction(approvePost, post)}
+                            className="w-full bg-green-500 text-white py-2 px-1 rounded-lg font-bold flex items-center justify-center gap-1 text-sm sm:text-base"
                           >
                             <CheckCircle className="w-4 h-4" /> Approve
                           </button>
                           <button
-                            onClick={() => rejectPost(post)}
-                            className="flex-1 bg-red-500 text-white py-2 rounded-lg font-bold flex items-center justify-center gap-1"
+                            onClick={() => handleAction(rejectPost, post)}
+                            className="w-full bg-red-500 text-white py-2 px-1 rounded-lg font-bold flex items-center justify-center gap-1 text-sm sm:text-base"
                           >
                             <XCircle className="w-4 h-4" /> Reject
                           </button>
+                          {post.userId && (
+                            <button
+                               onClick={() => handleAction(blockUser, post)}
+                               className="w-full col-span-2 bg-gray-800 text-white py-2 px-1 rounded-lg font-bold flex items-center justify-center gap-1 text-sm sm:text-base"
+                               title="Block User"
+                            >
+                               <Ban className="w-4 h-4" /> Block User
+                            </button>
+                          )}
                         </div>
+                        {actionError?.id === post.id && (
+                          <div className="p-2 bg-red-50 text-red-700 rounded-lg text-sm flex items-center gap-2 justify-center text-center mt-2 border border-red-100">
+                            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                            <span>{actionError.msg}</span>
+                          </div>
+                        )}
                       </div>
                     ))
                   )}

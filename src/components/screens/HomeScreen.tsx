@@ -3,15 +3,13 @@ import { Sun } from "lucide-react";
 import { format } from "date-fns";
 import { hi } from "date-fns/locale";
 import { getJD, getTithiName, getSamvat } from "../../lib/astro";
-import { BannerSkeleton } from "../Skeleton";
 import PremiumBanner from "../PremiumBanner";
 import CategoryGrid from "../CategoryGrid";
 
 export interface HomeScreenProps {
-  isLoading: boolean;
   processedMeles: any[];
   badhais: any[];
-  dailyThought: string;
+  dailyThought: any;
   notices: any[];
   handleOpenCategory: (
     targetScreen: 'reading' | 'audio_reading',
@@ -22,7 +20,6 @@ export interface HomeScreenProps {
 }
 
 export default function HomeScreen({
-  isLoading,
   processedMeles,
   badhais,
   dailyThought,

@@ -8,8 +8,7 @@ import { useWakeLock } from "./hooks/useWakeLock";
 import { useSabadData } from "./hooks/useSabadData";
 import { generateAmavasyaForYear, getBichhudaList } from "./lib/astro";
 import { vibrate, checkIsOnline, getSearchSkeleton, getTransliteratedSearch } from "./lib/utils";
-import { globalAudio, clearMediaSession } from "./lib/audioGlobals";
-import { audioEngine } from "./lib/audioEngine";
+import { globalAudio, setupGlobalMediaSessionListener, clearMediaSession } from "./lib/audioGlobals";
 import React, { useState, useEffect, useRef, useMemo, useCallback, ReactNode, Suspense, lazy } from "react";
 import { useInitialSetup } from "./hooks/useInitialSetup";
 import { usePushNotifications } from "./hooks/usePushNotifications";
@@ -48,6 +47,7 @@ import SunCalc from "suncalc";
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
+import { NativeSettings, AndroidSettings, IOSSettings } from 'capacitor-native-settings';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { Routes, Route, useNavigate, useLocation, Navigate } from "react-router-dom";
@@ -80,12 +80,7 @@ class ErrorBoundary extends React.Component<{ children: ReactNode }, { hasError:
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    // Log the error to Firebase
     console.error("ErrorBoundary caught an error:", error, errorInfo);
-    
-    // In a premium setup, we log to Crashlytics here. 
-    // Assuming standard Firebase SDK availability:
-    // logEvent(analytics, 'app_crash', { error: error.message, componentStack: errorInfo.componentStack });
   }
 
   render() {
@@ -169,10 +164,8 @@ function MainApp() {
     setTimeout(() => setToastMessage(null), 3000);
   }, []);
 
-  // AudioEngine is initialized here — it subscribes to the store and handles
-  // all audio loading, MediaSession updates, and event routing automatically.
   useEffect(() => {
-    audioEngine.init();
+    setupGlobalMediaSessionListener();
   }, []);
 
   useInitialSetup(paymentIntentPending, showToast, () => {});
@@ -210,9 +203,6 @@ function MainApp() {
       SplashScreen.hide().catch(() => {});
 
       // Handle app state changes (background/foreground)
-      // BUG FIX: addListener returns a Promise<PluginListenerHandle>.
-      // Old code never called .remove() on it → listener accumulated on every
-      // hot-reload / strict-mode double-mount → memory leak + duplicate handlers.
       const stateListenerPromise = CapacitorApp.addListener('appStateChange', ({ isActive }) => {
         if (!isActive) {
           // App went to background — nothing to do for audio (HTMLAudioElement
@@ -387,10 +377,7 @@ function MainApp() {
 
   const { isLoading, sabads, aartis, bhajans, sakhis, mantras, thoughts, meles, notices, badhais, pendingPosts, settings, setSettings } = useSabadData();
 
-  // Keep AudioEngine up to date with settings (logoUrl for MediaSession artwork)
-  useEffect(() => {
-    if (settings) audioEngine.setSettings(settings);
-  }, [settings]);
+
 
   const recentApprovedPosts = useMemo(() => {
     const getRecent = (arr: SabadItem[], type: string) => 
@@ -424,7 +411,7 @@ function MainApp() {
   }, [sabads.length, aartis.length, bhajans.length]);
 
   useEffect(() => {
-    // Premium Migration: Hydrate async Zustand Native Preferences
+    // Hydrate store from Preferences
     useAppStore.getState().hydrateStore();
   }, []);
 
@@ -483,10 +470,7 @@ function MainApp() {
 
   const playOmVishnu = async () => {
     if (Capacitor.isNativePlatform() && settings.jaapAudioUrl) {
-       // Premium Setup: Prevent DOM element being killed in background/doze mode
-       // Use Native Playlist API instead for Background Safety
        if (globalAudio) globalAudio.pause();
-       // Import Playlist temporarily if needed or just use globalAudio
        globalAudio.src = settings.jaapAudioUrl;
        globalAudio.volume = 0.5;
        globalAudio.play().catch(()=>{});
@@ -886,7 +870,7 @@ function MainApp() {
     const timer = setTimeout(async () => {
       try {
         const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(val)}&format=json&limit=5&accept-language=hi,en&addressdetails=1&countrycodes=in`,
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(val)}&format=json&limit=5&accept-language=en&addressdetails=1&countrycodes=in`,
           { headers: { 'User-Agent': 'SabadwaniApp/1.0' } }
         );
         const data = await res.json();
@@ -929,10 +913,17 @@ function MainApp() {
           const request = await Geolocation.requestPermissions();
           if (request.location !== 'granted') {
             // BUG FIX: Old code just showed error text. Now opens Settings directly.
-            setChoghadiyaError("लोकेशन की अनुमति नहीं मिली। कृपया सेटिंग्स में जाकर अनुमति दें या सीधे अपने शहर का नाम लिखकर खोजें।");
+            setChoghadiyaError("लोकेशन की अनुमति नहीं मिली। कृपया सेटिंग्स में जाकर परमिशन दें।");
             setChoghadiyaLoading(false);
             // Open app settings so user can grant permission in one tap
-            try { await CapacitorApp.openUrl({ url: 'app-settings:' }); } catch (_) {}
+            try {
+              await NativeSettings.open({
+                optionAndroid: AndroidSettings.ApplicationDetails,
+                optionIOS: IOSSettings.App
+              });
+            } catch (e) {
+              console.warn("Could not open settings", e);
+            }
             return;
           }
         }
@@ -956,7 +947,7 @@ function MainApp() {
 
       const { latitude, longitude } = position.coords;
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&accept-language=hi,en&addressdetails=1`,
+        `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&accept-language=en&addressdetails=1`,
         { headers: { 'User-Agent': 'SabadwaniApp/1.0' } }
       );
       const data = await res.json();
@@ -1284,11 +1275,33 @@ function MainApp() {
         } else {
           return; // End of list
         }
-        const nextItem = currentList[nextIndex];
+        let nextItem = currentList[nextIndex];
+        
+        // If this is an automatic transition and the next item has no audio, skip until we find one
+        if (isAutoNext) {
+          let searchIndex = nextIndex;
+          while (nextItem && !nextItem.audioUrl && searchIndex < currentList.length - 1) {
+            searchIndex++;
+            nextItem = currentList[searchIndex];
+          }
+          if (!nextItem || !nextItem.audioUrl) {
+             return; // Nowhere to auto-progress
+          }
+        }
+        
         if (nextItem) {
           // Use startTrack so AudioEngine loads immediately (single click, no delay)
           if (nextItem.audioUrl) {
             const state = useAppStore.getState();
+            if (globalAudio) {
+              globalAudio.pause();
+              globalAudio.src = nextItem.audioUrl;
+              globalAudio.load();
+              
+              if (isAutoNext || state.audioIsPlaying || state.autoPlayAudio) {
+                globalAudio.play().catch(e => console.error("Sync play failed", e));
+              }
+            }
             state.startTrack(nextItem, isAutoNext || state.audioIsPlaying || state.autoPlayAudio);
           } else {
             setPlayingSabad(nextItem);
@@ -1308,10 +1321,28 @@ function MainApp() {
         } else {
           return; // Start of list
         }
-        const prevItem = currentList[prevIndex];
+        
+        let prevItem = currentList[prevIndex];
+        
+        if (document.visibilityState === 'hidden') {
+          let searchIndex = prevIndex;
+          while (prevItem && !prevItem.audioUrl && searchIndex > 0) {
+            searchIndex--;
+            prevItem = currentList[searchIndex];
+          }
+        }
+        
         if (prevItem) {
           if (prevItem.audioUrl) {
             const state = useAppStore.getState();
+            if (globalAudio) {
+              globalAudio.pause();
+              globalAudio.src = prevItem.audioUrl;
+              globalAudio.load();
+              if (state.audioIsPlaying || state.autoPlayAudio) {
+                globalAudio.play().catch(e => console.error("Sync play failed", e));
+              }
+            }
             state.startTrack(prevItem, state.audioIsPlaying || state.autoPlayAudio);
           } else {
             setPlayingSabad(prevItem);
@@ -1625,6 +1656,16 @@ function MainApp() {
         await signInAnonymously(auth);
       }
 
+      const currentUserUid = auth?.currentUser?.uid;
+      if (currentUserUid) {
+        const blockedDoc = await getDoc(doc(db, "blockedUsers", currentUserUid));
+        if (blockedDoc.exists()) {
+          showToast("सुरक्षा कारणों से आपको सामग्री साझा करने से रोक (Block) दिया गया है।");
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
       if (contribAudioFile) {
         finalAudioUrl = await uploadFileToStorage(contribAudioFile, "audio");
       }
@@ -1770,8 +1811,7 @@ function MainApp() {
   const approvePost = async (post: any) => {
     const isOnline = await checkIsOnline();
     if (!isOnline) {
-      showToast("इंटरनेट कनेक्शन उपलब्ध नहीं है। कृपया अपना नेटवर्क जांचें और पुनः प्रयास करें।");
-      return;
+      return "offline";
     }
     if (!db) {
       showToast("Firebase is not configured.");
@@ -1817,8 +1857,7 @@ function MainApp() {
   const rejectPost = async (post: any) => {
     const isOnline = await checkIsOnline();
     if (!isOnline) {
-      showToast("इंटरनेट कनेक्शन उपलब्ध नहीं है। कृपया अपना नेटवर्क जांचें और पुनः प्रयास करें।");
-      return;
+      return "offline";
     }
     setConfirmDialog({
       isOpen: true,
@@ -1865,6 +1904,61 @@ function MainApp() {
     });
   };
 
+  const blockUser = async (post: any) => {
+    const isOnline = await checkIsOnline();
+    if (!isOnline) {
+      return "offline";
+    }
+    if (!post.userId) {
+      showToast("इस पोस्ट के साथ कोई यूजर आईडी संलग्न नहीं है, इसलिए इसे ब्लॉक नहीं किया जा सकता।");
+      return;
+    }
+
+    setConfirmDialog({
+      isOpen: true,
+      title: "यूजर को ब्लॉक करें",
+      message: "क्या आप वाकई इस यूजर को ब्लॉक करना चाहते हैं? भविष्य में वे कोई योगदान नहीं दे पाएंगे और यह पोस्ट डिलीट कर दी जाएगी।",
+      onConfirm: async () => {
+        if (!db) {
+          showToast("Firebase is not configured.");
+          return;
+        }
+        try {
+          // Add to blockedUsers collection
+          await setDoc(doc(db, "blockedUsers", post.userId), {
+            blockedAt: new Date().toISOString(),
+            reason: "Admin blocked via Community Posts"
+          });
+          
+          // Delete associated files
+          if (storage) {
+            if (post.audioUrl && post.audioUrl.includes("firebasestorage")) {
+              try {
+                const path = getPathFromURL(post.audioUrl);
+                if (path) await deleteObject(ref(storage, path));
+              } catch (e: any) {}
+            }
+            if (post.photoUrl && post.photoUrl.includes("firebasestorage")) {
+              try {
+                const path = getPathFromURL(post.photoUrl);
+                if (path) await deleteObject(ref(storage, path));
+              } catch (e: any) {}
+            }
+          }
+          
+          // Delete from pending posts
+          await deleteDoc(doc(db, "pendingPosts", post.id));
+          showToast("यूजर को सफलतापूर्वक ब्लॉक कर दिया गया है।");
+        } catch (error: any) {
+          if (error.message?.includes("Missing or insufficient permissions")) {
+             showToast("ब्लॉक करने की अनुमति नहीं है।");
+          } else {
+             showToast("यूजर को ब्लॉक करने में त्रुटि हुई।");
+          }
+        }
+      }
+    });
+  };
 
   return (
     <div className="min-h-screen max-w-md mx-auto relative shadow-2xl bg-paper overflow-x-hidden flex flex-col">
@@ -1896,7 +1990,7 @@ function MainApp() {
         <AnimatePresence mode="wait">
           <Suspense fallback={<div className="flex-1 bg-paper flex items-center justify-center min-h-screen"><img src="/logo.png" alt="Loading" className="w-16 h-16 opacity-50 animate-pulse" /></div>}>
             <Routes location={location} key={location.pathname}>
-            <Route path="/" element={<HomeScreen isLoading={isLoading} processedMeles={processedMeles} badhais={badhais} dailyThought={dailyThought} notices={notices} handleOpenCategory={handleOpenCategory} navigateTo={navigateTo} />} />
+            <Route path="/" element={<HomeScreen processedMeles={processedMeles} badhais={badhais} dailyThought={dailyThought} notices={notices} handleOpenCategory={handleOpenCategory} navigateTo={navigateTo} />} />
             <Route path="/search" element={<SearchScreen searchQuery={searchQuery} setSearchQuery={setSearchQuery} isLoading={isLoading} sabads={sabads} aartis={aartis} bhajans={bhajans} sakhis={sakhis} mantras={mantras} meles={meles} matchSearch={(title, text) => {
               if (!searchQuery) return false;
               const query = searchQuery.toLowerCase().trim();
@@ -1951,8 +2045,8 @@ function MainApp() {
             }} handleSabadClick={handleSabadClick} setSelectedSabad={setSelectedSabad} setSelectedCategory={setSelectedCategory} setAutoPlayAudio={setAutoPlayAudio} navigateTo={navigateTo} />} />
             <Route path="/mala" element={<JaapMalaScreen malaCount={malaCount} malaLaps={malaLaps} onBack={() => navigateTo('home')} onJap={() => { vibrate(12); playOmVishnu(); if (malaCount + 1 >= 108) { vibrate([50, 30, 100, 30, 50]); setMalaCount(0); setMalaLaps(l => l + 1); } else { setMalaCount(c => c + 1); } }} onReset={() => { setConfirmDialog({ isOpen: true, title: "माला रीसेट", message: "क्या आप वाकई माला रीसेट करना चाहते हैं?", onConfirm: () => { setMalaCount(0); setMalaLaps(0); } }); }} />} />
             <Route path="/niyam" element={<NiyamScreen niyamList={niyamList} navigateTo={navigateTo} />} />
-            <Route path="/shabad_list" element={<ShabadListScreen isLoading={isLoading} sabads={sabads} handleBack={handleBack} handleSabadClick={handleSabadClick} />} />
-            <Route path="/category_list" element={<CategoryListScreen isLoading={isLoading} selectedCategory={selectedCategory} aartis={aartis} bhajans={bhajans} sakhis={sakhis} mantras={mantras} handleBack={handleBack} navigateTo={navigateTo} setSelectedSabad={setSelectedSabad} setAutoPlayAudio={setAutoPlayAudio} />} />
+            <Route path="/shabad_list" element={<ShabadListScreen isLoading={isLoading} sabads={sabads} handleBack={handleBack} handleSabadClick={handleSabadClick} setIsAudioActive={setIsAudioActive} />} />
+            <Route path="/category_list" element={<CategoryListScreen isLoading={isLoading} selectedCategory={selectedCategory} aartis={aartis} bhajans={bhajans} sakhis={sakhis} mantras={mantras} handleBack={handleBack} navigateTo={navigateTo} setSelectedSabad={setSelectedSabad} setAutoPlayAudio={setAutoPlayAudio} setIsAudioActive={setIsAudioActive} />} />
             <Route path="/community_posts" element={<CommunityPostsScreen isLoading={isLoading} recentApprovedPosts={recentApprovedPosts} myPendingPosts={myPendingPosts} handleBack={handleBack} navigateTo={navigateTo} setSelectedSabad={setSelectedSabad} setSelectedCategory={setSelectedCategory} setAutoPlayAudio={setAutoPlayAudio} />} />
             <Route path="/reading" element={<ReadingScreen currentScreen="reading" selectedSabad={selectedSabad} selectedCategory={selectedCategory} sabads={sabads} aartis={aartis} bhajans={bhajans} sakhis={sakhis} mantras={mantras} readingTheme={readingTheme} setReadingTheme={setReadingTheme} hasSeenSwipeHint={hasSeenSwipeHint} handleBack={handleBack} fontSize={fontSize} setFontSize={setFontSize} isAutoScrolling={isAutoScrolling} toggleAutoScroll={toggleAutoScroll} autoScrollSpeed={autoScrollSpeed} cycleAutoScrollSpeed={cycleAutoScrollSpeed} toggleBookmark={toggleBookmark} bookmarks={bookmarks} handleShare={handleShare} autoPlayAudio={autoPlayAudio} setAutoPlayAudio={setAutoPlayAudio} playingSabad={playingSabad} setPlayingSabad={setPlayingSabad} setIsAudioActive={setIsAudioActive} handleAudioEnded={handleAudioEnded} handleSwipe={handleSwipe} handleAudioSwipe={handleAudioSwipe} showToast={showToast} settings={settings} vibrate={vibrate} slideDir={slideDir} bindGestures={bindGestures} />} />
             <Route path="/audio_reading" element={<ReadingScreen currentScreen="audio_reading" selectedSabad={selectedSabad} selectedCategory={selectedCategory} sabads={sabads} aartis={aartis} bhajans={bhajans} sakhis={sakhis} mantras={mantras} readingTheme={readingTheme} setReadingTheme={setReadingTheme} hasSeenSwipeHint={hasSeenSwipeHint} handleBack={handleBack} fontSize={fontSize} setFontSize={setFontSize} isAutoScrolling={isAutoScrolling} toggleAutoScroll={toggleAutoScroll} autoScrollSpeed={autoScrollSpeed} cycleAutoScrollSpeed={cycleAutoScrollSpeed} toggleBookmark={toggleBookmark} bookmarks={bookmarks} handleShare={handleShare} autoPlayAudio={autoPlayAudio} setAutoPlayAudio={setAutoPlayAudio} playingSabad={playingSabad} setPlayingSabad={setPlayingSabad} setIsAudioActive={setIsAudioActive} handleAudioEnded={handleAudioEnded} handleSwipe={handleSwipe} handleAudioSwipe={handleAudioSwipe} showToast={showToast} settings={settings} vibrate={vibrate} slideDir={slideDir} bindGestures={bindGestures} />} />
@@ -1973,7 +2067,7 @@ function MainApp() {
               addDoc, collection, serverTimestamp, setContribError, contribError, pendingContributions, setPendingContributions,
               doc, updateDoc, deleteDoc, setConfirmDialog, editModalOpen, setEditModalOpen, editAudioError, editPhotoError,
               setEditAudioError, setEditPhotoError, editContribution, setEditContribution, handleUpdateContribution, handleDeleteContribution, handleFileChange,
-              contribAudioFile, uploadFileToStorage, contribPhotoFile, contribSequence, setContribSequence, setContribAudioFile, setContribPhotoFile, handleFileSelect, uploadProgress, sabads, openEditModal, handleDelete, aartis, bhajans, sakhis, mantras, thoughts, meles, notices, badhais, toggleNoticeStatus, toggleBadhaiStatus, settings, setSettings, setSettingsLogoFile, settingsLogoFile, setSettingsQrCodeFile, settingsQrCodeFile, setSettingsJaapAudioFile, settingsJaapAudioFile, handleSaveSettings, pendingPosts, approvePost, rejectPost, editItemData, handleEditSave, setEditItemData
+              contribAudioFile, uploadFileToStorage, contribPhotoFile, contribSequence, setContribSequence, setContribAudioFile, setContribPhotoFile, handleFileSelect, uploadProgress, sabads, openEditModal, handleDelete, aartis, bhajans, sakhis, mantras, thoughts, meles, notices, badhais, toggleNoticeStatus, toggleBadhaiStatus, settings, setSettings, setSettingsLogoFile, settingsLogoFile, setSettingsQrCodeFile, settingsQrCodeFile, setSettingsJaapAudioFile, settingsJaapAudioFile, handleSaveSettings, pendingPosts, approvePost, rejectPost, blockUser, editItemData, handleEditSave, setEditItemData
             }} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
@@ -2005,8 +2099,10 @@ function MainApp() {
                   playingSabad={playingSabad}
                   selectedSabad={selectedSabad}
                   preventAutoPause={true}
+                  onEnded={handleAudioEnded}
                   onClose={() => {
-                    audioEngine.stopAndClear();
+                    if (globalAudio) globalAudio.pause();
+                    clearMediaSession();
                     setIsMiniPlayerDismissed(true);
                     setIsAudioActive(false);
                     setPlayingSabad(null);
