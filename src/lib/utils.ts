@@ -1,6 +1,7 @@
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { Network } from '@capacitor/network';
 import { Capacitor } from '@capacitor/core';
+import { App as CapacitorApp } from '@capacitor/app';
 
 export const checkIsOnline = async () => {
   if (Capacitor.isNativePlatform()) {
@@ -23,8 +24,7 @@ export const vibrate = (pattern: number | number[] = 50) => {
     setTimeout(async () => {
       try {
         // Check if app is in foreground before vibrating to prevent background crashes
-        const { App } = await import('@capacitor/app');
-        const state = await App.getState();
+        const state = await CapacitorApp.getState();
         if (!state.isActive) return;
 
         // Use Haptics for native feel
