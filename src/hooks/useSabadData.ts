@@ -226,6 +226,7 @@ export function useSabadData() {
 
   return {
     isLoading, sabads, aartis, bhajans, sakhis, mantras,
-    thoughts, meles, notices, badhais, pendingPosts, settings, setSettings
+    thoughts, meles, notices, badhais, pendingPosts, settings, setSettings,
+    setNotices, setBadhais
   };
 }

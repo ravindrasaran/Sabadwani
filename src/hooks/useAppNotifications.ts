@@ -64,32 +64,42 @@ export const useAppNotifications = (db: Firestore, showToast: (msg: string) => v
       let ignored = await getPref(IGNORED_NOTIFS_KEY, []);
       const read = await getPref(READ_NOTIFS_KEY, []);
 
-      // 2. If it's a first time user (has not cleared the welcome notification),
-      // we ignore all CURRENT fetched notifications so they only see Welcome.
-      if (!seenWelcome && fetchedNotifs.length > 0) {
+      // NEW LOGIC: Old user detection.
+      // If they have read notifications that are not just "welcome", they are an old user.
+      const hasReadOtherNotifs = read.some((id: string) => id !== "welcome");
+      
+      if (!seenWelcome && hasReadOtherNotifs) {
+        // Automatically consider an old user as having seen the welcome
+        await setPref(WELCOME_KEY, true);
+        setHasSeenWelcomeState(true);
+      }
+
+      // 2. Filter out ignored notifications
+      const visibleNotifs = fetchedNotifs.filter(n => !ignored.includes(n.id));
+
+      // 3. Override "read" status based on local array (don't trust global)
+      let listNotifs = visibleNotifs.map(n => ({ ...n, read: read.includes(n.id) }));
+
+      // 4. Fresh user guarantee: If they haven't seen welcome and aren't an old user,
+      // they MUST only see the welcome notification.
+      if (!seenWelcome && !hasReadOtherNotifs) {
+        // Force list to only be the welcome notification
+        listNotifs = [{
+          id: "welcome",
+          title: "स्वागत है!",
+          message: "सबदवाणी ऐप में आपका स्वागत है। यहाँ आपको गुरु जम्भेश्वर भगवान की वाणी और बिश्नोई समाज की जानकारी मिलेगी।",
+          date: "अभी",
+          read: read.includes("welcome"),
+        }];
+        
+        // Also ensure all currently fetched DB notifications are permanently ignored 
+        // for this user so they don't suddenly appear when they mark Welcome as read.
         const unseenIds = fetchedNotifs.map(n => n.id).filter(id => !ignored.includes(id));
         if (unseenIds.length > 0) {
           ignored = [...ignored, ...unseenIds];
           await setPref(IGNORED_NOTIFS_KEY, ignored);
           setIgnoredIds(ignored);
         }
-      }
-
-      // 3. Filter out ignored notifications
-      const visibleNotifs = fetchedNotifs.filter(n => !ignored.includes(n.id));
-
-      // 4. Override "read" status based on local array (don't trust global)
-      const listNotifs = visibleNotifs.map(n => ({ ...n, read: read.includes(n.id) }));
-
-      // 5. Inject local welcome notification for first-time users
-      if (!seenWelcome) {
-        listNotifs.unshift({
-          id: "welcome",
-          title: "स्वागत है!",
-          message: "सबदवाणी ऐप में आपका स्वागत है। यहाँ आपको गुरु जम्भेश्वर भगवान की वाणी और बिश्नोई समाज की जानकारी मिलेगी।",
-          date: "अभी",
-          read: read.includes("welcome"),
-        });
       }
 
       setNotifications((prev) => {

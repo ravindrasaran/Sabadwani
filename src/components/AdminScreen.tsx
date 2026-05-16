@@ -15,18 +15,14 @@ export default function AdminScreen(props: any) {
 
   const [actionError, setActionError] = useState<{ id: string, msg: string } | null>(null);
   const [addContentError, setAddContentError] = useState("");
-  const [togglingStates, setTogglingStates] = useState<Record<string, boolean>>({});
-
-  const handleToggleNotice = async (n: any) => {
-    setTogglingStates(prev => ({ ...prev, [n.id]: true }));
-    await toggleNoticeStatus(n.id, n.isActive);
-    setTogglingStates(prev => ({ ...prev, [n.id]: false }));
+  const handleToggleNotice = (n: any) => {
+    // Fire and forget for instant UI update
+    toggleNoticeStatus(n.id, n.isActive).catch(() => {});
   };
 
-  const handleToggleBadhai = async (b: any) => {
-    setTogglingStates(prev => ({ ...prev, [b.id]: true }));
-    await toggleBadhaiStatus(b.id, b.isActive);
-    setTogglingStates(prev => ({ ...prev, [b.id]: false }));
+  const handleToggleBadhai = (b: any) => {
+    // Fire and forget for instant UI update
+    toggleBadhaiStatus(b.id, b.isActive).catch(() => {});
   };
 
 
@@ -139,7 +135,7 @@ export default function AdminScreen(props: any) {
                           await addDoc(collection(db, "sakhis"), newContent);
                           showToast("नई साखी सफलतापूर्वक जोड़ी गई!");
                         } else if (contribType === "सुविचार") {
-                          await addDoc(collection(db, "thoughts"), { text: contribText, author: contribAuthor || "गुरु जम्भेश्वर" });
+                          await addDoc(collection(db, "thoughts"), { text: contribText, author: contribAuthor || "श्री जम्भेश्वर भगवान" });
                           showToast("नया सुविचार सफलतापूर्वक जोड़ा गया!");
                         }
                         
@@ -401,7 +397,7 @@ export default function AdminScreen(props: any) {
                         onChange={(e) => setContribAuthor(e.target.value)}
                         type="text"
                         className="w-full p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none transition-colors"
-                        placeholder="गुरु जम्भेश्वर"
+                        placeholder="श्री जम्भेश्वर भगवान"
                       />
                     </div>
                   )}
@@ -700,13 +696,10 @@ export default function AdminScreen(props: any) {
                           <div className="flex gap-2">
                             <button
                               onClick={() => handleToggleBadhai(b)}
-                              disabled={togglingStates[b.id]}
-                              className={`p-1.5 rounded-lg ${b.isActive ? "text-orange-500 hover:bg-orange-50" : "text-green-500 hover:bg-green-50"} disabled:opacity-50`}
+                              className={`p-1.5 rounded-lg ${b.isActive ? "text-orange-500 hover:bg-orange-50" : "text-green-500 hover:bg-green-50"}`}
                               title={b.isActive ? "Pause" : "Resume"}
                             >
-                              {togglingStates[b.id] ? (
-                                <div className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
-                              ) : b.isActive ? (
+                              {b.isActive ? (
                                 <Pause className="w-4 h-4" />
                               ) : (
                                 <Play className="w-4 h-4" />
@@ -747,13 +740,10 @@ export default function AdminScreen(props: any) {
                           <div className="flex gap-2">
                             <button
                               onClick={() => handleToggleNotice(n)}
-                              disabled={togglingStates[n.id]}
-                              className={`p-1.5 rounded-lg ${n.isActive ? "text-orange-500 hover:bg-orange-50" : "text-green-500 hover:bg-green-50"} disabled:opacity-50`}
+                              className={`p-1.5 rounded-lg ${n.isActive ? "text-orange-500 hover:bg-orange-50" : "text-green-500 hover:bg-green-50"}`}
                               title={n.isActive ? "Pause" : "Resume"}
                             >
-                              {togglingStates[n.id] ? (
-                                <div className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
-                              ) : n.isActive ? (
+                              {n.isActive ? (
                                 <Pause className="w-4 h-4" />
                               ) : (
                                 <Play className="w-4 h-4" />
@@ -1250,7 +1240,7 @@ export default function AdminScreen(props: any) {
                             })
                           }
                           className="w-full p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none"
-                          placeholder="गुरु जम्भेश्वर"
+                          placeholder="श्री जम्भेश्वर भगवान"
                         />
                       </div>
                     )}

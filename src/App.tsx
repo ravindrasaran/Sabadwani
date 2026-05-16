@@ -376,7 +376,7 @@ function MainApp() {
     showToast(`स्पीड: ${autoScrollSpeed >= 3 ? 'धीमी' : autoScrollSpeed === 1 ? 'मध्यम' : 'तेज़'}`);
   };
 
-  const { isLoading, sabads, aartis, bhajans, sakhis, mantras, thoughts, meles, notices, badhais, pendingPosts, settings, setSettings } = useSabadData();
+  const { isLoading, sabads, aartis, bhajans, sakhis, mantras, thoughts, meles, notices, badhais, pendingPosts, settings, setSettings, setNotices, setBadhais } = useSabadData();
 
 
 
@@ -417,7 +417,7 @@ function MainApp() {
   }, []);
 
   // --- Daily Thought ---
-  const [dailyThought, setDailyThought] = useState<any>(thoughts[0] || { text: "विष्णु विष्णु तू भण रे प्राणी", author: "श्री गुरु जम्भेश्वर भगवान" });
+  const [dailyThought, setDailyThought] = useState<any>(thoughts[0] || { text: "विष्णु विष्णु तू भण रे प्राणी", author: "श्री जम्भेश्वर भगवान" });
 
   useEffect(() => {
     // Select thought based on day of year to change daily
@@ -429,7 +429,7 @@ function MainApp() {
     if (thoughts.length > 0) {
       setDailyThought(thoughts[dayOfYear % thoughts.length]);
     } else {
-      setDailyThought({ text: "विष्णु विष्णु तू भण रे प्राणी", author: "श्री गुरु जम्भेश्वर भगवान" });
+      setDailyThought({ text: "विष्णु विष्णु तू भण रे प्राणी", author: "श्री जम्भेश्वर भगवान" });
     }
   }, [thoughts]);
 
@@ -607,9 +607,15 @@ function MainApp() {
       return;
     }
     if (!db) return;
+    
+    // Optimistic UI update
+    setNotices(prev => prev.map(n => n.id === id ? { ...n, isActive: !currentStatus, active: !currentStatus } : n));
+    
     try {
       await updateDoc(doc(db, "notices", id), { isActive: !currentStatus });
     } catch (error: any) {
+      // Revert if error
+      setNotices(prev => prev.map(n => n.id === id ? { ...n, isActive: currentStatus, active: currentStatus } : n));
       showToast("स्टेटस बदलने में त्रुटि हुई।");
     }
   };
@@ -621,9 +627,15 @@ function MainApp() {
       return;
     }
     if (!db) return;
+    
+    // Optimistic UI update
+    setBadhais(prev => prev.map(b => b.id === id ? { ...b, isActive: !currentStatus, active: !currentStatus } : b));
+    
     try {
       await updateDoc(doc(db, "badhais", id), { isActive: !currentStatus });
     } catch (error: any) {
+      // Revert if error
+      setBadhais(prev => prev.map(b => b.id === id ? { ...b, isActive: currentStatus, active: currentStatus } : b));
       showToast("स्टेटस बदलने में त्रुटि हुई।");
     }
   };
@@ -713,7 +725,7 @@ function MainApp() {
         if (editItemData.id) {
           await updateDoc(doc(db, "thoughts", editItemData.id), {
             text: editItemData.text,
-            author: editItemData.author || "गुरु जम्भेश्वर",
+            author: editItemData.author || "श्री जम्भेश्वर भगवान",
             updatedAt: serverTimestamp()
           });
         }

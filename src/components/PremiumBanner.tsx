@@ -344,7 +344,7 @@ const PremiumBanner = ({ meles, badhais, dailyThought, notices }: any) => {
                 "{typeof dailyThought === 'string' ? dailyThought : dailyThought?.text || ""}"
               </p>
               <p className="text-[10px] opacity-80 text-right font-semibold mt-1">
-                - {dailyThought?.author || "गुरु जम्भेश्वर"}
+                - {dailyThought?.author || "श्री जम्भेश्वर भगवान"}
               </p>
             </div>
           </motion.div>
