@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { collection, onSnapshot, updateDoc, doc, Firestore } from "firebase/firestore";
+import { collection, onSnapshot, Firestore } from "firebase/firestore";
 import { Preferences } from "@capacitor/preferences";
 
 export type Notification = {
@@ -10,61 +10,92 @@ export type Notification = {
   read: boolean;
 };
 
-// BUG FIX: Old code used localStorage for hasSeenWelcome.
-// On Android/iOS, localStorage can be cleared by the OS under memory pressure,
-// causing the welcome message to reappear after every low-memory restart.
-// Capacitor Preferences (backed by SharedPreferences on Android, NSUserDefaults
-// on iOS) is persistent and the correct storage for native apps.
 const WELCOME_KEY = "sabadwani_hasSeenWelcome";
+const READ_NOTIFS_KEY = "sabadwani_readNotifications";
+const IGNORED_NOTIFS_KEY = "sabadwani_ignoredNotifications";
 
-const getHasSeenWelcome = async (): Promise<boolean> => {
+const getPref = async (key: string, defaultValue: any) => {
   try {
-    const { value } = await Preferences.get({ key: WELCOME_KEY });
-    return value === "true";
+    const { value } = await Preferences.get({ key });
+    return value ? JSON.parse(value) : defaultValue;
   } catch {
-    return false;
+    return defaultValue;
   }
 };
 
-const setHasSeenWelcome = async () => {
+const setPref = async (key: string, value: any) => {
   try {
-    await Preferences.set({ key: WELCOME_KEY, value: "true" });
+    await Preferences.set({ key, value: JSON.stringify(value) });
   } catch {}
 };
 
 export const useAppNotifications = (db: Firestore, showToast: (msg: string) => void) => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const [readIds, setReadIds] = useState<string[]>([]);
+  const [, setIgnoredIds] = useState<string[]>([]);
+  const [, setHasSeenWelcomeState] = useState<boolean>(true);
+
+  // Load preferences first
+  useEffect(() => {
+    const loadPrefs = async () => {
+      const seenWelcome = await getPref(WELCOME_KEY, false);
+      const read = await getPref(READ_NOTIFS_KEY, []);
+      const ignored = await getPref(IGNORED_NOTIFS_KEY, []);
+      
+      setHasSeenWelcomeState(seenWelcome);
+      setReadIds(read);
+      setIgnoredIds(ignored);
+    };
+    loadPrefs();
+  }, []);
 
   useEffect(() => {
     if (!db) return;
 
     const unsubNotifications = onSnapshot(collection(db, "notifications"), async (snapshot) => {
-      let newNotifs: Notification[] = [];
+      let fetchedNotifs: Notification[] = [];
       if (!snapshot.empty) {
-        newNotifs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as Notification));
+        fetchedNotifs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as Notification));
       }
 
-      // Inject local welcome notification for first-time users
-      const hasSeenWelcome = await getHasSeenWelcome();
-      if (!hasSeenWelcome) {
-        newNotifs.unshift({
+      // 1. Process prefs inline to avoid race conditions with state
+      const seenWeclome = await getPref(WELCOME_KEY, false);
+      let ignored = await getPref(IGNORED_NOTIFS_KEY, []);
+      const read = await getPref(READ_NOTIFS_KEY, []);
+
+      // 2. If it's a first time user, ignore all CURRENT fetched notifications
+      if (!seenWeclome && ignored.length === 0 && fetchedNotifs.length > 0) {
+        const allFetchedIds = fetchedNotifs.map(n => n.id);
+        await setPref(IGNORED_NOTIFS_KEY, allFetchedIds);
+        ignored = allFetchedIds;
+        setIgnoredIds(ignored);
+      }
+
+      // 3. Filter out ignored notifications
+      const visibleNotifs = fetchedNotifs.filter(n => !ignored.includes(n.id));
+
+      // 4. Override "read" status based on local array (don't trust global)
+      const listNotifs = visibleNotifs.map(n => ({ ...n, read: read.includes(n.id) }));
+
+      // 5. Inject local welcome notification for first-time users
+      if (!seenWeclome) {
+        listNotifs.unshift({
           id: "welcome",
           title: "स्वागत है!",
           message: "सबदवाणी ऐप में आपका स्वागत है। यहाँ आपको गुरु जम्भेश्वर भगवान की वाणी और बिश्नोई समाज की जानकारी मिलेगी।",
           date: "अभी",
-          read: false,
+          read: read.includes("welcome"),
         });
       }
 
       setNotifications((prev) => {
         const prevIds = new Set(prev.map((n) => n.id));
-        const added = newNotifs.filter((n) => !prevIds.has(n.id) && n.id !== "welcome");
+        const added = listNotifs.filter((n) => !prevIds.has(n.id) && n.id !== "welcome");
         if (added.length > 0 && prev.length > 0) {
           showToast(`नई सूचना: ${added[0].title}`);
         }
-        return newNotifs;
+        return listNotifs;
       });
     });
 
@@ -73,33 +104,31 @@ export const useAppNotifications = (db: Firestore, showToast: (msg: string) => v
 
   const markRead = async (id: string) => {
     if (id === "welcome") {
-      await setHasSeenWelcome();
-      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
-      return;
+      await setPref(WELCOME_KEY, true);
+      setHasSeenWelcomeState(true);
     }
 
-    // Optimistic UI update
+    const newReadIds = [...readIds, id];
+    setReadIds([...new Set(newReadIds)]);
+    await setPref(READ_NOTIFS_KEY, [...new Set(newReadIds)]);
+    
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
-
-    if (!db) return;
-    try {
-      updateDoc(doc(db, "notifications", id), { read: true }).catch(() => {});
-    } catch {}
   };
 
   const markAllRead = async () => {
-    await setHasSeenWelcome();
+    await setPref(WELCOME_KEY, true);
+    setHasSeenWelcomeState(true);
 
-    const unread = notifications.filter((n) => !n.read && n.id !== "welcome");
+    const allNotifIds = notifications.map(n => n.id);
+    const newReadIds = [...readIds, ...allNotifIds];
+    
+    setReadIds([...new Set(newReadIds)]);
+    await setPref(READ_NOTIFS_KEY, [...new Set(newReadIds)]);
+
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-
-    if (!db) return;
-    try {
-      unread.forEach((n) => {
-        updateDoc(doc(db, "notifications", n.id), { read: true }).catch(() => {});
-      });
-    } catch {}
   };
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
 
   return {
     showNotifications,
@@ -110,3 +139,4 @@ export const useAppNotifications = (db: Firestore, showToast: (msg: string) => v
     markAllRead,
   };
 };
+

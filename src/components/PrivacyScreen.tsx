@@ -22,8 +22,8 @@ export default function PrivacyScreen({ navigateTo }: PrivacyScreenProps) {
         <ShieldCheck className="w-20 h-20 mx-auto text-accent mb-4" />
         <div className="bg-white/80 p-6 rounded-3xl shadow-md border border-ink/10 text-left space-y-4 text-sm md:text-base text-ink">
           <p className="font-bold text-lg mb-2">गोपनीयता नीति (Privacy Policy)</p>
-          <p className="text-xs text-ink/70 mb-4">अंतिम अपडेट: 18 अप्रैल 2026</p>
-          <p>आपकी गोपनीयता हमारे लिए अत्यंत महत्वपूर्ण है। यह ऐप (सबदवाणी / Shabadwani) Google Play Store की नीतियों का पूर्ण रूप से पालन करता है। यह गोपनीयता नीति बताती है कि हम आपकी जानकारी कैसे एकत्र, उपयोग और सुरक्षित करते हैं।</p>
+          <p className="text-xs text-ink/70 mb-4">अंतिम अपडेट: 14 मई 2026</p>
+          <p>आपकी गोपनीयता हमारे लिए अत्यंत महत्वपूर्ण है। यह ऐप (सबदवाणी / Shabadwani) Google Play Store की नीतियों का पूर्ण रूप से पालन करता है। यह गोपनीयता नीति बताती है कि हम आपकी जानकारी कैसे एकत्र, उपयोग और सुरक्षित करते हैं。</p>
           
           <h3 className="font-bold mt-4 text-accent-dark">1. जानकारी का संग्रह (Data Collection)</h3>
           <ul className="list-disc pl-5 space-y-1 text-ink/90">

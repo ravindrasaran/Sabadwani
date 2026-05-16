@@ -3,6 +3,7 @@ import { motion } from "motion/react";
 import { Play, Pause, ChevronLeft, ChevronRight, Loader2, AlertCircle, X } from "lucide-react";
 import { globalAudio, setGlobalAudioCallbacks, updateMediaSessionMetadata, updateMediaSessionState, updateMediaSessionPosition, setupGlobalMediaSessionListener } from "../lib/audioGlobals";
 import { checkIsOnline, vibrate } from "../lib/utils";
+import { AudioCacheService } from "../lib/AudioCacheService";
 
 const logger = {
   error: (...args: any[]) => {
@@ -175,66 +176,69 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
 
   useEffect(() => {
     if (globalAudio && url) {
-      // Parse URLs to ensure accurate comparison
-      const currentSrc = globalAudio.src;
-      const newSrc = new URL(url, window.location.origin).href;
-      
-      if (currentSrc !== newSrc) {
-        if (preventAutoPause) {
-          // Just update local state to reflect that THIS player is not playing the current audio
-          setIsPlaying(false);
-          setProgress(0);
-          return;
+      const initAudio = async () => {
+        // Find local url if cached
+        let finalUrl = url;
+        try {
+          finalUrl = await AudioCacheService.getLocalUrl(url);
+        } catch (e) {
+          logger.error("AudioCache error:", e);
         }
 
-        globalAudio.pause();
-        globalAudio.src = url;
-        globalAudio.load();
+        const currentSrc = globalAudio.src;
+        const newSrc = new URL(finalUrl, window.location.origin).href;
         
-        if (autoPlay) {
-          playAttempted.current = true;
+        if (currentSrc !== newSrc) {
+          if (preventAutoPause) {
+            setIsPlaying(false);
+            setProgress(0);
+            return;
+          }
+
+          globalAudio.pause();
+          globalAudio.src = finalUrl;
+          globalAudio.load();
           
-          const attemptPlay = () => {
-            setLocalError(null);
+          if (autoPlay) {
+            playAttempted.current = true;
             
-            if (globalAudio) {
-              setIsPlaying(true);
-              const playPromise = globalAudio.play();
-              if (playPromise !== undefined) {
-                playPromise.catch(async (e) => {
-                  logger.error("AutoPlay failed:", e);
-                  setIsBuffering(false);
-                  setIsPlaying(false);
-                  
-                  let isOnline = await checkIsOnline();
-                  if (!isOnline) {
-                    setLocalError("इंटरनेट कनेक्शन उपलब्ध नहीं है। कृपया अपना नेटवर्क जांचें और पुनः प्रयास करें।");
-                  } else {
-                    setLocalError("ऑडियो चलाने में समस्या आ रही है।");
-                  }
-                });
-              }
+            setLocalError(null);
+            setIsPlaying(true);
+            const playPromise = globalAudio.play();
+            if (playPromise !== undefined) {
+              playPromise.catch(async (e) => {
+                logger.error("AutoPlay failed:", e);
+                setIsBuffering(false);
+                setIsPlaying(false);
+                
+                let isOnline = await checkIsOnline();
+                if (!isOnline) {
+                  setLocalError("इंटरनेट कनेक्शन उपलब्ध नहीं है। कृपया अपना नेटवर्क जांचें और पुनः प्रयास करें।");
+                } else {
+                  setLocalError("ऑडियो चलाने में समस्या आ रही है।");
+                }
+              });
             }
-          };
-          
-          attemptPlay();
+          } else {
+            playAttempted.current = false;
+            setIsPlaying(false);
+          }
         } else {
-          playAttempted.current = false;
-          setIsPlaying(false);
+          // If URL is the same, just sync state
+          const isActuallyPlaying = !globalAudio.paused;
+          setIsPlaying(isActuallyPlaying);
+          
+          if (autoPlay && !isActuallyPlaying) {
+            globalAudio.play().catch(() => {});
+          }
+          
+          if (globalAudio.duration > 0) {
+            setProgress((globalAudio.currentTime / globalAudio.duration) * 100);
+          }
         }
-      } else {
-        // If URL is the same, just sync state
-        const isActuallyPlaying = !globalAudio.paused;
-        setIsPlaying(isActuallyPlaying);
-        
-        if (autoPlay && !isActuallyPlaying) {
-          globalAudio.play().catch(() => {});
-        }
-        
-        if (globalAudio.duration > 0) {
-          setProgress((globalAudio.currentTime / globalAudio.duration) * 100);
-        }
-      }
+      };
+
+      initAudio();
     }
   }, [url, autoPlay]);
 
@@ -254,36 +258,45 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
       // Optimistic UI update
       setIsPlaying(true);
       
-      // Ensure we have a valid source
-      const currentSrc = globalAudio.src;
-      const targetSrc = new URL(url, window.location.origin).href;
-      
-      if (!currentSrc || currentSrc === window.location.href || currentSrc !== targetSrc) {
-        globalAudio.src = url;
-        globalAudio.load();
+      const playNow = async () => {
+        // Ensure we have a valid source
+        const currentSrc = globalAudio.src;
+        let finalUrl = url;
+        try {
+          finalUrl = await AudioCacheService.getLocalUrl(url);
+        } catch (e) {}
+
+        const targetSrc = new URL(finalUrl, window.location.origin).href;
         
-        // If we were preventing auto pause, we are now taking over
-        if (preventAutoPause && callbacksRef.current.onPlay) {
-           callbacksRef.current.onPlay();
-        }
-      }
-      
-      const playPromise = globalAudio.play();
-      if (playPromise !== undefined) {
-        playPromise.catch((e) => {
-          // Only handle non-abort errors
-          if (e.name !== 'AbortError') {
-            logger.error("Play failed:", e);
-            setIsPlaying(false);
-            
-            if (e.name === 'NotAllowedError') {
-              setLocalError("प्लेबैक शुरू करने के लिए कृपया बटन पर क्लिक करें।");
-            } else {
-              setLocalError("ऑडियो चलाने में समस्या आ रही है।");
-            }
+        if (!currentSrc || currentSrc === window.location.href || currentSrc !== targetSrc) {
+          globalAudio.src = finalUrl;
+          globalAudio.load();
+          
+          // If we were preventing auto pause, we are now taking over
+          if (preventAutoPause && callbacksRef.current.onPlay) {
+             callbacksRef.current.onPlay();
           }
-        });
-      }
+        }
+        
+        const playPromise = globalAudio.play();
+        if (playPromise !== undefined) {
+          playPromise.catch((e) => {
+            // Only handle non-abort errors
+            if (e.name !== 'AbortError') {
+              logger.error("Play failed:", e);
+              setIsPlaying(false);
+              
+              if (e.name === 'NotAllowedError') {
+                setLocalError("प्लेबैक शुरू करने के लिए कृपया बटन पर क्लिक करें।");
+              } else {
+                setLocalError("ऑडियो चलाने में समस्या आ रही है।");
+              }
+            }
+          });
+        }
+      };
+      
+      playNow();
     } else {
       // Pause logic
       globalAudio.pause();
@@ -300,9 +313,6 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
   if (variant === 'mini') {
     return (
       <motion.div 
-        initial={{ y: 100, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        exit={{ y: 100, opacity: 0 }}
         drag="y"
         dragConstraints={{ top: 0, bottom: 100 }}
         onDragEnd={(_, info) => {

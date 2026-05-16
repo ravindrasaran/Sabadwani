@@ -9,6 +9,7 @@ import { useSabadData } from "./hooks/useSabadData";
 import { generateAmavasyaForYear, getBichhudaList } from "./lib/astro";
 import { vibrate, checkIsOnline, getSearchSkeleton, getTransliteratedSearch } from "./lib/utils";
 import { globalAudio, setupGlobalMediaSessionListener, clearMediaSession } from "./lib/audioGlobals";
+import { AudioCacheService } from "./lib/AudioCacheService";
 import React, { useState, useEffect, useRef, useMemo, useCallback, ReactNode, Suspense, lazy } from "react";
 import { useInitialSetup } from "./hooks/useInitialSetup";
 import { usePushNotifications } from "./hooks/usePushNotifications";
@@ -963,6 +964,14 @@ function MainApp() {
       const errorMsg = error.message?.toLowerCase() || "";
       if (error.code === 2 || errorMsg.includes("disabled") || errorMsg.includes("unavailable")) {
         setChoghadiyaError("कृपया अपने मोबाइल की लोकेशन (GPS) चालू करें।");
+        try {
+          await NativeSettings.open({
+            optionAndroid: AndroidSettings.Location,
+            optionIOS: IOSSettings.LocationServices
+          });
+        } catch (e) {
+          console.warn("Could not open settings", e);
+        }
       } else if (error.code === 1) {
         // Permission denied by user in browser dialog
         setChoghadiyaError("लोकेशन की अनुमति नहीं मिली। कृपया सेटिंग्स में जाकर अनुमति दें या सीधे अपने शहर का नाम लिखकर खोजें।");
@@ -1387,6 +1396,40 @@ function MainApp() {
       pinch: { eventOptions: { passive: false } },
     },
   );
+
+  // Prefetch next track audio so it's ready locally and the OS doesn't sleep the app during loading
+  useEffect(() => {
+    if (playingSabad && globalAudio && !globalAudio.paused) {
+      let currentList: SabadItem[] = [];
+      if (playingSabad.type === "शब्द") currentList = sabads;
+      else if (playingSabad.type === "आरती") currentList = aartis;
+      else if (playingSabad.type === "भजन") currentList = bhajans;
+      else if (playingSabad.type === "साखी") currentList = sakhis;
+      else if (playingSabad.type === "मंत्र") currentList = mantras;
+      
+      if (!currentList || currentList.length === 0) return;
+
+      const currentIndex = currentList.findIndex((item) => item && item.id === playingSabad.id);
+      if (currentIndex !== -1 && currentIndex < currentList.length - 1) {
+        let nextIndex = currentIndex + 1;
+        const isSabadsList = currentList === sabads;
+        if (isSabadsList && currentIndex === 65) nextIndex = 67;
+        else if (isSabadsList && currentIndex === currentList.length - 1) nextIndex = 66;
+
+        let nextItem = currentList[nextIndex];
+        let searchIndex = nextIndex;
+        // find next item with audio
+        while (nextItem && !nextItem.audioUrl && searchIndex < currentList.length - 1) {
+          searchIndex++;
+          nextItem = currentList[searchIndex];
+        }
+        
+        if (nextItem && nextItem.audioUrl) {
+          AudioCacheService.downloadToCache(nextItem.audioUrl).catch(() => {});
+        }
+      }
+    }
+  }, [playingSabad, sabads, aartis, bhajans, sakhis, mantras]);
 
   useEffect(() => {
     setAmavasyaList(generateAmavasyaForYear(selectedYear));
@@ -2091,7 +2134,14 @@ function MainApp() {
           {/* Mini Player */}
           <AnimatePresence>
             {isAudioActive && playingSabad?.audioUrl && !isMiniPlayerDismissed && (currentScreen !== "audio_reading" || playingSabad.id !== selectedSabad?.id) && (
-              <div className={settings.isAdEnabled !== false ? "mb-0" : "mb-2"}>
+              <motion.div 
+                key="mini-player"
+                initial={{ y: 100, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: 100, opacity: 0 }}
+                transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                className={settings.isAdEnabled !== false ? "mb-0" : "mb-2"}
+              >
                 <AudioPlayer
                   url={playingSabad.audioUrl}
                   title={playingSabad.title}
@@ -2116,13 +2166,12 @@ function MainApp() {
                   }}
                   onNext={() => handleAudioSwipe("left")}
                   onPrev={() => handleAudioSwipe("right")}
-                  onEnded={handleAudioEnded}
                   autoPlay={autoPlayAudio}
                   onPlay={() => setAutoPlayAudio(true)}
                   onPause={() => setAutoPlayAudio(false)}
                   logoUrl={settings.logoUrl}
                 />
-              </div>
+              </motion.div>
             )}
           </AnimatePresence>
 
