@@ -15,6 +15,20 @@ export default function AdminScreen(props: any) {
 
   const [actionError, setActionError] = useState<{ id: string, msg: string } | null>(null);
   const [addContentError, setAddContentError] = useState("");
+  const [togglingStates, setTogglingStates] = useState<Record<string, boolean>>({});
+
+  const handleToggleNotice = async (n: any) => {
+    setTogglingStates(prev => ({ ...prev, [n.id]: true }));
+    await toggleNoticeStatus(n.id, n.isActive);
+    setTogglingStates(prev => ({ ...prev, [n.id]: false }));
+  };
+
+  const handleToggleBadhai = async (b: any) => {
+    setTogglingStates(prev => ({ ...prev, [b.id]: true }));
+    await toggleBadhaiStatus(b.id, b.isActive);
+    setTogglingStates(prev => ({ ...prev, [b.id]: false }));
+  };
+
 
   const handleAction = async (actionFn: Function, post: any) => {
     setActionError(null);
@@ -685,11 +699,18 @@ export default function AdminScreen(props: any) {
                           </span>
                           <div className="flex gap-2">
                             <button
-                              onClick={() => toggleBadhaiStatus(b.id, b.isActive)}
-                              className={`p-1.5 rounded-lg ${b.isActive ? "text-orange-500 hover:bg-orange-50" : "text-green-500 hover:bg-green-50"}`}
+                              onClick={() => handleToggleBadhai(b)}
+                              disabled={togglingStates[b.id]}
+                              className={`p-1.5 rounded-lg ${b.isActive ? "text-orange-500 hover:bg-orange-50" : "text-green-500 hover:bg-green-50"} disabled:opacity-50`}
                               title={b.isActive ? "Pause" : "Resume"}
                             >
-                              {b.isActive ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                              {togglingStates[b.id] ? (
+                                <div className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                              ) : b.isActive ? (
+                                <Pause className="w-4 h-4" />
+                              ) : (
+                                <Play className="w-4 h-4" />
+                              )}
                             </button>
                             <button
                               onClick={() => openEditModal("बधाई संदेश", b)}
@@ -725,11 +746,18 @@ export default function AdminScreen(props: any) {
                           </span>
                           <div className="flex gap-2">
                             <button
-                              onClick={() => toggleNoticeStatus(n.id, n.isActive)}
-                              className={`p-1.5 rounded-lg ${n.isActive ? "text-orange-500 hover:bg-orange-50" : "text-green-500 hover:bg-green-50"}`}
+                              onClick={() => handleToggleNotice(n)}
+                              disabled={togglingStates[n.id]}
+                              className={`p-1.5 rounded-lg ${n.isActive ? "text-orange-500 hover:bg-orange-50" : "text-green-500 hover:bg-green-50"} disabled:opacity-50`}
                               title={n.isActive ? "Pause" : "Resume"}
                             >
-                              {n.isActive ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                              {togglingStates[n.id] ? (
+                                <div className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                              ) : n.isActive ? (
+                                <Pause className="w-4 h-4" />
+                              ) : (
+                                <Play className="w-4 h-4" />
+                              )}
                             </button>
                             <button
                               onClick={() => openEditModal("आवश्यक सूचना", n)}

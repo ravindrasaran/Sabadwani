@@ -142,7 +142,10 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
     const handleEndedEvent = () => {
       setIsPlaying(false);
       setProgress(0);
-      updateMediaSessionState('none');
+      // BUG FIX: Do NOT set media session to 'none' here.
+      // Setting it to 'none' destroys the Foreground Service Notification. 
+      // If the app is in the background or locked, Android will immediately kill/suspend the app!
+      updateMediaSessionState('paused');
       try {
         if (callbacksRef.current.onEnded) callbacksRef.current.onEnded();
       } catch (e) {

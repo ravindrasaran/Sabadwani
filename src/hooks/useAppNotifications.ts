@@ -60,16 +60,19 @@ export const useAppNotifications = (db: Firestore, showToast: (msg: string) => v
       }
 
       // 1. Process prefs inline to avoid race conditions with state
-      const seenWeclome = await getPref(WELCOME_KEY, false);
+      const seenWelcome = await getPref(WELCOME_KEY, false);
       let ignored = await getPref(IGNORED_NOTIFS_KEY, []);
       const read = await getPref(READ_NOTIFS_KEY, []);
 
-      // 2. If it's a first time user, ignore all CURRENT fetched notifications
-      if (!seenWeclome && ignored.length === 0 && fetchedNotifs.length > 0) {
-        const allFetchedIds = fetchedNotifs.map(n => n.id);
-        await setPref(IGNORED_NOTIFS_KEY, allFetchedIds);
-        ignored = allFetchedIds;
-        setIgnoredIds(ignored);
+      // 2. If it's a first time user (has not cleared the welcome notification),
+      // we ignore all CURRENT fetched notifications so they only see Welcome.
+      if (!seenWelcome && fetchedNotifs.length > 0) {
+        const unseenIds = fetchedNotifs.map(n => n.id).filter(id => !ignored.includes(id));
+        if (unseenIds.length > 0) {
+          ignored = [...ignored, ...unseenIds];
+          await setPref(IGNORED_NOTIFS_KEY, ignored);
+          setIgnoredIds(ignored);
+        }
       }
 
       // 3. Filter out ignored notifications
@@ -79,7 +82,7 @@ export const useAppNotifications = (db: Firestore, showToast: (msg: string) => v
       const listNotifs = visibleNotifs.map(n => ({ ...n, read: read.includes(n.id) }));
 
       // 5. Inject local welcome notification for first-time users
-      if (!seenWeclome) {
+      if (!seenWelcome) {
         listNotifs.unshift({
           id: "welcome",
           title: "स्वागत है!",
