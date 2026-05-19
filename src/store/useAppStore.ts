@@ -29,8 +29,8 @@ interface AppState extends AudioPlaybackState {
   isAudioActive: boolean;
   setIsAudioActive: (active: boolean) => void;
 
-  selectedCategory: "aarti" | "bhajan" | "sakhi" | "mantra";
-  setSelectedCategory: (cat: "aarti" | "bhajan" | "sakhi" | "mantra") => void;
+  selectedCategory: "aarti" | "bhajan" | "sakhi" | "mantra" | undefined;
+  setSelectedCategory: (cat: "aarti" | "bhajan" | "sakhi" | "mantra" | undefined) => void;
 
   readingTheme: 'light' | 'sepia' | 'dark';
   setReadingTheme: (theme: 'light' | 'sepia' | 'dark') => void;
@@ -75,7 +75,7 @@ export const useAppStore = create<AppState>((set) => ({
   isAudioActive: false,
   setIsAudioActive: (active) => set({ isAudioActive: active }),
 
-  selectedCategory: 'aarti',
+  selectedCategory: undefined,
   setSelectedCategory: (cat) => set({ selectedCategory: cat }),
 
   readingTheme: 'light',

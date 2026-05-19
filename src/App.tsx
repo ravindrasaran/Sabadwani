@@ -165,10 +165,6 @@ function MainApp() {
     setTimeout(() => setToastMessage(null), 3000);
   }, []);
 
-  useEffect(() => {
-    setupGlobalMediaSessionListener();
-  }, []);
-
   useInitialSetup(paymentIntentPending, showToast, () => {});
   usePushNotifications(showToast);
 
@@ -240,31 +236,41 @@ function MainApp() {
       Preferences.set({ key: 'lastReadSabad', value: JSON.stringify({
         sabad: selectedSabad,
         screen: currentScreen,
-        category: currentScreen === "audio_reading" ? selectedCategory : undefined
+        category: selectedCategory
       })});
     }
   }, [selectedSabad, currentScreen, selectedCategory]);
 
-  const handleOpenCategory = async (targetScreen: "reading" | "audio_reading", listScreen: "shabad_list" | "category_list", category?: "aarti" | "bhajan" | "sakhi" | "mantra") => {
+  const handleOpenCategory = async (targetScreen: "reading" | "audio_reading", listScreen: "shabad_list" | "category_list", category?: "aarti" | "bhajan" | "sakhi" | "mantra" | undefined) => {
     vibrate(10);
     const savedLastRead = await Preferences.get({ key: 'lastReadSabad' });
     if (savedLastRead?.value) {
       try {
         const parsed = JSON.parse(savedLastRead.value);
-        if (parsed && parsed.sabad && parsed.screen === targetScreen && (category ? parsed.category === category : true)) {
+        const categoryMatch = !category ? (!parsed.category || parsed.category === "sabadwani") : parsed.category === category;
+        
+        if (parsed && parsed.sabad && categoryMatch) {
           setSelectedSabad(parsed.sabad);
-          if (category) setSelectedCategory(category);
+          if (category) {
+            setSelectedCategory(category);
+          } else {
+            setSelectedCategory(undefined);
+          }
           setAutoPlayAudio(false);
           
           openedDirectlyRef.current = true;
-          navigateTo(targetScreen);
+          navigateTo(parsed.screen === "audio_reading" || parsed.screen === "reading" ? parsed.screen : targetScreen);
           return;
         }
       } catch (e) {
         // Ignore errors
       }
     }
-    if (category) setSelectedCategory(category);
+    if (category) {
+      setSelectedCategory(category);
+    } else {
+      setSelectedCategory(undefined);
+    }
     navigateTo(listScreen);
   };
 
@@ -1522,6 +1528,7 @@ function MainApp() {
         const otherItem = meles.find(checkMatch) || notices.find(checkMatch);
         if (otherItem) {
           setSelectedSabad(otherItem as any);
+          setSelectedCategory(undefined);
           navigateTo("reading");
           setPendingDeepLinkId(null);
         }
@@ -1532,6 +1539,7 @@ function MainApp() {
   const handleSabadClick = (shabad: SabadItem) => {
     vibrate(10);
     setSelectedSabad(shabad);
+    setSelectedCategory(undefined);
 
     if (shabad.audioUrl) {
       // startTrack atomically sets playingSabad + autoPlay + isAudioActive.
@@ -1575,6 +1583,16 @@ function MainApp() {
   const handleBack = () => {
     vibrate(8);
     
+    if (openedDirectlyRef.current && (currentScreen === "reading" || currentScreen === "audio_reading")) {
+      openedDirectlyRef.current = false;
+      let listScreen = "shabad_list";
+      if (currentScreen === "audio_reading" || (selectedSabad && selectedSabad.type !== "शब्द")) {
+          listScreen = "category_list";
+      }
+      navigate(`/${listScreen}`, { replace: true });
+      return;
+    }
+
     // Check if we have history to go back to
     const hasHistory = window.history.state && window.history.state.idx > 0;
     

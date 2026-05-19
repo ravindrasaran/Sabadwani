@@ -20,7 +20,7 @@ export interface SearchScreenProps {
   matchSearch: (title: string, text?: string) => boolean;
   handleSabadClick: (sabad: SabadItem) => void;
   setSelectedSabad: (sabad: SabadItem) => void;
-  setSelectedCategory: (cat: 'aarti' | 'bhajan' | 'sakhi' | 'mantra') => void;
+  setSelectedCategory: (cat: 'aarti' | 'bhajan' | 'sakhi' | 'mantra' | undefined) => void;
   setAutoPlayAudio: (play: boolean) => void;
   navigateTo: (screen: string) => void;
 }

@@ -10,11 +10,9 @@ export const useInitialSetup = (
   setupGlobalMediaSessionListener: () => void
 ) => {
   useEffect(() => {
-    setupGlobalMediaSessionListener();
-
     // Web fallback for payment return message
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && paymentIntentPending.current) {
+    if (document.visibilityState === 'visible' && paymentIntentPending.current) {
         paymentIntentPending.current = false;
         setTimeout(() => {
           showToast("सहयोग के प्रयास के लिए आपका बहुत-बहुत धन्यवाद! 🙏");

@@ -15,7 +15,7 @@ export interface CommunityPostsScreenProps {
   handleBack: () => void;
   navigateTo: (screen: string) => void;
   setSelectedSabad: (sabad: SabadItem) => void;
-  setSelectedCategory: (cat: 'aarti' | 'bhajan' | 'sakhi' | 'mantra') => void;
+  setSelectedCategory: (cat: 'aarti' | 'bhajan' | 'sakhi' | 'mantra' | undefined) => void;
   setAutoPlayAudio: (play: boolean) => void;
 }
 
@@ -184,6 +184,7 @@ export default function CommunityPostsScreen(props: CommunityPostsScreenProps) {
                             onClick={() => {
                               setSelectedSabad(item);
                               if (item.type === "शब्द") {
+                                setSelectedCategory(undefined);
                                 setAutoPlayAudio(false);
                                 navigateTo("reading");
                               } else {
