@@ -41,8 +41,8 @@ export class AudioCacheService {
       const stat = await Filesystem.stat({ path, directory: Directory.Data });
       if (stat && stat.size > 0) {
         const uriResult = await Filesystem.getUri({ path, directory: Directory.Data });
-        // Native player (ExoPlayer) requires the real file:/// path, NOT the Capacitor proxy
-        return uriResult.uri;
+        // Use Capacitor.convertFileSrc to allow the HTML Audio element to load the file
+        return Capacitor.convertFileSrc(uriResult.uri);
       }
     } catch {
       // Not cached yet — fall through

@@ -301,8 +301,6 @@ function MainApp() {
 
   const [isAutoScrolling, setIsAutoScrolling] = useState(false);
   const [autoScrollSpeed, setAutoScrollSpeed] = useState(1); // 1 = slow, 2 = medium, 3 = fast
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const autoScrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (currentScreen !== "reading" && currentScreen !== "audio_reading") {
@@ -334,29 +332,6 @@ function MainApp() {
       window.removeEventListener('wheel', handleTouch);
     };
   }, [isAutoScrolling]);
-
-  useEffect(() => {
-    if (isAutoScrolling && (currentScreen === "reading" || currentScreen === "audio_reading")) {
-      const speedMap = { 1: 30, 2: 20, 3: 10 }; // milliseconds per pixel
-      autoScrollIntervalRef.current = setInterval(() => {
-        if (scrollContainerRef.current) {
-          scrollContainerRef.current.scrollTop += 1;
-        } else {
-          // Fallback to window scroll if container ref isn't attached
-          window.scrollBy(0, 1);
-        }
-      }, speedMap[autoScrollSpeed as keyof typeof speedMap]);
-    } else {
-      if (autoScrollIntervalRef.current) {
-        clearInterval(autoScrollIntervalRef.current);
-      }
-    }
-    return () => {
-      if (autoScrollIntervalRef.current) {
-        clearInterval(autoScrollIntervalRef.current);
-      }
-    };
-  }, [isAutoScrolling, autoScrollSpeed, currentScreen]);
 
   const toggleAutoScroll = (e?: React.MouseEvent | React.TouchEvent) => {
     if (e) e.stopPropagation();
@@ -1600,24 +1575,30 @@ function MainApp() {
   const handleBack = () => {
     vibrate(8);
     
-    // 1. If we are on a reading screen, we MUST go to the list screen.
+    // Check if we have history to go back to
+    const hasHistory = window.history.state && window.history.state.idx > 0;
+    
+    if (hasHistory) {
+      navigate(-1);
+      return;
+    }
+
+    // Fallback if no history (e.g., opened directly via deep link)
     if (currentScreen === "reading" || currentScreen === "audio_reading") {
-        // Determine the correct list screen
-        let listScreen: Screen = "shabad_list";
-        if (currentScreen === "audio_reading") listScreen = "category_list";
-        
+        let listScreen: string = "shabad_list";
+        if (currentScreen === "audio_reading" || (selectedSabad && selectedSabad.type !== "शब्द")) {
+            listScreen = "category_list";
+        }
         navigate(`/${listScreen}`, { replace: true });
         return;
     }
 
-    // 2. If we are on a list screen, we MUST go to home.
     if (currentScreen === "shabad_list" || currentScreen === "category_list") {
-        navigate('/', { replace: true }); // Replace with home
+        navigate('/', { replace: true });
         return;
     }
 
-    // 3. Default back for other screens
-    navigate(-1);
+    navigate('/', { replace: true });
   };
 
   const handleShare = async () => {
@@ -2020,13 +2001,13 @@ function MainApp() {
       <AnimatePresence>
         {toastMessage && (
           <motion.div
-            initial={{ opacity: 0, y: -50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -50 }}
-            className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] bg-ink text-white px-5 py-2.5 rounded-full shadow-2xl text-[13px] font-medium flex items-center justify-center gap-2.5 whitespace-nowrap"
+            initial={{ opacity: 0, y: 50, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            className="fixed bottom-32 left-1/2 -translate-x-1/2 z-[100] bg-ink/95 backdrop-blur-md text-white px-5 py-3 rounded-full shadow-[0_10px_40px_rgba(0,0,0,0.3)] text-[14px] font-medium flex items-center justify-center gap-3 max-w-[90vw] w-max text-center leading-snug border border-white/10"
           >
-            <img src="/logo.png" alt="Logo" className="w-5 h-5 rounded-full shadow-sm" />
-            <span>{toastMessage}</span>
+            <img src="/logo.png" alt="Logo" className="w-5 h-5 rounded-full shadow-sm shrink-0" />
+            <span className="truncate whitespace-normal line-clamp-2">{toastMessage}</span>
           </motion.div>
         )}
       </AnimatePresence>

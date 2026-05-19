@@ -6,7 +6,13 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   server: {
     androidScheme: 'https'
+  },
+  plugins: {
+    MediaSession: {
+      foregroundService: 'always'
+    }
   }
 };
 
 export default config;
+

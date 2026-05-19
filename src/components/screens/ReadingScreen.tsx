@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ChevronLeft, ChevronRight, Bookmark, Share2, Pause, ChevronsDown, Hand } from "lucide-react";
 import AudioPlayer from "../AudioPlayer";
@@ -74,9 +75,52 @@ export default function ReadingScreen(props: ReadingScreenProps) {
 
   const readingIndex = selectedSabad ? readingList.findIndex(item => item.id === selectedSabad.id) : -1;
   const totalCount = readingList.length;
-  const categoryLabel = currentScreen === "reading" ? "शब्द" : selectedCategory === "aarti" ? "आरती" : selectedCategory === "bhajan" ? "भजन" : selectedCategory === "sakhi" ? "साखी" : selectedCategory === "mantra" ? "मंत्र" : "शब्द";
-  const isFeminine = (currentScreen === "audio_reading" && (selectedCategory === "aarti" || selectedCategory === "sakhi"));
+  
+  // Make sure categoryLabel is correct even when in "reading" (no audio) screen for bhajans etc.
+  let categoryLabel = "शब्द";
+  if (selectedSabad && selectedSabad.type) {
+    categoryLabel = selectedSabad.type;
+  } else if (selectedCategory === "aarti") categoryLabel = "आरती";
+  else if (selectedCategory === "bhajan") categoryLabel = "भजन";
+  else if (selectedCategory === "sakhi") categoryLabel = "साखी";
+  else if (selectedCategory === "mantra") categoryLabel = "मंत्र";
+  
+  const isFeminine = (categoryLabel === "आरती" || categoryLabel === "साखी");
   const nextWord = isFeminine ? "अगली" : "अगला";
+  const prevWord = isFeminine ? "पिछली" : "पिछला";
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const autoScrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    // Scroll to top when the selected sabad changes
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo(0, 0);
+    }
+    window.scrollTo(0, 0);
+  }, [selectedSabad?.id]);
+
+  useEffect(() => {
+    if (isAutoScrolling) {
+      const speedMap = { 1: 30, 2: 20, 3: 10 }; // milliseconds per pixel
+      autoScrollIntervalRef.current = setInterval(() => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollTop += 1;
+        } else {
+          window.scrollBy(0, 1);
+        }
+      }, speedMap[autoScrollSpeed as keyof typeof speedMap]);
+    } else {
+      if (autoScrollIntervalRef.current) {
+        clearInterval(autoScrollIntervalRef.current);
+      }
+    }
+    return () => {
+      if (autoScrollIntervalRef.current) {
+        clearInterval(autoScrollIntervalRef.current);
+      }
+    };
+  }, [isAutoScrolling, autoScrollSpeed]);
 
   return (
     <motion.div
@@ -308,6 +352,7 @@ export default function ReadingScreen(props: ReadingScreenProps) {
 
       {/* Swipeable Container */}
       <div
+        ref={scrollRef}
         {...(bindGestures() as any)}
         className="px-5 pt-2 pb-2 flex-1 flex flex-col items-center w-full touch-pan-y overflow-y-auto overflow-x-hidden hide-scrollbar"
         style={{
@@ -359,7 +404,7 @@ export default function ReadingScreen(props: ReadingScreenProps) {
                   'bg-white border-ink/10 text-ink hover:bg-ink/5 active:bg-ink/10'
                 }`}
               >
-                <ChevronLeft className="w-5 h-5" /> पिछला
+                <ChevronLeft className="w-5 h-5" /> {prevWord}
               </button>
               <button 
                 onClick={() => handleSwipe("left")}
@@ -372,7 +417,7 @@ export default function ReadingScreen(props: ReadingScreenProps) {
                   'bg-white border-ink/10 text-ink hover:bg-ink/5 active:bg-ink/10'
                 }`}
               >
-                अगला <ChevronRight className="w-5 h-5" />
+                {nextWord} <ChevronRight className="w-5 h-5" />
               </button>
             </div>
           </motion.div>

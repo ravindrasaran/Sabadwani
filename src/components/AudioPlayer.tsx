@@ -184,6 +184,10 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
         let finalUrl = url;
         try {
           finalUrl = await AudioCacheService.getLocalUrl(url);
+          // Attempt to cache in background if it's playing from remote
+          if (finalUrl === url) {
+            AudioCacheService.downloadToCache(url).catch(() => {});
+          }
         } catch (e) {
           logger.error("AudioCache error:", e);
         }
@@ -267,6 +271,9 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
         let finalUrl = url;
         try {
           finalUrl = await AudioCacheService.getLocalUrl(url);
+          if (finalUrl === url) {
+            AudioCacheService.downloadToCache(url).catch(() => {});
+          }
         } catch (e) {}
 
         const targetSrc = new URL(finalUrl, window.location.origin).href;
