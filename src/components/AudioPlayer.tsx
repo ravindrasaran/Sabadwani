@@ -50,6 +50,11 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
     }
   };
 
+  const playingSabadRef = useRef(playingSabad);
+  useEffect(() => {
+    playingSabadRef.current = playingSabad;
+  }, [playingSabad]);
+
   // Update notification metadata when track changes
   useEffect(() => {
     if (!globalAudio) return;
@@ -84,8 +89,18 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
   useEffect(() => {
     if (!globalAudio) return;
 
+    const isPlayingThisTrack = () => {
+      if (playAttempted.current) return true;
+      const currentPlaying = playingSabadRef.current;
+      if (currentPlaying && typeof currentPlaying.audioUrl === 'string') {
+        return currentPlaying.audioUrl === url;
+      }
+      // Fallback if playingSabad wasn't passed, though it should be in both ReadingScreen and MiniPlayer
+      return true;
+    };
+
     const handleTimeUpdate = () => {
-      if (isDraggingRef.current) return;
+      if (isDraggingRef.current || !isPlayingThisTrack()) return;
       const current = globalAudio.currentTime;
       const duration = globalAudio.duration;
       if (duration > 0 && isFinite(duration)) {
@@ -95,16 +110,22 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
     };
 
     const handleWaiting = () => {
+      if (!isPlayingThisTrack()) return;
       setIsBuffering(true);
       // Do not set state to 'none' here, as it destroys the lock screen controls during track transitions
     };
-    const handleCanPlay = () => setIsBuffering(false);
+    const handleCanPlay = () => {
+      if (!isPlayingThisTrack()) return;
+      setIsBuffering(false);
+    };
     const handlePlaying = () => {
+      if (!isPlayingThisTrack()) return;
       setIsBuffering(false);
       updateMediaSessionState('playing');
     };
 
     const handleError = () => {
+      if (!isPlayingThisTrack()) return;
       setIsBuffering(false);
       if (!playAttempted.current && !autoPlay) return;
       if (!navigator.onLine) {
@@ -117,6 +138,7 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
     };
 
     const handlePlayEvent = () => {
+      if (!isPlayingThisTrack()) return;
       setIsPlaying(true);
       setIsBuffering(false);
       try {
@@ -128,6 +150,7 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
     };
 
     const handlePauseEvent = () => {
+      if (!isPlayingThisTrack()) return;
       setIsPlaying(false);
       updateMediaSessionState('paused');
       if (!globalAudio.ended) {
@@ -140,11 +163,9 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
     };
 
     const handleEndedEvent = () => {
+      if (!isPlayingThisTrack()) return;
       setIsPlaying(false);
       setProgress(0);
-      // BUG FIX: Do NOT set media session to 'none' here.
-      // Setting it to 'none' destroys the Foreground Service Notification. 
-      // If the app is in the background or locked, Android will immediately kill/suspend the app!
       updateMediaSessionState('paused');
       try {
         if (callbacksRef.current.onEnded) callbacksRef.current.onEnded();
@@ -196,7 +217,7 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
         const newSrc = new URL(finalUrl, window.location.origin).href;
         
         if (currentSrc !== newSrc) {
-          if (preventAutoPause) {
+          if (preventAutoPause || !autoPlay) {
             setIsPlaying(false);
             setProgress(0);
             return;
@@ -317,8 +338,14 @@ function AudioPlayer({ url, onEnded, onPlay, onPause, onNext, onPrev, autoPlay =
   // Callbacks sync logic
   useEffect(() => {
     callbacksRef.current = { onEnded, onPlay, onPause, onNext, onPrev, showToast, togglePlay, onClose };
-    setGlobalAudioCallbacks(callbacksRef.current);
-  }, [onEnded, onPlay, onPause, onNext, onPrev, showToast, togglePlay, onClose]);
+    
+    // Only hijack the lock screen controls if this player is the one currently active
+    // If there is another track playing in the background (mini player), let it keep the controls
+    const isThisThePlayingTrack = playingSabad ? playingSabad.audioUrl === url : true;
+    if (isThisThePlayingTrack) {
+      setGlobalAudioCallbacks(callbacksRef.current);
+    }
+  }, [onEnded, onPlay, onPause, onNext, onPrev, showToast, togglePlay, onClose, url, playingSabad]);
 
   if (variant === 'mini') {
     return (

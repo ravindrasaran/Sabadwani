@@ -6,7 +6,6 @@ import PremiumHeader from "../PremiumHeader";
 import { PostSkeleton } from "../Skeleton";
 import { auth } from "../../firebase";
 import { SabadItem } from "../../types";
-import { useAppStore } from "../../store/useAppStore";
 
 export interface CommunityPostsScreenProps {
   isLoading: boolean;
@@ -194,7 +193,6 @@ export default function CommunityPostsScreen(props: CommunityPostsScreenProps) {
                                 else if (item.type === "साखी") setSelectedCategory("sakhi");
                                 
                                 if (item.audioUrl) {
-                                  useAppStore.getState().startTrack(item, false);
                                   navigateTo("audio_reading");
                                 } else {
                                   setAutoPlayAudio(false);

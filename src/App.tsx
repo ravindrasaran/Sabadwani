@@ -8,7 +8,7 @@ import { useWakeLock } from "./hooks/useWakeLock";
 import { useSabadData } from "./hooks/useSabadData";
 import { generateAmavasyaForYear, getBichhudaList } from "./lib/astro";
 import { vibrate, checkIsOnline, getSearchSkeleton, getTransliteratedSearch } from "./lib/utils";
-import { globalAudio, setupGlobalMediaSessionListener, clearMediaSession } from "./lib/audioGlobals";
+import { globalAudio, clearMediaSession } from "./lib/audioGlobals";
 import { AudioCacheService } from "./lib/AudioCacheService";
 import React, { useState, useEffect, useRef, useMemo, useCallback, ReactNode, Suspense, lazy } from "react";
 import { useInitialSetup } from "./hooks/useInitialSetup";
@@ -1542,9 +1542,6 @@ function MainApp() {
     setSelectedCategory(undefined);
 
     if (shabad.audioUrl) {
-      // startTrack atomically sets playingSabad + autoPlay + isAudioActive.
-      // AudioEngine detects the store change and loads the track instantly.
-      useAppStore.getState().startTrack(shabad);
       navigateTo("audio_reading");
     } else {
       setAutoPlayAudio(false);
@@ -2044,7 +2041,7 @@ function MainApp() {
         <AnimatePresence mode="wait">
           <Suspense fallback={<div className="flex-1 bg-paper flex items-center justify-center min-h-screen"><img src="/logo.png" alt="Loading" className="w-16 h-16 opacity-50 animate-pulse" /></div>}>
             <Routes location={location} key={location.pathname}>
-            <Route path="/" element={<HomeScreen processedMeles={processedMeles} badhais={badhais} dailyThought={dailyThought} notices={notices} handleOpenCategory={handleOpenCategory} navigateTo={navigateTo} />} />
+            <Route path="/" element={<HomeScreen isLoading={isLoading} processedMeles={processedMeles} badhais={badhais} dailyThought={dailyThought} notices={notices} handleOpenCategory={handleOpenCategory} navigateTo={navigateTo} />} />
             <Route path="/search" element={<SearchScreen searchQuery={searchQuery} setSearchQuery={setSearchQuery} isLoading={isLoading} sabads={sabads} aartis={aartis} bhajans={bhajans} sakhis={sakhis} mantras={mantras} meles={meles} matchSearch={(title, text) => {
               if (!searchQuery) return false;
               const query = searchQuery.toLowerCase().trim();

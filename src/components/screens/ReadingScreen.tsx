@@ -297,9 +297,7 @@ export default function ReadingScreen(props: ReadingScreenProps) {
             onEnded={handleAudioEnded} 
             autoPlay={autoPlayAudio}
             onPlay={() => {
-              // Only update UI flags — do NOT call setPlayingSabad here.
-              // startTrack already set playingSabad before navigation.
-              // Calling setPlayingSabad again could trigger _watchStore to reload.
+              useAppStore.getState().setPlayingSabad(selectedSabad);
               setIsAudioActive(true);
               setAutoPlayAudio(true);
               useAppStore.getState().setIsMiniPlayerDismissed(false);

@@ -7,6 +7,7 @@ import PremiumBanner from "../PremiumBanner";
 import CategoryGrid from "../CategoryGrid";
 
 export interface HomeScreenProps {
+  isLoading: boolean;
   processedMeles: any[];
   badhais: any[];
   dailyThought: any;
@@ -20,6 +21,7 @@ export interface HomeScreenProps {
 }
 
 export default function HomeScreen({
+  isLoading,
   processedMeles,
   badhais,
   dailyThought,
@@ -38,6 +40,7 @@ export default function HomeScreen({
       {/* Premium Rotating Banner System */}
       <div className="shrink-0">
         <PremiumBanner 
+          isLoading={isLoading}
           meles={processedMeles} 
           badhais={badhais} 
           dailyThought={dailyThought} 

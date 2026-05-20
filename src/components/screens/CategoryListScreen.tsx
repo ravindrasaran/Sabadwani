@@ -89,7 +89,6 @@ export default function CategoryListScreen({
                     onClick={() => {
                       setSelectedSabad(item);
                       if (item.audioUrl) {
-                        useAppStore.getState().startTrack(item, false);
                         navigateTo("audio_reading");
                       } else {
                         setAutoPlayAudio(false);

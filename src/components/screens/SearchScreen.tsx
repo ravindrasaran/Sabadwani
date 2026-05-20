@@ -5,7 +5,6 @@ import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import PremiumHeader from "../PremiumHeader";
 import { ShabadSkeleton } from "../Skeleton";
 import { SabadItem } from "../../types";
-import { useAppStore } from "../../store/useAppStore";
 
 export interface SearchScreenProps {
   searchQuery: string;
@@ -145,7 +144,6 @@ export default function SearchScreen(props: SearchScreenProps) {
                           setSelectedSabad(item);
                           setSelectedCategory(item.listType);
                           if (item.audioUrl) {
-                            useAppStore.getState().startTrack(item, false);
                             navigateTo("audio_reading");
                           } else {
                             setAutoPlayAudio(false);
