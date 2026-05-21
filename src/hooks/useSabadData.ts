@@ -200,7 +200,12 @@ export function useSabadData() {
           pending:  serverPending,
         }, serverSettings.exists() ? serverSettings.data() : null);
 
-        startTransition(apply); // Always wrap in transition for smooth UI update
+        if (hasCachedData) {
+          startTransition(apply); // Low-priority update — no jank
+        } else {
+          apply(); // First install: no cache, apply directly
+        }
+
       } catch (e) {
         // Fully offline and no cache — show empty state
         if (!hasCachedData && mounted) setIsLoading(false);

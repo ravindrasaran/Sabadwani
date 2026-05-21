@@ -5,13 +5,14 @@ import { hi } from "date-fns/locale";
 import { getJD, getTithiName, getSamvat } from "../../lib/astro";
 import PremiumBanner from "../PremiumBanner";
 import CategoryGrid from "../CategoryGrid";
+import { BannerSkeleton, CategorySkeleton } from "../Skeleton";
 
 export interface HomeScreenProps {
-  isLoading: boolean;
   processedMeles: any[];
   badhais: any[];
   dailyThought: any;
   notices: any[];
+  isLoading?: boolean;
   handleOpenCategory: (
     targetScreen: 'reading' | 'audio_reading',
     listScreen: 'shabad_list' | 'category_list',
@@ -21,11 +22,11 @@ export interface HomeScreenProps {
 }
 
 export default function HomeScreen({
-  isLoading,
   processedMeles,
   badhais,
   dailyThought,
   notices,
+  isLoading,
   handleOpenCategory,
   navigateTo
 }: HomeScreenProps) {
@@ -39,13 +40,16 @@ export default function HomeScreen({
     >
       {/* Premium Rotating Banner System */}
       <div className="shrink-0">
-        <PremiumBanner 
-          isLoading={isLoading}
-          meles={processedMeles} 
-          badhais={badhais} 
-          dailyThought={dailyThought} 
-          notices={notices}
-        />
+        {isLoading ? (
+          <BannerSkeleton />
+        ) : (
+          <PremiumBanner 
+            meles={processedMeles} 
+            badhais={badhais} 
+            dailyThought={dailyThought} 
+            notices={notices}
+          />
+        )}
       </div>
 
       {/* Premium Daily Panchang Summary */}
@@ -74,10 +78,18 @@ export default function HomeScreen({
       </div>
 
       {/* Premium Grid Layout for Main Categories - Compact 3-Column Design */}
-      <CategoryGrid 
-        handleOpenCategory={handleOpenCategory} 
-        navigateTo={navigateTo} 
-      />
+      {isLoading ? (
+        <div className="grid grid-cols-3 gap-3 px-4 mt-2 flex-1 overflow-y-auto pb-12 hide-scrollbar">
+          {Array.from({ length: 12 }).map((_, i) => (
+            <CategorySkeleton key={i} />
+          ))}
+        </div>
+      ) : (
+        <CategoryGrid 
+          handleOpenCategory={handleOpenCategory} 
+          navigateTo={navigateTo} 
+        />
+      )}
     </motion.div>
   );
 }

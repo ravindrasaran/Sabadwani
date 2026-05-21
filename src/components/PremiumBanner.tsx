@@ -5,7 +5,7 @@ import { getCurrentHinduDate, generateAmavasyaForYear } from "../lib/astro";
 import { DYNAMIC_GREETINGS } from "../constants";
 import { vibrate } from "../lib/utils";
 
-const PremiumBanner = ({ isLoading, meles, badhais, dailyThought, notices }: any) => {
+const PremiumBanner = ({ meles, badhais, dailyThought, notices }: any) => {
   const greetings = useMemo(() => {
     const today = new Date();
     const { month, tithi } = getCurrentHinduDate(today);
@@ -168,23 +168,6 @@ const PremiumBanner = ({ isLoading, meles, badhais, dailyThought, notices }: any
       return () => clearTimeout(timer);
     }
   }, [greetings, activeNotices, isHovered, flashAlert, currentBanner]);
-
-  if (isLoading) {
-    return (
-      <div className="mx-4 my-1.5 h-[110px] relative rounded-[2rem] overflow-hidden border border-white/10 bg-gradient-to-br from-accent/40 to-accent-dark/40 shadow-sm animate-pulse">
-        <div className="absolute inset-0 bg-white/5 opacity-50"></div>
-        <div className="relative z-10 w-full h-full flex flex-col justify-center p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-4 h-4 bg-white/30 rounded-full"></div>
-            <div className="w-24 h-3 bg-white/30 rounded-md"></div>
-          </div>
-          <div className="w-full h-3.5 bg-white/30 rounded-md mb-2"></div>
-          <div className="w-3/4 h-3.5 bg-white/30 rounded-md"></div>
-          <div className="absolute bottom-4 right-4 w-1/4 h-2.5 bg-white/30 rounded-md"></div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div 

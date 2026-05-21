@@ -26,7 +26,7 @@ const ReadingScreen = lazy(() => import("./components/screens/ReadingScreen"));
 const SearchScreen = lazy(() => import("./components/screens/SearchScreen"));
 const CommunityPostsScreen = lazy(() => import("./components/screens/CommunityPostsScreen"));
 const AdminLoginScreen = lazy(() => import("./components/screens/AdminLoginScreen"));
-import HomeScreen from "./components/screens/HomeScreen";
+const HomeScreen = lazy(() => import("./components/screens/HomeScreen"));
 const NiyamScreen = lazy(() => import("./components/screens/NiyamScreen"));
 const ShabadListScreen = lazy(() => import("./components/screens/ShabadListScreen"));
 const CategoryListScreen = lazy(() => import("./components/screens/CategoryListScreen"));
@@ -2038,8 +2038,8 @@ function MainApp() {
       )}
 
       <div className="flex-1 relative">
-        <Suspense fallback={<div className="flex-1 bg-paper flex items-center justify-center min-h-screen"><img src="/logo.png" alt="Loading" className="w-16 h-16 opacity-50 animate-pulse" /></div>}>
-          <AnimatePresence mode="wait">
+        <AnimatePresence mode="wait">
+          <Suspense fallback={<div className="flex-1 bg-paper flex items-center justify-center min-h-screen"><img src="/logo.png" alt="Loading" className="w-16 h-16 opacity-50 animate-pulse" /></div>}>
             <Routes location={location} key={location.pathname}>
             <Route path="/" element={<HomeScreen isLoading={isLoading} processedMeles={processedMeles} badhais={badhais} dailyThought={dailyThought} notices={notices} handleOpenCategory={handleOpenCategory} navigateTo={navigateTo} />} />
             <Route path="/search" element={<SearchScreen searchQuery={searchQuery} setSearchQuery={setSearchQuery} isLoading={isLoading} sabads={sabads} aartis={aartis} bhajans={bhajans} sakhis={sakhis} mantras={mantras} meles={meles} matchSearch={(title, text) => {
@@ -2122,8 +2122,8 @@ function MainApp() {
             }} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
-          </AnimatePresence>
-        </Suspense>
+          </Suspense>
+        </AnimatePresence>
       </div>
 
       {/* Notifications Panel */}
