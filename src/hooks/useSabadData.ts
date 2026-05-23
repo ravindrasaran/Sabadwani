@@ -103,66 +103,41 @@ export function useSabadData() {
     ) {
       if (!mounted) return;
 
+      const updateIfChanged = <T extends any>(setter: React.Dispatch<React.SetStateAction<T[]>>, newArr: T[]) => {
+        setter(prev => {
+          if (prev.length !== newArr.length) return newArr;
+          const isSame = prev.every((item, i) => JSON.stringify(item) === JSON.stringify(newArr[i]));
+          return isSame ? prev : newArr;
+        });
+      };
+
       // Only update collections that actually returned data
-      if (snaps.sabads)   setSabads(snaps.sabads.docs.map(makeSabadMapper("शब्द")));
-      if (snaps.aartis)   setAartis(snaps.aartis.docs.map(makeSabadMapper("आरती")));
-      if (snaps.bhajans)  setBhajans(snaps.bhajans.docs.map(makeSabadMapper("भजन")));
-      if (snaps.sakhis)   setSakhis(snaps.sakhis.docs.map(makeSabadMapper("साखी")));
-      if (snaps.mantras)  setMantras(snaps.mantras.docs.map(makeSabadMapper("मंत्र")));
-      if (snaps.thoughts) setThoughts(snaps.thoughts.docs.map(mapThought));
-      if (snaps.meles)    setMeles(snaps.meles.docs.map(mapMela));
-      if (snaps.notices)  setNotices(snaps.notices.docs.map(mapNotice));
-      if (snaps.badhais)  setBadhais(snaps.badhais.docs.map(mapBadhai));
-      if (snaps.pending)  setPendingPosts(snaps.pending.docs.map(mapPending));
-      if (settingsData)   setSettings(prev => ({ ...prev, ...settingsData }));
+      if (snaps.sabads)   updateIfChanged(setSabads, snaps.sabads.docs.map(makeSabadMapper("शब्द")));
+      if (snaps.aartis)   updateIfChanged(setAartis, snaps.aartis.docs.map(makeSabadMapper("आरती")));
+      if (snaps.bhajans)  updateIfChanged(setBhajans, snaps.bhajans.docs.map(makeSabadMapper("भजन")));
+      if (snaps.sakhis)   updateIfChanged(setSakhis, snaps.sakhis.docs.map(makeSabadMapper("साखी")));
+      if (snaps.mantras)  updateIfChanged(setMantras, snaps.mantras.docs.map(makeSabadMapper("मंत्र")));
+      if (snaps.thoughts) updateIfChanged(setThoughts, snaps.thoughts.docs.map(mapThought));
+      if (snaps.meles)    updateIfChanged(setMeles, snaps.meles.docs.map(mapMela));
+      if (snaps.notices)  updateIfChanged(setNotices, snaps.notices.docs.map(mapNotice));
+      if (snaps.badhais)  updateIfChanged(setBadhais, snaps.badhais.docs.map(mapBadhai));
+      if (snaps.pending)  updateIfChanged(setPendingPosts, snaps.pending.docs.map(mapPending));
+      
+      if (settingsData) {
+        setSettings(prev => {
+          const next = { ...prev, ...settingsData };
+          return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+        });
+      }
 
       setIsLoading(false);
     }
 
-    async function load() {
-      // ── PHASE 1: Cache — all in parallel, single batch setState ──────────
-      // All tryCache() calls run simultaneously via Promise.all.
-      // If ANY collection has cache → we can show the full UI immediately.
-      const [
-        cachedSabads, cachedAartis, cachedBhajans, cachedSakhis, cachedMantras,
-        cachedThoughts, cachedMeles, cachedNotices, cachedBadhais, cachedPending,
-        cachedSettingsSnap,
-      ] = await Promise.all([
-        tryCache(queries.sabads),
-        tryCache(queries.aartis),
-        tryCache(queries.bhajans),
-        tryCache(queries.sakhis),
-        tryCache(queries.mantras),
-        tryCache(queries.thoughts),
-        tryCache(queries.meles),
-        tryCache(queries.notices),
-        tryCache(queries.badhais),
-        tryCache(queries.pending),
-        // Settings cache
-        (async () => { try { const s = await getDocFromCache(settingsRef); return s.exists() ? s : null; } catch(_) { return null; } })(),
-      ]);
-
-      const hasCachedData = !!(cachedSabads || cachedAartis || cachedBhajans);
-
-      if (hasCachedData && mounted) {
-        // ONE render — all collections set simultaneously
-        applyAll({
-          sabads:   cachedSabads,
-          aartis:   cachedAartis,
-          bhajans:  cachedBhajans,
-          sakhis:   cachedSakhis,
-          mantras:  cachedMantras,
-          thoughts: cachedThoughts,
-          meles:    cachedMeles,
-          notices:  cachedNotices,
-          badhais:  cachedBadhais,
-          pending:  cachedPending,
-        }, cachedSettingsSnap?.data() || null);
-      }
-
-      // ── PHASE 2: Server — all in parallel, single batch setState ─────────
-      // getDocs() returns the MERGED result (cache + server delta) automatically.
-      // Run all fetches in parallel — whichever finishes last triggers the batch.
+    // ── PHASE 2: Server — all in parallel, single batch setState ─────────
+    // getDocs() returns the MERGED result (cache + server delta) automatically.
+    // Run all fetches in parallel — whichever finishes last triggers the batch.
+    async function loadServerData(hasCachedData: boolean) {
+      if (!mounted) return;
       try {
         const [
           serverSabads, serverAartis, serverBhajans, serverSakhis, serverMantras,
@@ -213,7 +188,58 @@ export function useSabadData() {
       }
     }
 
+    async function load() {
+      // ── PHASE 1: Cache — all in parallel, single batch setState ──────────
+      // All tryCache() calls run simultaneously via Promise.all.
+      // If ANY collection has cache → we can show the full UI immediately.
+      const [
+        cachedSabads, cachedAartis, cachedBhajans, cachedSakhis, cachedMantras,
+        cachedThoughts, cachedMeles, cachedNotices, cachedBadhais, cachedPending,
+        cachedSettingsSnap,
+      ] = await Promise.all([
+        tryCache(queries.sabads),
+        tryCache(queries.aartis),
+        tryCache(queries.bhajans),
+        tryCache(queries.sakhis),
+        tryCache(queries.mantras),
+        tryCache(queries.thoughts),
+        tryCache(queries.meles),
+        tryCache(queries.notices),
+        tryCache(queries.badhais),
+        tryCache(queries.pending),
+        // Settings cache
+        (async () => { try { const s = await getDocFromCache(settingsRef); return s.exists() ? s : null; } catch(_) { return null; } })(),
+      ]);
+
+      const hasCachedData = !!(cachedSabads || cachedAartis || cachedBhajans);
+
+      if (hasCachedData && mounted) {
+        // ONE render — all collections set simultaneously
+        applyAll({
+          sabads:   cachedSabads,
+          aartis:   cachedAartis,
+          bhajans:  cachedBhajans,
+          sakhis:   cachedSakhis,
+          mantras:  cachedMantras,
+          thoughts: cachedThoughts,
+          meles:    cachedMeles,
+          notices:  cachedNotices,
+          badhais:  cachedBadhais,
+          pending:  cachedPending,
+        }, cachedSettingsSnap?.data() || null);
+      }
+
+      await loadServerData(hasCachedData);
+    }
+
     load();
+
+    // Listen for connection restore to transparently fetch data if it was fully offline
+    const handleOnline = () => {
+      // true means we just treat it as having cached data to avoid spinner jank on refresh
+      loadServerData(true);
+    };
+    window.addEventListener("online", handleOnline);
 
     // Safety valve: if both cache AND server fail within 4s, stop spinner
     const safety = setTimeout(() => { if (mounted) setIsLoading(false); }, 4000);
@@ -221,6 +247,7 @@ export function useSabadData() {
     return () => {
       mounted = false;
       clearTimeout(safety);
+      window.removeEventListener("online", handleOnline);
     };
   }, []);
 
