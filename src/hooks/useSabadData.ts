@@ -2,8 +2,8 @@ import { useState, useEffect, useTransition } from "react";
 import {
   collection, query, orderBy,
   getDocs, getDocsFromCache,
-  doc, getDoc, getDocFromCache,
-  QuerySnapshot
+  doc,
+  onSnapshot, QuerySnapshot
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { SabadItem, AppSettings, Thought, Mele, Notice, Badhai } from "../types";
@@ -119,14 +119,38 @@ export function useSabadData() {
       setIsLoading(false);
     }
 
+    // ── Real-time Listeners for dynamic/live content ────────────────────────
+    const unsubNotices = onSnapshot(queries.notices, (snap) => {
+      if (mounted) {
+        setNotices(snap.docs.map(mapNotice));
+      }
+    }, (error) => {
+      console.error("Error in notices subscription:", error);
+    });
+
+    const unsubBadhais = onSnapshot(queries.badhais, (snap) => {
+      if (mounted) {
+        setBadhais(snap.docs.map(mapBadhai));
+      }
+    }, (error) => {
+      console.error("Error in badhais subscription:", error);
+    });
+
+    const unsubSettings = onSnapshot(settingsRef, (snap) => {
+      if (mounted && snap.exists()) {
+        setSettings(prev => ({ ...prev, ...snap.data() }));
+      }
+    }, (error) => {
+      console.error("Error in settings subscription:", error);
+    });
+
     async function load() {
       // ── PHASE 1: Cache — all in parallel, single batch setState ──────────
       // All tryCache() calls run simultaneously via Promise.all.
       // If ANY collection has cache → we can show the full UI immediately.
       const [
         cachedSabads, cachedAartis, cachedBhajans, cachedSakhis, cachedMantras,
-        cachedThoughts, cachedMeles, cachedNotices, cachedBadhais, cachedPending,
-        cachedSettingsSnap,
+        cachedThoughts, cachedMeles, cachedPending,
       ] = await Promise.all([
         tryCache(queries.sabads),
         tryCache(queries.aartis),
@@ -135,11 +159,7 @@ export function useSabadData() {
         tryCache(queries.mantras),
         tryCache(queries.thoughts),
         tryCache(queries.meles),
-        tryCache(queries.notices),
-        tryCache(queries.badhais),
         tryCache(queries.pending),
-        // Settings cache
-        (async () => { try { const s = await getDocFromCache(settingsRef); return s.exists() ? s : null; } catch(_) { return null; } })(),
       ]);
 
       const hasCachedData = !!(cachedSabads || cachedAartis || cachedBhajans);
@@ -154,10 +174,8 @@ export function useSabadData() {
           mantras:  cachedMantras,
           thoughts: cachedThoughts,
           meles:    cachedMeles,
-          notices:  cachedNotices,
-          badhais:  cachedBadhais,
           pending:  cachedPending,
-        }, cachedSettingsSnap?.data() || null);
+        }, null);
       }
 
       // ── PHASE 2: Server — all in parallel, single batch setState ─────────
@@ -166,8 +184,7 @@ export function useSabadData() {
       try {
         const [
           serverSabads, serverAartis, serverBhajans, serverSakhis, serverMantras,
-          serverThoughts, serverMeles, serverNotices, serverBadhais, serverPending,
-          serverSettings,
+          serverThoughts, serverMeles, serverPending,
         ] = await Promise.all([
           getDocs(queries.sabads),
           getDocs(queries.aartis),
@@ -176,10 +193,7 @@ export function useSabadData() {
           getDocs(queries.mantras),
           getDocs(queries.thoughts),
           getDocs(queries.meles),
-          getDocs(queries.notices),
-          getDocs(queries.badhais),
           getDocs(queries.pending),
-          getDoc(settingsRef),
         ]);
 
         if (!mounted) return;
@@ -195,10 +209,8 @@ export function useSabadData() {
           mantras:  serverMantras,
           thoughts: serverThoughts,
           meles:    serverMeles,
-          notices:  serverNotices,
-          badhais:  serverBadhais,
           pending:  serverPending,
-        }, serverSettings.exists() ? serverSettings.data() : null);
+        }, null);
 
         if (hasCachedData) {
           startTransition(apply); // Low-priority update — no jank
@@ -221,6 +233,9 @@ export function useSabadData() {
     return () => {
       mounted = false;
       clearTimeout(safety);
+      unsubNotices();
+      unsubBadhais();
+      unsubSettings();
     };
   }, []);
 

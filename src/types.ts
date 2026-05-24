@@ -17,7 +17,8 @@ export type Screen =
   | "bichhuda"
   | "mele"
   | "mala"
-  | "niyam";
+  | "niyam"
+  | "panchang_calendar";
 
 export type SabadItem = {
   id: string;

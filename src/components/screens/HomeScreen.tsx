@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { Sun } from "lucide-react";
+import { Calendar } from "lucide-react";
 import { format } from "date-fns";
 import { hi } from "date-fns/locale";
 import { getJD, getTithiName, getSamvat } from "../../lib/astro";
@@ -53,28 +53,45 @@ export default function HomeScreen({
       </div>
 
       {/* Premium Daily Panchang Summary */}
-      <div className="px-4 mb-1.5 shrink-0">
-        <div className="bg-white/80 backdrop-blur-md rounded-2xl p-2 border border-ink/5 shadow-sm flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="bg-accent/10 p-1.5 rounded-xl">
-              <Sun className="w-4 h-4 text-accent-dark animate-pulse" />
-            </div>
-            <div>
-              <h4 className="text-[10px] font-black text-accent-dark uppercase tracking-widest mb-0.5">आज का पंचांग</h4>
-              <p className="text-[13px] font-bold text-ink">
-                {format(new Date(), "dd MMMM, EEEE", { locale: hi })}
-              </p>
+      <div className="px-4 mb-2 shrink-0">
+        <button 
+          onClick={() => navigateTo('panchang_calendar')}
+          className="w-full bg-white/90 backdrop-blur-md rounded-2xl p-2.5 border border-ink/5 shadow-sm flex items-center justify-between text-left hover:bg-white/95 active:scale-[0.99] transition-all cursor-pointer focus:outline-none"
+        >
+          {/* Left Block: Today's Gregorian Date (No Icon) */}
+          <div className="flex flex-col flex-1 min-w-0">
+            <h4 className="text-[10px] font-black text-accent-dark uppercase tracking-widest mb-0.5 truncate">
+              आज का पंचांग
+            </h4>
+            <p className="text-[12px] font-extrabold text-ink truncate">
+              {format(new Date(), "dd MMMM, EEEE", { locale: hi })}
+            </p>
+          </div>
+
+          {/* Center Block: Luxurious Circular Button badge with radiating sun rays effect */}
+          <div className="relative mx-3 shrink-0 flex items-center justify-center">
+            {/* Ambient dynamic pulsing rays/rings */}
+            <div className="absolute h-14 w-14 rounded-full border border-dashed border-accent/30 animate-spin-slow shrink-0" />
+            <div className="absolute h-16 w-16 rounded-full border border-accent/10 animate-pulse scale-90 shrink-0" />
+            <div className="absolute inset-0 rounded-full bg-accent/15 animate-ping opacity-40 scale-110 shrink-0" />
+            
+            {/* The main core circle button */}
+            <div className="relative h-11 w-11 rounded-full bg-gradient-to-tr from-accent/25 via-accent/5 to-accent/35 border border-accent/40 shadow-sm flex flex-col items-center justify-center text-[8px] font-black text-accent-dark leading-none gap-1 transition-all">
+              <Calendar className="w-3.5 h-3.5 text-accent-dark shrink-0" />
+              <span>कैलेंडर</span>
             </div>
           </div>
-          <div className="text-right">
-            <p className="text-[12px] font-black text-accent-dark">
+
+          {/* Right Block: Today's Hindu Tithi & Samvat */}
+          <div className="text-right flex-1 min-w-0">
+            <p className="text-[11px] font-black text-accent-dark truncate">
               {getTithiName(getJD(new Date(new Date().setHours(6, 0, 0, 0))))}
             </p>
-            <p className="text-[10px] font-bold text-ink-light uppercase mt-0.5">
+            <p className="text-[9px] font-bold text-ink-light uppercase mt-0.5 truncate">
               विक्रमी संवत {getSamvat(getJD(new Date(new Date().setHours(6, 0, 0, 0))))}
             </p>
           </div>
-        </div>
+        </button>
       </div>
 
       {/* Premium Grid Layout for Main Categories - Compact 3-Column Design */}

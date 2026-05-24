@@ -161,7 +161,7 @@ const generateAmavasyaForYear = (year: number) => {
       const wasAdhik = arr[idx - 1] && arr[idx - 1].rashi === a.rashi;
       
       if (isAdhik) monthName = "अधिक " + monthName;
-      else if (wasAdhik) monthName = "शुद्ध " + monthName;
+      else if (wasAdhik) monthName = "श्रेष्ठ " + monthName;
       
       const samvat = getSamvat(a.finishJD);
 
@@ -229,21 +229,26 @@ const getCurrentHinduDate = (date: Date) => {
   ];
   
   let currentMonth = "";
+  let fullMonthName = "";
   const isShukla = tithiName.includes("शुक्ल") || tithiName.includes("पूर्णिमा");
   
   if (isShukla) {
     const pastAmavasyas = amavasyas.filter(a => a.endDate.getTime() <= date.getTime());
     if (pastAmavasyas.length > 0) {
-      currentMonth = pastAmavasyas[pastAmavasyas.length - 1].hindiMonth.replace("अधिक ", "").replace("शुद्ध ", "");
+      const originalMonth = pastAmavasyas[pastAmavasyas.length - 1].hindiMonth;
+      fullMonthName = originalMonth;
+      currentMonth = originalMonth.replace("अधिक ", "").replace("शुद्ध ", "").replace("श्रेष्ठ ", "");
     }
   } else {
     const futureAmavasyas = amavasyas.filter(a => a.endDate.getTime() > date.getTime());
     if (futureAmavasyas.length > 0) {
-      currentMonth = futureAmavasyas[0].hindiMonth.replace("अधिक ", "").replace("शुद्ध ", "");
+      const originalMonth = futureAmavasyas[0].hindiMonth;
+      fullMonthName = originalMonth;
+      currentMonth = originalMonth.replace("अधिक ", "").replace("शुद्ध ", "").replace("श्रेष्ठ ", "");
     }
   }
   
-  return { month: currentMonth, tithi: tithiName };
+  return { month: currentMonth, fullMonth: fullMonthName || currentMonth, tithi: tithiName };
 };
 
 

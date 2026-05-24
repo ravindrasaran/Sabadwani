@@ -34,6 +34,7 @@ const MelesScreen = lazy(() => import("./components/screens/MelesScreen"));
 const AmavasyaScreen = lazy(() => import("./components/AstroScreens").then(module => ({ default: module.AmavasyaScreen })));
 const ChoghadiyaScreen = lazy(() => import("./components/AstroScreens").then(module => ({ default: module.ChoghadiyaScreen })));
 const BichhudaScreen = lazy(() => import("./components/AstroScreens").then(module => ({ default: module.BichhudaScreen })));
+const PanchangCalendarScreen = lazy(() => import("./components/screens/PanchangCalendarScreen"));
 import {
   Home,
   Info,
@@ -2108,6 +2109,7 @@ function MainApp() {
             <Route path="/contribute" element={<ContributeScreen handleBack={handleBack} contribAuthor={contribAuthor} setContribAuthor={setContribAuthor} contribTitle={contribTitle} setContribTitle={setContribTitle} contribType={contribType} setContribType={setContribType} contribAudio={contribAudio} setContribAudio={setContribAudio} contribAudioFile={contribAudioFile} setContribAudioFile={setContribAudioFile} contribAudioError={contribAudioError} setContribAudioError={setContribAudioError} contribText={contribText} setContribText={setContribText} captchaQuestion={captchaQuestion} captchaAnswer={captchaAnswer} setCaptchaAnswer={setCaptchaAnswer} contribError={contribError} isSubmitting={isSubmitting} uploadProgress={uploadProgress} handleContributeSubmit={handleContributeSubmit} handleFileSelect={handleFileSelect} />} />
             <Route path="/choghadiya" element={<ChoghadiyaScreen choghadiyaDate={choghadiyaDate} setChoghadiyaDate={setChoghadiyaDate} choghadiyaLocation={choghadiyaLocation} handleGetLocation={handleGetLocation} calculateChoghadiya={calculateChoghadiya} choghadiyaLoading={choghadiyaLoading} choghadiyaError={choghadiyaError} choghadiyaSlots={choghadiyaSlots} handleBack={() => navigateTo("home")} locationSuggestions={locationSuggestions} handleLocationInput={handleLocationInput} handleSelectSuggestion={handleSelectSuggestion} />} />
             <Route path="/bichhuda" element={<BichhudaScreen bichhudaMonth={bichhudaMonth} setBichhudaMonth={setBichhudaMonth} bichhudaYear={bichhudaYear} setBichhudaYear={setBichhudaYear} bichhudaList={bichhudaList} handleBack={() => navigateTo("home")} />} />
+            <Route path="/panchang_calendar" element={<PanchangCalendarScreen handleBack={() => navigateTo("home")} meles={meles} />} />
             <Route path="/mele" element={<MelesScreen isLoading={isLoading} meles={meles} processedMeles={processedMeles} navigateTo={navigateTo} />} />
             <Route path="/admin_login" element={<AdminLoginScreen isAdminLoggingIn={isAdminLoggingIn} adminLoginError={adminLoginError} adminPasswordInput={adminPasswordInput} auth={auth} setIsAdminLoggingIn={setIsAdminLoggingIn} setAdminLoginError={setAdminLoginError} setAdminPasswordInput={setAdminPasswordInput} setIsAdminAuthenticated={setIsAdminAuthenticated} navigateTo={navigateTo} />} />
             <Route path="/admin" element={<AdminScreen {...{
