@@ -20,6 +20,9 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMont
 import { hi } from "date-fns/locale";
 import { vibrate } from "../../lib/utils";
 import { getJD, getTithiName, getCurrentHinduDate } from "../../lib/astro";
+import { Capacitor } from '@capacitor/core';
+import { Geolocation } from '@capacitor/geolocation';
+import { NativeSettings, AndroidSettings, IOSSettings } from 'capacitor-native-settings';
 
 // Compact representation of Hindu Tithi inside day boxes
 const getCompactTithi = (date: Date) => {
@@ -106,10 +109,16 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
           const data = await res.json();
           const list = data.map((item: any) => {
             const addr = item.address || {};
-            const city = addr.city || addr.town || addr.village || addr.suburb || item.display_name.split(",")[0];
+            const city = addr.city || addr.town || addr.village || addr.suburb || item.name || item.display_name.split(",")[0];
+            const state = addr.state || "";
             const country = addr.country || "";
+            
+            let disp = city;
+            if (state) disp += `, ${state}`;
+            if (country && country !== "India") disp += `, ${country}`;
+            
             return {
-              displayName: city + (country ? `, ${country}` : ""),
+              displayName: disp,
               lat: parseFloat(item.lat),
               lon: parseFloat(item.lon)
             };
@@ -125,56 +134,94 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
   }, [locationQuery]);
 
   // Request GPS permission & get coordinates
-  const handleGPSLocation = () => {
+  const handleGPSLocation = async () => {
     vibrate(15);
     setIsGeoLoading(true);
     setGeoError(null);
 
-    if (!navigator.geolocation) {
-      setGeoError("आपके ब्राउज़र/डिवाइस में जीपीएस सपोर्ट नहीं है।");
-      setIsGeoLoading(false);
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const lat = pos.coords.latitude;
-        const lon = pos.coords.longitude;
-        setLatitude(lat);
-        setLongitude(lon);
-        
-        try {
-          // Reverse Geocoding to get city name
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=en`,
-            { headers: { "User-Agent": "SabadwaniPanchang/1.0" } }
-          );
-          let resolvedName = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-          if (res.ok) {
-            const data = await res.json();
-            const addr = data.address || {};
-            const city = addr.city || addr.town || addr.village || addr.suburb || data.display_name.split(",")[0];
-            const country = addr.country || "";
-            resolvedName = city + (country ? `, ${country}` : "");
+    try {
+      let position;
+      if (Capacitor.isNativePlatform()) {
+        const permission = await Geolocation.checkPermissions();
+        if (permission.location !== 'granted') {
+          const request = await Geolocation.requestPermissions();
+          if (request.location !== 'granted') {
+            setGeoError("लोकेशन की अनुमति नहीं मिली। कृपया सेटिंग्स में जाकर परमिशन दें।");
+            setIsGeoLoading(false);
+            try {
+              await NativeSettings.open({
+                optionAndroid: AndroidSettings.ApplicationDetails,
+                optionIOS: IOSSettings.App
+              });
+            } catch (e) {
+              console.warn("Could not open settings", e);
+            }
+            return;
           }
-          setLocationName(resolvedName);
-          setLocationQuery("");
+        }
+        position = await Geolocation.getCurrentPosition({
+          enableHighAccuracy: false,
+          timeout: 15000,
+        });
+      } else {
+        if (!navigator.geolocation) {
+          setGeoError("आपके डिवाइस में लोकेशन की सुविधा उपलब्ध नहीं है।");
+          setIsGeoLoading(false);
+          return;
+        }
+        position = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            timeout: 15000,
+            maximumAge: 300000,
+          });
+        });
+      }
+
+      const { latitude: lat, longitude: lon } = position.coords;
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=en&addressdetails=1`,
+        { headers: { "User-Agent": "SabadwaniPanchang/1.0" } }
+      );
+      
+      let resolvedName = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+      if (res.ok) {
+        const data = await res.json();
+        const addr = data.address || {};
+        const city = addr.city || addr.town || addr.village || addr.suburb || data.name || data.display_name.split(",")[0];
+        const state = addr.state || "";
+        const country = addr.country || "";
+        
+        let disp = city;
+        if (state) disp += `, ${state}`;
+        if (country && country !== "India") disp += `, ${country}`;
+        resolvedName = disp;
+      }
+      
+      setLatitude(lat);
+      setLongitude(lon);
+      setLocationName(resolvedName);
+      setLocationQuery("");
+    } catch (error: any) {
+      console.error("GPS retrieval failed", error);
+      const errorMsg = error.message?.toLowerCase() || "";
+      if (error.code === 2 || errorMsg.includes("disabled") || errorMsg.includes("unavailable")) {
+        setGeoError("कृपया अपने मोबाइल की लोकेशन (GPS) चालू करें।");
+        try {
+          await NativeSettings.open({
+            optionAndroid: AndroidSettings.Location,
+            optionIOS: IOSSettings.LocationServices
+          });
         } catch (e) {
-          const resolvedName = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-          setLocationName(resolvedName);
+          console.warn("Could not open settings", e);
         }
-        setIsGeoLoading(false);
-      },
-      (err) => {
-        setIsGeoLoading(false);
-        if (err.code === 1) {
-          setGeoError("कृपया स्थान एक्सेस करने की अनुमति प्रदान करें।");
-        } else {
-          setGeoError("स्थान का पता लगाने में त्रुटि हुई। कृपया हाथ से खोजें।");
-        }
-      },
-      { timeout: 10000 }
-    );
+      } else if (error.code === 1) {
+        setGeoError("लोकेशन की अनुमति नहीं मिली। कृपया सेटिंग्स में जाकर अनुमति दें या सीधे अपने शहर का नाम लिखकर खोजें।");
+      } else {
+        setGeoError("लोकेशन की अनुमति नहीं मिली। कृपया सेटिंग्स में जाकर अनुमति दें या सीधे अपने शहर का नाम लिखकर खोजें।");
+      }
+    } finally {
+      setIsGeoLoading(false);
+    }
   };
 
   // Search OSM for current typed key when user clicks manual calculated button
@@ -194,9 +241,13 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
         if (data && data.length > 0) {
           const item = data[0];
           const addr = item.address || {};
-          const city = addr.city || addr.town || addr.village || addr.suburb || item.display_name.split(",")[0];
+          const city = addr.city || addr.town || addr.village || addr.suburb || item.name || item.display_name.split(",")[0];
+          const state = addr.state || "";
           const country = addr.country || "";
-          const resolvedName = city + (country ? `, ${country}` : "");
+          
+          let resolvedName = city;
+          if (state) resolvedName += `, ${state}`;
+          if (country && country !== "India") resolvedName += `, ${country}`;
           
           setLatitude(parseFloat(item.lat));
           setLongitude(parseFloat(item.lon));
@@ -292,7 +343,7 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
       <div className="px-4 pt-4 max-w-xl mx-auto space-y-6">
         
         {/* Geographic location and calculation tuning */}
-        <div className="bg-white/95 backdrop-blur-xl rounded-[2rem] p-5.5 border border-ink/5 shadow-md space-y-4.5 relative overflow-hidden">
+        <div className="bg-white/95 backdrop-blur-xl rounded-[2rem] p-5.5 border border-ink/5 shadow-md space-y-4.5 relative overflow-visible z-30">
           {/* Subtle top decoration beam */}
           <div className="absolute top-0 inset-x-0 h-[3px] bg-gradient-to-r from-accent/20 via-accent/60 to-accent/20" />
           
@@ -302,14 +353,14 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
                 <Compass className="w-4 h-4 text-accent-dark animate-spin-slow" />
               </div>
               <div>
-                <span className="text-[10px] font-black text-accent-dark/80 tracking-widest uppercase block leading-none mb-1">गणना स्थान</span>
+                <span className="text-[11px] font-black text-accent-dark/80 tracking-widest uppercase block leading-none mb-1">गणना स्थान</span>
                 <h3 className="text-[11px] font-black text-ink-light tracking-wide leading-none uppercase">Location Settings</h3>
               </div>
             </div>
           </div>
 
           {/* Unified Premium Location Info and Interactive Search Changer (Choghadiya-style) */}
-          <div className="relative space-y-3">
+          <div className="relative space-y-3 z-30">
             <div className="flex items-center gap-2">
               <div className="flex-1 flex gap-2.5 bg-paper/60 p-1.5 rounded-2xl border border-ink/10 focus-within:border-accent focus-within:ring-1 focus-within:ring-accent/20 transition-all duration-300 shadow-sm items-center">
                 <input
@@ -417,7 +468,7 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
               <h2 className="text-lg font-black text-ink tracking-tight font-heading">
                 {format(currentMonth, "MMMM yyyy", { locale: hi })}
               </h2>
-              <p className="text-[10px] uppercase font-black text-accent-dark tracking-widest mt-0.5">
+              <p className="text-[11px] uppercase font-black text-accent-dark tracking-widest mt-0.5">
                 ऋतु: {panchang.ritu} • {panchang.ayana}
               </p>
             </div>
@@ -425,7 +476,7 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
             <div className="flex items-center gap-1.5">
               <button
                 onClick={setToday}
-                className="text-[10px] font-black uppercase text-accent-dark bg-accent/5 hover:bg-accent/15 px-3 py-1.5 rounded-full border border-accent/10 hover:border-accent/20 transition-all active:scale-[0.98]"
+                className="text-[11px] font-black uppercase text-accent-dark bg-accent/5 hover:bg-accent/15 px-3 py-1.5 rounded-full border border-accent/10 hover:border-accent/20 transition-all active:scale-[0.98]"
               >
                 आज (Today)
               </button>
@@ -445,7 +496,7 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
           </div>
 
           {/* Weekday Labels Grid */}
-          <div className="grid grid-cols-7 gap-1 text-center font-bold text-[10px] text-ink-light uppercase tracking-wider py-1 border-b border-ink/5">
+          <div className="grid grid-cols-7 gap-1 text-center font-bold text-[11px] text-ink-light uppercase tracking-wider py-1 border-b border-ink/5">
             {weekdayHeaders.map((h, i) => (
               <div key={i} className={i === 0 ? "text-red-500 font-extrabold" : ""}>
                 {h}
@@ -503,17 +554,21 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
 
                   {/* Compact Traditional Tithi Indicator */}
                   {compactTithi && (
-                    <span className={`text-[7.5px] max-w-full font-black tracking-tight leading-normal text-center self-center whitespace-nowrap px-1 py-0.5 rounded-sm ${
-                      isSelected
-                        ? "text-white/90"
-                        : isAmavasya
-                          ? "bg-red-500/15 text-red-600 font-bold"
-                          : isPurnima
-                            ? "bg-green-500/15 text-green-700 font-bold"
-                            : "text-accent-dark/80"
-                    }`}>
-                      {compactTithi}
-                    </span>
+                    <div className="w-full grid place-items-center">
+                      <span className={`max-w-max font-black tracking-tighter leading-normal text-center whitespace-nowrap py-0.5 rounded-sm ${
+                        isAmavasya ? "text-[7.5px] px-0.5" : "text-[8.5px] px-1"
+                      } ${
+                        isSelected
+                          ? "text-white/90"
+                          : isAmavasya
+                            ? "bg-red-500/15 text-red-600 font-bold"
+                            : isPurnima
+                              ? "bg-green-500/15 text-green-700 font-bold"
+                              : "text-accent-dark/80"
+                      }`}>
+                        {compactTithi}
+                      </span>
+                    </div>
                   )}
                 </button>
               );
@@ -535,7 +590,7 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
             <div className="bg-gradient-to-br from-accent/5 via-accent/10 to-accent/5 rounded-3xl p-5 border border-accent/20 shadow-md flex items-center justify-between relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-accent/10 blur-3xl rounded-full" />
               <div className="space-y-2 relative z-10">
-                <span className="bg-accent/15 text-accent-dark text-[10px] font-black uppercase px-2.5 py-1 rounded-full border border-accent/20">
+                <span className="bg-accent/15 text-accent-dark text-[11px] font-black uppercase px-2.5 py-1 rounded-full border border-accent/20">
                   {format(selectedDate, "EEEE", { locale: hi })}
                 </span>
                 <h3 className="text-xl font-heading text-accent-dark font-black tracking-tight mt-1">
@@ -575,16 +630,16 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
               {/* Tithi Detail */}
               <div className="bg-white/95 rounded-2.5xl p-4 border border-ink/5 shadow-inner flex flex-col justify-between text-left">
                 <div>
-                  <span className="text-[10px] font-black text-ink-light uppercase tracking-wider">तिथि (Tithi)</span>
+                  <span className="text-[11px] font-black text-ink-light uppercase tracking-wider">तिथि (Tithi)</span>
                   <p className="text-base font-extrabold text-accent-dark tracking-tight mt-0.5 leading-snug">
                     {panchang.tithi}
                   </p>
                 </div>
                 <div className="border-t border-ink/5 pt-2 mt-2">
-                  <p className="text-[9px] text-ink-light leading-relaxed">
+                  <p className="text-[10px] text-ink-light leading-relaxed">
                     समाप्ति: <span className="font-bold text-ink">{panchang.tithiEnd}</span>
                   </p>
-                  <p className="text-[9px] text-ink-light leading-relaxed mt-0.5">
+                  <p className="text-[10px] text-ink-light leading-relaxed mt-0.5">
                     अगला: <span className="font-semibold">{panchang.nextTithi}</span>
                   </p>
                 </div>
@@ -593,16 +648,16 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
               {/* Nakshatra Detail */}
               <div className="bg-white/95 rounded-2.5xl p-4 border border-ink/5 shadow-inner flex flex-col justify-between text-left">
                 <div>
-                  <span className="text-[10px] font-black text-ink-light uppercase tracking-wider">नक्षत्र (Nakshatra)</span>
+                  <span className="text-[11px] font-black text-ink-light uppercase tracking-wider">नक्षत्र (Nakshatra)</span>
                   <p className="text-base font-extrabold text-accent-dark tracking-tight mt-0.5 leading-snug">
                     {panchang.nakshatra}
                   </p>
                 </div>
                 <div className="border-t border-ink/5 pt-2 mt-2">
-                  <p className="text-[9px] text-ink-light leading-relaxed">
+                  <p className="text-[10px] text-ink-light leading-relaxed">
                     समाप्ति: <span className="font-bold text-ink">{panchang.nakshatraEnd}</span>
                   </p>
-                  <p className="text-[9px] text-ink-light leading-relaxed mt-0.5">
+                  <p className="text-[10px] text-ink-light leading-relaxed mt-0.5">
                     अगला: <span className="font-semibold">{panchang.nextNakshatra}</span>
                   </p>
                 </div>
@@ -611,16 +666,16 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
               {/* Yog Detail */}
               <div className="bg-white/95 rounded-2.5xl p-4 border border-ink/5 shadow-inner flex flex-col justify-between text-left">
                 <div>
-                  <span className="text-[10px] font-black text-ink-light uppercase tracking-wider">योग (Yog)</span>
+                  <span className="text-[11px] font-black text-ink-light uppercase tracking-wider">योग (Yog)</span>
                   <p className="text-base font-extrabold text-ink tracking-tight mt-0.5">
                     {panchang.yog}
                   </p>
                 </div>
                 <div className="border-t border-ink/5 pt-2 mt-2">
-                  <p className="text-[9px] text-ink-light leading-relaxed">
+                  <p className="text-[10px] text-ink-light leading-relaxed">
                     समाप्ति: <span className="font-bold text-ink">{panchang.yogEnd}</span>
                   </p>
-                  <p className="text-[9px] text-ink-light leading-relaxed mt-0.5">
+                  <p className="text-[10px] text-ink-light leading-relaxed mt-0.5">
                     अगला: <span className="font-semibold">{panchang.nextYog}</span>
                   </p>
                 </div>
@@ -629,12 +684,12 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
               {/* Karan Detail */}
               <div className="bg-white/95 rounded-2.5xl p-4 border border-ink/5 shadow-inner flex flex-col justify-between text-left">
                 <div>
-                  <span className="text-[10px] font-black text-ink-light uppercase tracking-wider">करण (Karan)</span>
+                  <span className="text-[11px] font-black text-ink-light uppercase tracking-wider">करण (Karan)</span>
                   <p className="text-base font-extrabold text-ink tracking-tight mt-0.5">
                     {panchang.karan}
                   </p>
                 </div>
-                <div className="border-t border-ink/5 pt-2 mt-2 text-[9px] text-ink-light leading-relaxed">
+                <div className="border-t border-ink/5 pt-2 mt-2 text-[10px] text-ink-light leading-relaxed">
                   किंस्तुघ्न, बव, बालव की श्रृंखला में वर्तमान में <span className="font-bold text-ink">{panchang.karan}</span> करण चल रहा है।
                 </div>
               </div>
@@ -653,7 +708,7 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
                     <Sun className="w-5 h-5 text-orange-500" />
                   </div>
                   <div>
-                    <p className="text-[9px] font-black text-ink-light uppercase">सूर्योदय (Sunrise)</p>
+                    <p className="text-[10px] font-black text-ink-light uppercase">सूर्योदय (Sunrise)</p>
                     <p className="text-sm font-extrabold mt-0.5 text-ink">
                       {format(panchang.sunrise, "hh:mm a")}
                     </p>
@@ -665,7 +720,7 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
                     <Moon className="w-5 h-5 text-indigo-500" />
                   </div>
                   <div>
-                    <p className="text-[9px] font-black text-ink-light uppercase">सूर्यास्त (Sunset)</p>
+                    <p className="text-[10px] font-black text-ink-light uppercase">सूर्यास्त (Sunset)</p>
                     <p className="text-sm font-extrabold mt-0.5 text-ink">
                       {format(panchang.sunset, "hh:mm a")}
                     </p>
@@ -677,7 +732,7 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
                     <Moon className="w-5 h-5 text-yellow-600" />
                   </div>
                   <div>
-                    <p className="text-[9px] font-black text-ink-light uppercase">चन्द्रोदय (Moonrise)</p>
+                    <p className="text-[10px] font-black text-ink-light uppercase">चन्द्रोदय (Moonrise)</p>
                     <p className="text-sm font-extrabold mt-0.5 text-ink">
                       {panchang.moonrise ? format(panchang.moonrise, "hh:mm a") : "नहीं है"}
                     </p>
@@ -689,7 +744,7 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
                     <Moon className="w-5 h-5 text-slate-500" />
                   </div>
                   <div>
-                    <p className="text-[9px] font-black text-ink-light uppercase">चन्द्रास्त (Moonset)</p>
+                    <p className="text-[10px] font-black text-ink-light uppercase">चन्द्रास्त (Moonset)</p>
                     <p className="text-sm font-extrabold mt-0.5 text-ink">
                       {panchang.moonset ? format(panchang.moonset, "hh:mm a") : "नहीं है"}
                     </p>
@@ -702,15 +757,15 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
             {/* 4. Signs & Ritu Info */}
             <div className="grid grid-cols-3 gap-3">
               <div className="bg-white/95 rounded-2.5xl p-3 border border-ink/5 shadow-sm text-center">
-                <span className="text-[9px] font-black text-ink-light uppercase">चन्द्रराशि</span>
+                <span className="text-[10px] font-black text-ink-light uppercase">चन्द्रराशि</span>
                 <p className="text-sm font-black text-accent-dark tracking-tight mt-0.5">{panchang.chandraRashi} राशि</p>
               </div>
               <div className="bg-white/95 rounded-2.5xl p-3 border border-ink/5 shadow-sm text-center">
-                <span className="text-[9px] font-black text-ink-light uppercase">सूर्यराशि</span>
+                <span className="text-[10px] font-black text-ink-light uppercase">सूर्यराशि</span>
                 <p className="text-sm font-black text-accent-dark tracking-tight mt-0.5">{panchang.suryaRashi} राशि</p>
               </div>
               <div className="bg-white/95 rounded-2.5xl p-3 border border-ink/5 shadow-sm text-center">
-                <span className="text-[9px] font-black text-ink-light uppercase">दिशाशूल</span>
+                <span className="text-[10px] font-black text-ink-light uppercase">दिशाशूल</span>
                 <p className="text-sm font-black text-red-600 tracking-tight mt-0.5">{panchang.dishaShool}</p>
               </div>
             </div>
@@ -728,7 +783,7 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
                     <div className="w-2 h-2 rounded-full bg-green-500" />
                     <div>
                       <p className="text-xs font-black text-green-800">अभिजित मुहूर्त (अति शुभ)</p>
-                      <p className="text-[9px] text-green-700/80">नया कार्य शुरू करने के लिए सर्वोत्तम समय।</p>
+                      <p className="text-[10px] text-green-700/80">नया कार्य शुरू करने के लिए सर्वोत्तम समय।</p>
                     </div>
                   </div>
                   <span className="text-xs font-black text-green-800/90 whitespace-nowrap bg-green-100/50 px-2.5 py-1 rounded-xl">
@@ -742,7 +797,7 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
                     <div className="w-2 h-2 rounded-full bg-teal-500" />
                     <div>
                       <p className="text-xs font-black text-teal-800">ब्रह्म मुहूर्त (ध्यान-पूजा)</p>
-                      <p className="text-[9px] text-teal-700/80">स्मरण, पूजा एवं ध्यान के लिए अति उत्तम समय।</p>
+                      <p className="text-[10px] text-teal-700/80">स्मरण, पूजा एवं ध्यान के लिए अति उत्तम समय।</p>
                     </div>
                   </div>
                   <span className="text-xs font-black text-teal-800/90 whitespace-nowrap bg-teal-100/50 px-2.5 py-1 rounded-xl">
@@ -756,7 +811,7 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
                     <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                     <div>
                       <p className="text-xs font-black text-red-800">राहुकाल (अशुभ समय)</p>
-                      <p className="text-[9px] text-red-700/80">इस समय नवीन व मांगलिक कार्य वर्जित होते हैं।</p>
+                      <p className="text-[10px] text-red-700/80">इस समय नवीन व मांगलिक कार्य वर्जित होते हैं।</p>
                     </div>
                   </div>
                   <span className="text-xs font-black text-red-800/90 whitespace-nowrap bg-red-100/50 px-2.5 py-1 rounded-xl">
@@ -770,7 +825,7 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
             {/* Astrological note */}
             <div className="bg-paper p-4 rounded-2.5xl border border-ink/10 flex items-start gap-2 text-left">
               <Info className="w-4 h-4 text-ink-light shrink-0 mt-0.5" />
-              <p className="text-[10px] text-ink-light font-medium leading-relaxed italic">
+              <p className="text-[11px] text-ink-light font-medium leading-relaxed italic">
                 गुरु जम्भेश्वर भगवान ने 365 दिन के हर क्षण को ही अच्छा माना है, उन्होंने इस प्रकार के आडंबरों से बिश्नोई समाज को मुक्त रखा है फिर भी आज के समय की मांग के लिए वैज्ञानिक सूत्र अनुसार यहां दिए गए हैं।
               </p>
             </div>

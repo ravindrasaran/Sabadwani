@@ -831,8 +831,9 @@ function MainApp() {
     const localISOTime = new Date(now.getTime() - offset).toISOString().slice(0, -1);
     return localISOTime.split("T")[0];
   });
-  const [choghadiyaLocation, setChoghadiyaLocation] =
-    useState("Bikaner, Rajasthan");
+  const [choghadiyaLocation, setChoghadiyaLocation] = useState<string>(() => {
+    return localStorage.getItem("panchang_location_name") || "Bikaner, Rajasthan";
+  });
   const [choghadiyaLoading, setChoghadiyaLoading] = useState(false);
   const [choghadiyaError, setChoghadiyaError] = useState("");
   const [choghadiyaSlots, setChoghadiyaSlots] = useState<{
@@ -841,10 +842,18 @@ function MainApp() {
   }>({ day: [], night: [] });
 
   useEffect(() => {
-    if (currentScreen === "choghadiya" && choghadiyaSlots.day.length === 0) {
-      calculateChoghadiya();
+    if (currentScreen === "choghadiya") {
+      const savedLoc = localStorage.getItem("panchang_location_name") || "Bikaner, Rajasthan";
+      const savedLat = localStorage.getItem("panchang_lat");
+      const savedLon = localStorage.getItem("panchang_lon");
+      setChoghadiyaLocation(savedLoc);
+      if (savedLat && savedLon) {
+        calculateChoghadiya(savedLoc, choghadiyaDate, { lat: parseFloat(savedLat), lon: parseFloat(savedLon) });
+      } else {
+        calculateChoghadiya(savedLoc, choghadiyaDate);
+      }
     }
-  }, [currentScreen]);
+  }, [currentScreen, choghadiyaDate]);
 
   const [bichhudaYear, setBichhudaYear] = useState(new Date().getFullYear());
   const [bichhudaMonth, setBichhudaMonth] = useState(new Date().getMonth());
@@ -987,25 +996,43 @@ function MainApp() {
     setChoghadiyaLoading(true);
     setChoghadiyaError("");
     try {
-      let lat = coords?.lat || 28.0229; // Default Bikaner
-      let lon = coords?.lon || 73.3119;
+      let lat = coords?.lat || parseFloat(localStorage.getItem("panchang_lat") || "28.0229");
+      let lon = coords?.lon || parseFloat(localStorage.getItem("panchang_lon") || "73.3119");
 
-      if (!coords) {
-        try {
-          const geoRes = await fetch(
-            `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(loc)}&format=json&limit=1&accept-language=en&addressdetails=1`,
-          );
-          const geoData = await geoRes.json();
-          if (geoData && geoData.length > 0) {
-            lat = parseFloat(geoData[0].lat);
-            lon = parseFloat(geoData[0].lon);
-            const addr = geoData[0].address || {};
-            const city = addr.city || addr.town || addr.village || addr.suburb || geoData[0].display_name.split(",")[0];
-            const state = addr.state || "";
-            setChoghadiyaLocation(city + (state ? ", " + state : ""));
+      if (coords) {
+        localStorage.setItem("panchang_lat", coords.lat.toString());
+        localStorage.setItem("panchang_lon", coords.lon.toString());
+        localStorage.setItem("panchang_location_name", loc);
+      } else {
+        const cachedLoc = localStorage.getItem("panchang_location_name");
+        const cachedLat = localStorage.getItem("panchang_lat");
+        const cachedLon = localStorage.getItem("panchang_lon");
+        
+        if (cachedLoc === loc && cachedLat && cachedLon) {
+          lat = parseFloat(cachedLat);
+          lon = parseFloat(cachedLon);
+        } else {
+          try {
+            const geoRes = await fetch(
+              `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(loc)}&format=json&limit=1&accept-language=en&addressdetails=1`,
+            );
+            const geoData = await geoRes.json();
+            if (geoData && geoData.length > 0) {
+              lat = parseFloat(geoData[0].lat);
+              lon = parseFloat(geoData[0].lon);
+              const addr = geoData[0].address || {};
+              const city = addr.city || addr.town || addr.village || addr.suburb || geoData[0].display_name.split(",")[0];
+              const state = addr.state || "";
+              const resolvedName = city + (state ? ", " + state : "");
+              setChoghadiyaLocation(resolvedName);
+              
+              localStorage.setItem("panchang_lat", lat.toString());
+              localStorage.setItem("panchang_lon", lon.toString());
+              localStorage.setItem("panchang_location_name", resolvedName);
+            }
+          } catch (e) {
+            // Geo lookup failed, using defaults
           }
-        } catch (e) {
-          // Geo lookup failed, using defaults
         }
       }
 
