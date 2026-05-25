@@ -22,19 +22,14 @@ jobs:
 
       - name: Build Web Assets
         run: |
-          # GitHub Secret से .env बनाना (React के लिए)
           echo "${{ secrets.ENV_FILE }}" > .env
           npm run build
 
       - name: Sync Android (Using Local Config)
         run: |
-          # सिर्फ JSON फाइल को इन्जेक्ट कर रहे हैं
           echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > android/app/google-services.json
-          
-          # Capacitor को अपडेट करना
           npx cap sync android
 
-       Pentesting / Setup Java
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -45,10 +40,7 @@ jobs:
         working-directory: ./android
         run: |
           chmod +x gradlew
-          
-          # Keystore को डिकोड करना
           echo "${{ secrets.KEYSTORE_FILE }}" | base64 --decode > app/sabadwani.keystore
-          
           ./gradlew clean assembleRelease bundleRelease \
             -Pandroid.injected.signing.store.file=$(pwd)/app/sabadwani.keystore \
             -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }} \
