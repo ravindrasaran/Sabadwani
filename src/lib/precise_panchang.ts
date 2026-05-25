@@ -76,18 +76,21 @@ const findAngleTransition = (
 // --- Helper to convert Date to 24+ hour Traditional format ---
 
 export const formatTraditionalTime = (time: Date, targetDate: Date) => {
-  const targetMidnight = new Date(targetDate);
-  targetMidnight.setHours(0, 0, 0, 0);
-  
-  const diffHours = (time.getTime() - targetMidnight.getTime()) / (1000 * 60 * 60);
-  
-  if (diffHours >= 24) {
-    const mins = String(time.getMinutes()).padStart(2, '0');
-    const roundedHours = Math.floor(diffHours);
-    const ampmTime = format(time, "hh:mm a", { locale: hi });
-    return `${roundedHours}:${mins} तक (अगले दिन ${ampmTime})`;
+  const hrs = time.getHours();
+  const mins = String(time.getMinutes()).padStart(2, '0');
+  const ampm = hrs >= 12 ? 'PM' : 'AM';
+  const displayHrs = String(hrs % 12 || 12).padStart(2, '0');
+  const ampmTime = `${displayHrs}:${mins} ${ampm}`;
+
+  const isDifferentDay = time.getDate() !== targetDate.getDate() || 
+                         time.getMonth() !== targetDate.getMonth() || 
+                         time.getFullYear() !== targetDate.getFullYear();
+
+  if (isDifferentDay) {
+    const dateStr = format(time, "d MMMM", { locale: hi });
+    return `${dateStr}, ${ampmTime} तक`;
   } else {
-    return `${format(time, "hh:mm a", { locale: hi })} तक`;
+    return `${ampmTime} तक`;
   }
 };
 

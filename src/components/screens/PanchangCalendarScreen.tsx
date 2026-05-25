@@ -340,12 +340,10 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
     >
       <PremiumHeader title="वैदिक पंचांग" onBack={handleBack} icon={CalendarDays} />
 
-      <div className="px-4 pt-4 max-w-xl mx-auto space-y-6">
+      <div className="px-4 pt-1.5 max-w-xl mx-auto space-y-5.5">
         
         {/* Geographic location and calculation tuning */}
-        <div className="bg-white/95 backdrop-blur-xl rounded-[2rem] p-5.5 border border-ink/5 shadow-md space-y-4.5 relative overflow-visible z-30">
-          {/* Subtle top decoration beam */}
-          <div className="absolute top-0 inset-x-0 h-[3px] bg-gradient-to-r from-accent/20 via-accent/60 to-accent/20" />
+        <div className="bg-white/95 backdrop-blur-xl rounded-[2rem] p-5.5 border border-ink/5 shadow-sm space-y-2.5 relative overflow-visible z-30">
           
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
@@ -353,8 +351,7 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
                 <Compass className="w-4 h-4 text-accent-dark animate-spin-slow" />
               </div>
               <div>
-                <span className="text-[11px] font-black text-accent-dark/80 tracking-widest uppercase block leading-none mb-1">गणना स्थान</span>
-                <h3 className="text-[11px] font-black text-ink-light tracking-wide leading-none uppercase">Location Settings</h3>
+                <h3 className="font-bold text-sm text-ink">स्थान (Location)</h3>
               </div>
             </div>
           </div>
@@ -782,7 +779,7 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-green-500" />
                     <div>
-                      <p className="text-xs font-black text-green-800">अभिजित मुहूर्त (अति शुभ)</p>
+                      <p className="text-xs font-black text-green-800">अभिजित मुहूर्त</p>
                       <p className="text-[10px] text-green-700/80">नया कार्य शुरू करने के लिए सर्वोत्तम समय।</p>
                     </div>
                   </div>
@@ -796,7 +793,7 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-teal-500" />
                     <div>
-                      <p className="text-xs font-black text-teal-800">ब्रह्म मुहूर्त (ध्यान-पूजा)</p>
+                      <p className="text-xs font-black text-teal-800">ब्रह्म मुहूर्त</p>
                       <p className="text-[10px] text-teal-700/80">स्मरण, पूजा एवं ध्यान के लिए अति उत्तम समय।</p>
                     </div>
                   </div>
@@ -810,7 +807,7 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                     <div>
-                      <p className="text-xs font-black text-red-800">राहुकाल (अशुभ समय)</p>
+                      <p className="text-xs font-black text-red-800">राहुकाल</p>
                       <p className="text-[10px] text-red-700/80">इस समय नवीन व मांगलिक कार्य वर्जित होते हैं।</p>
                     </div>
                   </div>
