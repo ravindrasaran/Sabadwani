@@ -22,11 +22,14 @@ import { vibrate } from "../../lib/utils";
 import { getJD, getTithiName, getCurrentHinduDate } from "../../lib/astro";
 import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
+import { Preferences } from '@capacitor/preferences';
 import { NativeSettings, AndroidSettings, IOSSettings } from 'capacitor-native-settings';
 
 // Compact representation of Hindu Tithi inside day boxes
 const getCompactTithi = (date: Date) => {
-  const jd = getJD(date);
+  const targetDate6AM = new Date(date);
+  targetDate6AM.setHours(6, 0, 0, 0);
+  const jd = getJD(targetDate6AM);
   const tithi = getTithiName(jd);
   
   if (tithi.includes("अमावस्या")) return "अमावस्या";
@@ -55,17 +58,30 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   
-  const [latitude, setLatitude] = useState<number>(() => {
-    const saved = localStorage.getItem("panchang_lat");
-    return saved ? parseFloat(saved) : 28.0229; // Default Bikaner Lat
-  });
-  const [longitude, setLongitude] = useState<number>(() => {
-    const saved = localStorage.getItem("panchang_lon");
-    return saved ? parseFloat(saved) : 73.3119; // Default Bikaner Lon
-  });
-  const [locationName, setLocationName] = useState<string>(() => {
-    return localStorage.getItem("panchang_location_name") || "Bikaner, Rajasthan";
-  });
+  const [latitude, setLatitude] = useState<number>(28.0229); // Default Bikaner Lat
+  const [longitude, setLongitude] = useState<number>(73.3119); // Default Bikaner Lon
+  const [locationName, setLocationName] = useState<string>("Bikaner, Rajasthan");
+  const [hasLoaded, setHasLoaded] = useState<boolean>(false);
+
+  // Load location attributes from Preferences on mount
+  useEffect(() => {
+    const loadLocation = async () => {
+      try {
+        const savedLat = await Preferences.get({ key: "panchang_lat" });
+        const savedLon = await Preferences.get({ key: "panchang_lon" });
+        const savedName = await Preferences.get({ key: "panchang_location_name" });
+        
+        if (savedLat.value) setLatitude(parseFloat(savedLat.value));
+        if (savedLon.value) setLongitude(parseFloat(savedLon.value));
+        if (savedName.value) setLocationName(savedName.value);
+      } catch (e) {
+        console.error("Failed to load native location preferences:", e);
+      } finally {
+        setHasLoaded(true);
+      }
+    };
+    loadLocation();
+  }, []);
 
   const currentHinduMonthName = useMemo(() => {
     try {
@@ -76,12 +92,20 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
     }
   }, [selectedDate]);
 
-  // Save location attributes to localStorage for next launches
+  // Save location attributes to Preferences for next launches (Only if initial load from preferences has finished)
   useEffect(() => {
-    localStorage.setItem("panchang_lat", latitude.toString());
-    localStorage.setItem("panchang_lon", longitude.toString());
-    localStorage.setItem("panchang_location_name", locationName);
-  }, [latitude, longitude, locationName]);
+    if (!hasLoaded) return;
+    const saveLocation = async () => {
+      try {
+        await Preferences.set({ key: "panchang_lat", value: latitude.toString() });
+        await Preferences.set({ key: "panchang_lon", value: longitude.toString() });
+        await Preferences.set({ key: "panchang_location_name", value: locationName });
+      } catch (e) {
+        console.error("Failed to save native location preferences:", e);
+      }
+    };
+    saveLocation();
+  }, [latitude, longitude, locationName, hasLoaded]);
 
   // Geolocation lookup state
   const [isGeoLoading, setIsGeoLoading] = useState(false);
@@ -101,8 +125,10 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
     }
     const timer = setTimeout(async () => {
       try {
+        const isHindi = /[\u0900-\u097F]/.test(locationQuery);
+        const lang = isHindi ? "hi" : "en";
         const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locationQuery)}&format=json&limit=5&accept-language=en&addressdetails=1`,
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locationQuery)}&format=json&limit=5&accept-language=${lang}&addressdetails=1&countrycodes=in`,
           { headers: { "User-Agent": "SabadwaniPanchang/1.0" } }
         );
         if (res.ok) {
@@ -179,7 +205,7 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
 
       const { latitude: lat, longitude: lon } = position.coords;
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=en&addressdetails=1`,
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=hi,en&addressdetails=1`,
         { headers: { "User-Agent": "SabadwaniPanchang/1.0" } }
       );
       
@@ -232,8 +258,10 @@ export default function PanchangCalendarScreen({ handleBack, meles = [] }: any) 
     setIsSettingLocation(true);
     setGeoError(null);
     try {
+      const isHindi = /[\u0900-\u097F]/.test(locationName);
+      const lang = isHindi ? "hi" : "en";
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locationName)}&format=json&limit=1&accept-language=en&addressdetails=1`,
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locationName)}&format=json&limit=1&accept-language=${lang}&addressdetails=1&countrycodes=in`,
         { headers: { "User-Agent": "SabadwaniPanchang/1.0" } }
       );
       if (res.ok) {

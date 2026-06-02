@@ -3,6 +3,7 @@ import { motion } from "motion/react";
 import { ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
 import { vibrate } from "../lib/utils";
 import PremiumHeader from "./PremiumHeader";
+import { ImageWithSkeleton } from "./Skeleton";
 
 function AmavasyaScreen({ amavasyaList, selectedYear, setSelectedYear, handleBack }: any) {
   useEffect(() => {
@@ -73,10 +74,12 @@ function AmavasyaScreen({ amavasyaList, selectedYear, setSelectedYear, handleBac
               {/* Jambho Ji Photo in Header */}
               <div className="shrink-0 ml-4 relative">
                 <div className="absolute inset-0 bg-accent rounded-full blur-md opacity-40 animate-pulse"></div>
-                <img
+                <ImageWithSkeleton
                   src="/logo.png"
                   alt="Jambho Ji"
                   className="w-12 h-12 rounded-full border-2 border-white ring-4 ring-accent/30 shadow-lg object-cover relative z-10"
+                  wrapperClassName="w-12 h-12 rounded-full shadow-lg border-2 border-white ring-4 ring-accent/30 z-10"
+                  skeletonClassName="rounded-full"
                   referrerPolicy="no-referrer"
                   onError={(e) => { 
                     e.currentTarget.onerror = null;

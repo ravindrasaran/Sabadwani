@@ -6,6 +6,7 @@ import { getJD, getTithiName, getSamvat } from "../../lib/astro";
 import PremiumBanner from "../PremiumBanner";
 import CategoryGrid from "../CategoryGrid";
 import { BannerSkeleton, CategorySkeleton } from "../Skeleton";
+import { Ripple } from "../Ripple";
 
 export interface HomeScreenProps {
   processedMeles: any[];
@@ -53,13 +54,14 @@ export default function HomeScreen({
       </div>
 
       {/* Premium Daily Panchang Summary */}
-      <div className="px-4 mb-2 shrink-0">
+      <div className="px-4 mb-2 shrink-0 font-sans">
         <button 
           onClick={() => navigateTo('panchang_calendar')}
-          className="w-full bg-white/90 backdrop-blur-md rounded-2xl p-2.5 border border-ink/5 shadow-sm flex items-center justify-between text-left hover:bg-white/95 active:scale-[0.99] transition-all cursor-pointer focus:outline-none"
+          className="relative overflow-hidden w-full bg-white/90 backdrop-blur-md rounded-2xl p-2.5 border border-ink/5 shadow-sm flex items-center justify-between text-left hover:bg-white/95 active:scale-[0.99] transition-all cursor-pointer focus:outline-none"
         >
+          <Ripple color="rgba(230, 138, 0, 0.15)" />
           {/* Left Block: Today's Gregorian Date (No Icon) */}
-          <div className="flex flex-col flex-1 min-w-0">
+          <div className="flex flex-col flex-1 min-w-0 pointer-events-none">
             <h4 className="text-[10px] font-black text-accent-dark uppercase tracking-widest mb-0.5 truncate">
               आज का पंचांग
             </h4>

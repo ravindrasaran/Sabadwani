@@ -52,3 +52,6 @@ project(':capgo-capacitor-media-session').projectDir = new File('../node_modules
 
 include ':capacitor-native-settings'
 project(':capacitor-native-settings').projectDir = new File('../node_modules/capacitor-native-settings/android')
+
+include ':capacitor-navigationbar'
+project(':capacitor-navigationbar').projectDir = new File('../node_modules/capacitor-navigationbar/android')

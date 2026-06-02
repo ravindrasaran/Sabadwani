@@ -3,6 +3,7 @@ import { motion } from "motion/react";
 import { ChevronLeft, ChevronRight, CalendarDays, Sun, MapPin, MapPinOff, Loader2, Book } from "lucide-react";
 import PremiumHeader from "./PremiumHeader";
 import { vibrate } from "../lib/utils";
+import { ImageWithSkeleton } from "./Skeleton";
 
 // --- AmavasyaScreen ---
 export function AmavasyaScreen({ amavasyaList, selectedYear, setSelectedYear, handleBack }: any) {
@@ -74,10 +75,12 @@ export function AmavasyaScreen({ amavasyaList, selectedYear, setSelectedYear, ha
               {/* Jambho Ji Photo in Header */}
               <div className="shrink-0 ml-4 relative">
                 <div className="absolute inset-0 bg-accent rounded-full blur-md opacity-40 animate-pulse"></div>
-                <img
+                <ImageWithSkeleton
                   src="/logo.png"
                   alt="Jambho Ji"
                   className="w-12 h-12 rounded-full border-2 border-white ring-4 ring-accent/30 shadow-lg object-cover relative z-10"
+                  wrapperClassName="w-12 h-12 rounded-full shadow-lg border-2 border-white ring-4 ring-accent/30 z-10"
+                  skeletonClassName="rounded-full"
                   referrerPolicy="no-referrer"
                   onError={(e) => { 
                     e.currentTarget.onerror = null;
@@ -342,7 +345,10 @@ export function BichhudaScreen({
 
         <div className="space-y-3 mb-8">
           {bichhudaList
-            .filter((item: any) => item.rawStart.getMonth() === bichhudaMonth)
+            .filter((item: any) => 
+              item.rawStart.getMonth() === bichhudaMonth ||
+              (item.rawEnd && item.rawEnd.getMonth() === bichhudaMonth)
+            )
             .map((item: any) => (
               <div
                 key={item.start}

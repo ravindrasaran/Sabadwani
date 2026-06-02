@@ -2,8 +2,8 @@
   "name": "sabadwani",
   "description": "गुरु जम्भेश्वर भगवान की सबदवाणी, आरती, साखी, पंचांग और बिश्नोई समाज।",
   "private": true,
-  "version": "1.3.8",
-  "versionCode": 112,
+  "version": "1.3.9",
+  "versionCode": 113,
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
@@ -38,6 +38,7 @@
     "@vitejs/plugin-react": "^5.0.4",
     "astronomia": "^4.2.0",
     "capacitor-native-settings": "^8.1.0",
+    "capacitor-navigationbar": "^0.0.2",
     "date-fns": "^4.1.0",
     "firebase": "^12.11.0",
     "html2canvas": "^1.4.1",

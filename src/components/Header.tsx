@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Bell, Search, PlusCircle } from "lucide-react";
 import { Screen } from "../types";
+import { Ripple } from "./Ripple";
 
 function Header({
   onNavigate,
@@ -70,29 +71,32 @@ function Header({
           सबदवाणी
         </h1>
       </div>
-      <div className="flex items-center gap-4 text-ink-light">
+      <div className="flex items-center gap-1.5 text-ink-light">
         <button
           onClick={() => onNavigate("search")}
-          className="hover:text-ink transition-colors"
+          className="relative p-2 rounded-full hover:bg-ink/5 hover:text-ink transition-colors overflow-hidden"
         >
-          <Search className="w-6 h-6" />
+          <Ripple color="rgba(74, 51, 32, 0.12)" />
+          <Search className="w-5 h-5 relative z-10" />
         </button>
         <button
           onClick={onNotificationClick}
-          className="hover:text-ink transition-colors relative"
+          className="relative p-2 rounded-full hover:bg-ink/5 hover:text-ink transition-colors overflow-hidden"
         >
-          <Bell className={`w-6 h-6 ${unreadCount > 0 ? "animate-[bell-swing_2s_infinite]" : ""}`} />
+          <Ripple color="rgba(74, 51, 32, 0.12)" />
+          <Bell className={`w-5 h-5 relative z-10 ${unreadCount > 0 ? "animate-[bell-swing_2s_infinite]" : ""}`} />
           {unreadCount > 0 && (
-            <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-bold flex items-center justify-center rounded-full border-2 border-paper animate-pulse">
+            <span className="absolute top-1.5 right-1.5 w-3.5 h-3.5 bg-red-500 text-white text-[8px] font-bold flex items-center justify-center rounded-full border border-paper animate-pulse z-20">
               {unreadCount}
             </span>
           )}
         </button>
         <button
           onClick={() => onNavigate("contribute")}
-          className="hover:text-ink transition-colors relative"
+          className="relative p-2 rounded-full hover:bg-ink/5 hover:text-ink transition-colors overflow-hidden"
         >
-          <PlusCircle className="w-6 h-6" />
+          <Ripple color="rgba(74, 51, 32, 0.12)" />
+          <PlusCircle className="w-5 h-5 relative z-10" />
         </button>
       </div>
     </header>

@@ -4,6 +4,7 @@ import { Quote, Bell, CalendarDays, Flame, Users, Sun, CheckCircle } from "lucid
 import { getCurrentHinduDate, generateAmavasyaForYear } from "../lib/astro";
 import { DYNAMIC_GREETINGS } from "../constants";
 import { vibrate } from "../lib/utils";
+import { ImageWithSkeleton } from "./Skeleton";
 
 const PremiumBanner = ({ meles, badhais, dailyThought, notices }: any) => {
   const greetings = useMemo(() => {
@@ -171,7 +172,7 @@ const PremiumBanner = ({ meles, badhais, dailyThought, notices }: any) => {
 
   return (
     <div 
-      className="mx-4 my-1.5 h-[110px] relative cursor-pointer"
+      className="mx-4 my-1.5 h-[120px] relative cursor-pointer"
       onClick={() => {
         vibrate(10);
       }}
@@ -195,7 +196,7 @@ const PremiumBanner = ({ meles, badhais, dailyThought, notices }: any) => {
               <Bell className="w-3 h-3 animate-pulse" /> {(flashAlert.mela?.diffDays === 0 || flashAlert.amavasya?.diffDays === 0) ? "सूचना" : "आगामी सूचना"}
             </div>
             
-            <div className="relative z-10 flex flex-col justify-center items-center h-full w-full pt-3">
+            <div className="relative z-10 flex flex-col justify-start items-center h-full w-full pt-[14px] pb-1">
               <div className="flex items-center justify-center w-full gap-0 px-1">
                 
                 {/* Case 1: Both Mela and Amavasya exist */}
@@ -289,10 +290,12 @@ const PremiumBanner = ({ meles, badhais, dailyThought, notices }: any) => {
               <div className="shrink-0 w-[24vw] h-[24vw] max-w-[95px] max-h-[95px] min-w-[75px] min-h-[75px] relative ml-1">
                 <div className="absolute inset-0 bg-white/30 rounded-2xl rotate-3 scale-105 blur-[1px]"></div>
                 <div className="absolute inset-0 bg-accent-dark/20 rounded-2xl -rotate-2 scale-105"></div>
-                <img 
+                <ImageWithSkeleton 
                   src={(greetings[greetingIndex] || greetings[0]).imageUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent((greetings[greetingIndex] || greetings[0]).sender || 'User')}`} 
                   alt="Profile" 
                   className="w-full h-full object-cover object-[center_top] rounded-2xl border-2 border-white shadow-xl bg-white/20 relative z-10" 
+                  wrapperClassName="w-full h-full rounded-2xl relative z-10"
+                  skeletonClassName="rounded-2xl"
                   referrerPolicy="no-referrer" 
                   onError={(e) => { 
                     e.currentTarget.onerror = null;
@@ -364,14 +367,16 @@ const PremiumBanner = ({ meles, badhais, dailyThought, notices }: any) => {
               <Bell className="w-3 h-3 animate-pulse" /> आवश्यक सूचना / अपील
             </div>
             
-            <div className="relative z-10 flex flex-col justify-center items-center h-full w-full pt-3">
-              <div className="flex flex-col items-center justify-center text-center">
-                <p className="text-[13px] sm:text-[14px] font-bold leading-tight drop-shadow-md mb-1.5 text-yellow-200">
+            <div className="relative z-10 flex flex-col justify-start items-center h-full w-full pt-[14px] pb-1">
+              <div className="flex flex-col items-center justify-start text-center w-full">
+                <p className="text-[13px] sm:text-[14px] font-bold leading-tight drop-shadow-md mb-1 text-yellow-200 line-clamp-1 w-full px-4">
                   {activeNotices[noticeIndex]?.title || "सूचना"}
                 </p>
-                <p className="text-[10px] sm:text-[11px] opacity-90 font-medium leading-normal line-clamp-3 break-words px-2 py-0.5">
-                  {activeNotices[noticeIndex]?.text || ""}
-                </p>
+                <div className="w-full max-h-[55px] overflow-y-auto hide-scrollbar px-2">
+                  <p className="text-[10px] sm:text-[11px] opacity-90 font-medium leading-normal break-words py-0.5">
+                    {activeNotices[noticeIndex]?.text || ""}
+                  </p>
+                </div>
               </div>
             </div>
 

@@ -2,6 +2,7 @@ import { motion } from "motion/react";
 import { HeartHandshake } from "lucide-react";
 import PremiumHeader from "./PremiumHeader";
 import { Screen } from "../types";
+import { ImageWithSkeleton } from "./Skeleton";
 
 interface DonateScreenProps {
   navigateTo: (screen: Screen) => void;
@@ -36,10 +37,12 @@ export default function DonateScreen({ navigateTo, settings, showToast }: Donate
           {/* QR Code Section */}
           <div className="bg-white p-3 rounded-2xl shadow-sm border border-ink/10 mb-4 relative group">
             <div className="absolute inset-0 bg-accent/5 rounded-2xl transform scale-105 -z-10"></div>
-            <img
+            <ImageWithSkeleton
               src={settings.qrCodeUrl || "/logo.png"}
               alt="UPI QR Code"
               className="w-32 h-32 object-contain"
+              wrapperClassName="w-32 h-32"
+              skeletonClassName="rounded-xl"
               referrerPolicy="no-referrer"
               onError={(e) => { 
                 e.currentTarget.onerror = null;

@@ -2,6 +2,12 @@ import { julian, moonposition, solar, base, deltat } from "astronomia";
 import { format } from "date-fns";
 import { hi } from "date-fns/locale";
 
+const formatHindiWithAMPM = (date: Date) => {
+  const baseStr = format(date, "dd MMMM, EEEE, hh:mm:ss", { locale: hi });
+  const ampm = format(date, "a"); // Standard "AM" or "PM" (defaults to English)
+  return `${baseStr} ${ampm}`;
+};
+
 // --- Precise Astronomical Calculations (Top Level) ---
 
 const getJD = (date: Date) => new julian.CalendarGregorian().fromDate(date).toJD();
@@ -169,8 +175,8 @@ const generateAmavasyaForYear = (year: number) => {
         hindiMonth: monthName,
         gregorianMonth: format(startDate, "MMMM", { locale: hi }),
         sub: `विक्रम संवत ${samvat}`,
-        start: format(startDate, "dd MMMM, EEEE, hh:mm:ss a", { locale: hi }),
-        end: format(endDate, "dd MMMM, EEEE, hh:mm:ss a", { locale: hi }),
+        start: formatHindiWithAMPM(startDate),
+        end: formatHindiWithAMPM(endDate),
         startDate,
         endDate,
       };
@@ -202,11 +208,12 @@ const getBichhudaList = (year: number) => {
       if (startDate.getFullYear() === year) {
         list.push({
           monthName: format(startDate, "MMMM", { locale: hi }),
-          start: format(startDate, "dd MMMM, EEEE, hh:mm:ss a", { locale: hi }),
-          end: format(endDate, "dd MMMM, EEEE, hh:mm:ss a", { locale: hi }),
+          start: formatHindiWithAMPM(startDate),
+          end: formatHindiWithAMPM(endDate),
           isUpcoming: startDate > new Date(),
           isRunning: startDate <= new Date() && endDate > new Date(),
           rawStart: startDate,
+          rawEnd: endDate,
         });
       }
       jd = finishJD + 20; // Skip to next month
@@ -218,7 +225,9 @@ const getBichhudaList = (year: number) => {
 };
 
 const getCurrentHinduDate = (date: Date) => {
-  const jd = getJD(date);
+  const targetDate6AM = new Date(date);
+  targetDate6AM.setHours(6, 0, 0, 0);
+  const jd = getJD(targetDate6AM);
   const tithiName = getTithiName(jd);
   
   const year = date.getFullYear();

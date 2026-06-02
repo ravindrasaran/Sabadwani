@@ -1,4 +1,5 @@
 import { ChevronLeft } from "lucide-react";
+import { Ripple } from "./Ripple";
 
 function PremiumHeader({ title, onBack, icon: Icon, noGlobalHeader = false }: { title: string; onBack: () => void; icon?: any; noGlobalHeader?: boolean }) {
   return (
@@ -6,9 +7,10 @@ function PremiumHeader({ title, onBack, icon: Icon, noGlobalHeader = false }: { 
       <div className="relative flex items-center justify-center p-3 min-h-[64px]">
         <button
           onClick={onBack}
-          className="absolute left-2 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white/10 hover:bg-white/20 active:bg-white/30 active:scale-90 transition-all touch-manipulation shrink-0"
+          className="absolute left-2 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white/10 hover:bg-white/20 active:bg-white/30 active:scale-90 transition-all touch-manipulation shrink-0 overflow-hidden"
         >
-          <ChevronLeft className="w-7 h-7" strokeWidth={2.5} />
+          <Ripple color="rgba(255, 255, 255, 0.3)" />
+          <ChevronLeft className="w-7 h-7 relative z-10" strokeWidth={2.5} />
         </button>
         <h1 className="text-xl sm:text-2xl font-bold font-heading text-center truncate px-14">
           || {title} ||

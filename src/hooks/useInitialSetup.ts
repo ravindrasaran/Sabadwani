@@ -24,6 +24,8 @@ export const useInitialSetup = (
       document.addEventListener('visibilitychange', handleVisibilityChange);
     }
 
+    let updateListener: any = null;
+
     const performAppUpdate = async () => {
       if (Capacitor.isNativePlatform()) {
         try {
@@ -32,6 +34,20 @@ export const useInitialSetup = (
           if (perm.display !== 'granted') {
             await LocalNotifications.requestPermissions();
           }
+
+          // Register flexible update state listener to auto-install when ready
+          updateListener = await AppUpdate.addListener('onFlexibleUpdateStateChange', (state) => {
+            if (state.installStatus === 11) { // DOWNLOADED
+              showToast("नया अपडेट डाउनलोड हो गया है! ऐप को अपडेट करने के लिए रीस्टार्ट किया जा रहा है...");
+              setTimeout(async () => {
+                try {
+                  await AppUpdate.completeFlexibleUpdate();
+                } catch (err) {
+                  console.error("Failed to complete flexible update:", err);
+                }
+              }, 2000);
+            }
+          });
 
           const result = await AppUpdate.getAppUpdateInfo();
           if (result.updateAvailability === 2) { // UPDATE_AVAILABLE
@@ -57,6 +73,9 @@ export const useInitialSetup = (
     return () => {
       if (!Capacitor.isNativePlatform()) {
         document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
+      if (updateListener) {
+        updateListener.remove();
       }
     };
   }, [paymentIntentPending, showToast, setupGlobalMediaSessionListener]);

@@ -73,4 +73,41 @@ export const MelaSkeleton = () => (
   </div>
 );
 
+interface ImageWithSkeletonProps extends React.ImgHTMLAttributes<HTMLImageElement> {
+  skeletonClassName?: string;
+  wrapperClassName?: string;
+}
+
+export const ImageWithSkeleton: React.FC<ImageWithSkeletonProps> = ({
+  src,
+  alt,
+  className = "",
+  skeletonClassName = "",
+  wrapperClassName = "",
+  ...props
+}) => {
+  const [isLoaded, setIsLoaded] = React.useState(false);
+  const [hasError, setHasError] = React.useState(false);
+
+  return (
+    <div className={`relative overflow-hidden ${wrapperClassName}`}>
+      {!isLoaded && !hasError && (
+        <Skeleton className={`absolute inset-0 w-full h-full ${skeletonClassName}`} />
+      )}
+      <img
+        src={src}
+        alt={alt}
+        className={`transition-opacity duration-300 ${isLoaded ? "opacity-100" : "opacity-0"} ${className}`}
+        onLoad={() => setIsLoaded(true)}
+        onError={(e) => {
+          setHasError(true);
+          setIsLoaded(true);
+          if (props.onError) props.onError(e);
+        }}
+        {...props}
+      />
+    </div>
+  );
+};
+
 export default Skeleton;

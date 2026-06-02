@@ -40,9 +40,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<"aarti" | "bhajan" | "sakhi" | "mantra">("aarti");
   const [slideDir, setSlideDir] = useState(1);
-  const [hasSeenSwipeHint, setHasSeenSwipeHint] = useState(() => {
-    return typeof localStorage !== 'undefined' ? localStorage.getItem("hasSeenSwipeHint") === "true" : false;
-  });
+  const [hasSeenSwipeHint, setHasSeenSwipeHint] = useState(false);
   const [settings, setSettings] = useState<any>({
     logoUrl:
       "https://api.dicebear.com/7.x/shapes/svg?seed=shabadwani&backgroundColor=e68a00",

@@ -26,6 +26,7 @@ dependencies {
     implementation project(':capawesome-capacitor-app-update')
     implementation project(':capgo-capacitor-media-session')
     implementation project(':capacitor-native-settings')
+    implementation project(':capacitor-navigationbar')
 
 }
 

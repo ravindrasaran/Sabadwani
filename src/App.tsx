@@ -52,6 +52,7 @@ import { Geolocation } from '@capacitor/geolocation';
 import { NativeSettings, AndroidSettings, IOSSettings } from 'capacitor-native-settings';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { SplashScreen } from '@capacitor/splash-screen';
+import { NavigationBar } from 'capacitor-navigationbar';
 import { Routes, Route, useNavigate, useLocation, Navigate } from "react-router-dom";
 import { addDays } from "date-fns";
 import { collection, addDoc, updateDoc, deleteDoc, doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
@@ -197,6 +198,9 @@ function MainApp() {
       StatusBar.setOverlaysWebView({ overlay: true }).catch(() => {});
       StatusBar.setStyle({ style: Style.Dark }).catch(() => {}); // Dark style means light text for orange background
       
+      // Configure Native Android Navigation Bar for Edge-to-Edge transparency
+      NavigationBar.setBackgroundColor({ color: '#00000000' }).catch(() => {});
+
       // Hide Splash Screen after app is ready
       SplashScreen.hide().catch(() => {});
 
@@ -831,9 +835,7 @@ function MainApp() {
     const localISOTime = new Date(now.getTime() - offset).toISOString().slice(0, -1);
     return localISOTime.split("T")[0];
   });
-  const [choghadiyaLocation, setChoghadiyaLocation] = useState<string>(() => {
-    return localStorage.getItem("panchang_location_name") || "Bikaner, Rajasthan";
-  });
+  const [choghadiyaLocation, setChoghadiyaLocation] = useState<string>("Bikaner, Rajasthan");
   const [choghadiyaLoading, setChoghadiyaLoading] = useState(false);
   const [choghadiyaError, setChoghadiyaError] = useState("");
   const [choghadiyaSlots, setChoghadiyaSlots] = useState<{
@@ -842,17 +844,28 @@ function MainApp() {
   }>({ day: [], night: [] });
 
   useEffect(() => {
-    if (currentScreen === "choghadiya") {
-      const savedLoc = localStorage.getItem("panchang_location_name") || "Bikaner, Rajasthan";
-      const savedLat = localStorage.getItem("panchang_lat");
-      const savedLon = localStorage.getItem("panchang_lon");
-      setChoghadiyaLocation(savedLoc);
-      if (savedLat && savedLon) {
-        calculateChoghadiya(savedLoc, choghadiyaDate, { lat: parseFloat(savedLat), lon: parseFloat(savedLon) });
-      } else {
-        calculateChoghadiya(savedLoc, choghadiyaDate);
+    const loadChoghadiyaPrefs = async () => {
+      if (currentScreen === "choghadiya") {
+        try {
+          const savedLoc = await Preferences.get({ key: "panchang_location_name" });
+          const savedLat = await Preferences.get({ key: "panchang_lat" });
+          const savedLon = await Preferences.get({ key: "panchang_lon" });
+          
+          const resolvedLoc = savedLoc.value || "Bikaner, Rajasthan";
+          setChoghadiyaLocation(resolvedLoc);
+          
+          if (savedLat.value && savedLon.value) {
+            calculateChoghadiya(resolvedLoc, choghadiyaDate, { lat: parseFloat(savedLat.value), lon: parseFloat(savedLon.value) });
+          } else {
+            calculateChoghadiya(resolvedLoc, choghadiyaDate);
+          }
+        } catch (e) {
+          console.error("Failed to load native Choghadiya Preferences:", e);
+          calculateChoghadiya("Bikaner, Rajasthan", choghadiyaDate);
+        }
       }
-    }
+    };
+    loadChoghadiyaPrefs();
   }, [currentScreen, choghadiyaDate]);
 
   const [bichhudaYear, setBichhudaYear] = useState(new Date().getFullYear());
@@ -873,8 +886,10 @@ function MainApp() {
 
     const timer = setTimeout(async () => {
       try {
+        const isHindi = /[\u0900-\u097F]/.test(val);
+        const lang = isHindi ? "hi" : "en";
         const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(val)}&format=json&limit=5&accept-language=en&addressdetails=1&countrycodes=in`,
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(val)}&format=json&limit=5&accept-language=${lang}&addressdetails=1&countrycodes=in`,
           { headers: { 'User-Agent': 'SabadwaniApp/1.0' } }
         );
         const data = await res.json();
@@ -951,7 +966,7 @@ function MainApp() {
 
       const { latitude, longitude } = position.coords;
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&accept-language=en&addressdetails=1`,
+        `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&accept-language=hi,en&addressdetails=1`,
         { headers: { 'User-Agent': 'SabadwaniApp/1.0' } }
       );
       const data = await res.json();
@@ -996,25 +1011,34 @@ function MainApp() {
     setChoghadiyaLoading(true);
     setChoghadiyaError("");
     try {
-      let lat = coords?.lat || parseFloat(localStorage.getItem("panchang_lat") || "28.0229");
-      let lon = coords?.lon || parseFloat(localStorage.getItem("panchang_lon") || "73.3119");
+      let lat = coords?.lat;
+      let lon = coords?.lon;
+
+      if (!coords) {
+        const savedLat = await Preferences.get({ key: "panchang_lat" });
+        const savedLon = await Preferences.get({ key: "panchang_lon" });
+        lat = savedLat.value ? parseFloat(savedLat.value) : 28.0229;
+        lon = savedLon.value ? parseFloat(savedLon.value) : 73.3119;
+      }
 
       if (coords) {
-        localStorage.setItem("panchang_lat", coords.lat.toString());
-        localStorage.setItem("panchang_lon", coords.lon.toString());
-        localStorage.setItem("panchang_location_name", loc);
+        await Preferences.set({ key: "panchang_lat", value: coords.lat.toString() });
+        await Preferences.set({ key: "panchang_lon", value: coords.lon.toString() });
+        await Preferences.set({ key: "panchang_location_name", value: loc });
       } else {
-        const cachedLoc = localStorage.getItem("panchang_location_name");
-        const cachedLat = localStorage.getItem("panchang_lat");
-        const cachedLon = localStorage.getItem("panchang_lon");
+        const cachedLoc = await Preferences.get({ key: "panchang_location_name" });
+        const cachedLat = await Preferences.get({ key: "panchang_lat" });
+        const cachedLon = await Preferences.get({ key: "panchang_lon" });
         
-        if (cachedLoc === loc && cachedLat && cachedLon) {
-          lat = parseFloat(cachedLat);
-          lon = parseFloat(cachedLon);
+        if (cachedLoc.value === loc && cachedLat.value && cachedLon.value) {
+          lat = parseFloat(cachedLat.value);
+          lon = parseFloat(cachedLon.value);
         } else {
           try {
+            const isHindi = /[\u0900-\u097F]/.test(loc);
+            const lang = isHindi ? "hi" : "en";
             const geoRes = await fetch(
-              `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(loc)}&format=json&limit=1&accept-language=en&addressdetails=1`,
+              `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(loc)}&format=json&limit=1&accept-language=${lang}&addressdetails=1&countrycodes=in`,
             );
             const geoData = await geoRes.json();
             if (geoData && geoData.length > 0) {
@@ -1026,9 +1050,9 @@ function MainApp() {
               const resolvedName = city + (state ? ", " + state : "");
               setChoghadiyaLocation(resolvedName);
               
-              localStorage.setItem("panchang_lat", lat.toString());
-              localStorage.setItem("panchang_lon", lon.toString());
-              localStorage.setItem("panchang_location_name", resolvedName);
+              await Preferences.set({ key: "panchang_lat", value: lat.toString() });
+              await Preferences.set({ key: "panchang_lon", value: lon.toString() });
+              await Preferences.set({ key: "panchang_location_name", value: resolvedName });
             }
           } catch (e) {
             // Geo lookup failed, using defaults

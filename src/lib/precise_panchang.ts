@@ -125,11 +125,11 @@ export interface DetailedPanchang {
 }
 
 export const getPanchangForDate = (date: Date, lat = 28.6139, lon = 77.2090): DetailedPanchang => {
-  // Set day reference to midday for coordinates, but compute rising/setting on target day
-  const targetDateMidday = new Date(date);
-  targetDateMidday.setHours(12, 0, 0, 0);
+  // Set day reference to 6:00 AM (approx sunrise) for consistency with home screen today's panchang
+  const targetDate6AM = new Date(date);
+  targetDate6AM.setHours(6, 0, 0, 0);
   
-  const jd = getJD(targetDateMidday);
+  const jd = getJD(targetDate6AM);
   const samvat = getSamvat(jd);
   const shakaSamvat = samvat - 135;
 
