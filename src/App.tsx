@@ -52,7 +52,7 @@ import { Geolocation } from '@capacitor/geolocation';
 import { NativeSettings, AndroidSettings, IOSSettings } from 'capacitor-native-settings';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { SplashScreen } from '@capacitor/splash-screen';
-import { NavigationBar } from 'capacitor-navigationbar';
+import { NavigationBar } from '@capawesome/capacitor-navigation-bar';
 import { Routes, Route, useNavigate, useLocation, Navigate } from "react-router-dom";
 import { addDays } from "date-fns";
 import { collection, addDoc, updateDoc, deleteDoc, doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
@@ -199,7 +199,7 @@ function MainApp() {
       StatusBar.setStyle({ style: Style.Dark }).catch(() => {}); // Dark style means light text for orange background
       
       // Configure Native Android Navigation Bar for Edge-to-Edge transparency
-      NavigationBar.setBackgroundColor({ color: '#00000000' }).catch(() => {});
+      NavigationBar.setColor({ color: '#00000000' }).catch(() => {});
 
       // Hide Splash Screen after app is ready
       SplashScreen.hide().catch(() => {});
