@@ -1,6 +1,8 @@
 import { Capacitor } from '@capacitor/core';
 import { MediaSession } from '@capgo/capacitor-media-session';
 
+import { App as CapacitorApp } from '@capacitor/app';
+
 export const globalAudio = typeof window !== 'undefined' ? new Audio() : null;
 if (globalAudio) {
   globalAudio.crossOrigin = "anonymous";
@@ -16,10 +18,25 @@ export let isClearingSession = false;
 
 // Track if the app is currently in the foreground (active) to avoid starting native foreground services from the background
 let isAppActive = typeof window !== 'undefined' ? document.visibilityState === 'visible' : true;
+
 if (typeof window !== 'undefined') {
-  document.addEventListener('visibilitychange', () => {
-    isAppActive = document.visibilityState === 'visible';
-  });
+  if (Capacitor.isNativePlatform()) {
+    // Get initial state natively immediately
+    CapacitorApp.getState().then((state) => {
+      isAppActive = state.isActive;
+    }).catch(() => {
+      isAppActive = true;
+    });
+
+    // Listen to native OS lifecycle events for 100% instant precision
+    CapacitorApp.addListener('appStateChange', (state) => {
+      isAppActive = state.isActive;
+    });
+  } else {
+    document.addEventListener('visibilitychange', () => {
+      isAppActive = document.visibilityState === 'visible';
+    });
+  }
 }
 
 const DEFAULT_LOGO = '/logo.png';

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Bell, Search, PlusCircle } from "lucide-react";
+import { Bell, Search, PlusCircle, User } from "lucide-react";
 import { Screen } from "../types";
 import { Ripple } from "./Ripple";
 
@@ -9,12 +9,16 @@ function Header({
   isAdminAuthenticated,
   unreadCount,
   onNotificationClick,
+  currentUser,
+  onProfileClick,
 }: {
   onNavigate: (screen: Screen) => void;
   logoUrl: string;
   isAdminAuthenticated: boolean;
   unreadCount: number;
   onNotificationClick: () => void;
+  currentUser?: any;
+  onProfileClick: () => void;
 }) {
   const [isScrolled, setIsScrolled] = useState(false);
 
@@ -97,6 +101,26 @@ function Header({
         >
           <Ripple color="rgba(74, 51, 32, 0.12)" />
           <PlusCircle className="w-5 h-5 relative z-10" />
+        </button>
+        <button
+          onClick={onProfileClick}
+          className="relative p-2 rounded-full hover:bg-ink/5 hover:text-ink transition-colors overflow-hidden flex items-center justify-center shrink-0"
+        >
+          <Ripple color="rgba(74, 51, 32, 0.12)" />
+          {currentUser && !currentUser.isAnonymous ? (
+            <img
+              src={currentUser.photoURL || "/logo.png"}
+              alt="Profile"
+              className="w-5 h-5 rounded-full object-cover object-top border border-accent/40 relative z-10"
+              referrerPolicy="no-referrer"
+              onError={(e) => { 
+                e.currentTarget.onerror = null;
+                e.currentTarget.src = "/logo.png"; 
+              }}
+            />
+          ) : (
+            <User className="w-5 h-5 text-accent-dark relative z-10" />
+          )}
         </button>
       </div>
     </header>

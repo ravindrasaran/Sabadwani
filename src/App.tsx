@@ -3,6 +3,7 @@ import AudioPlayer from "./components/AudioPlayer";
 import Header from "./components/Header";
 import AdBanner from "./components/AdBanner";
 import NotificationsPanel from "./components/NotificationsPanel";
+import UserProfilePanel from "./components/UserProfilePanel";
 import NavItem from "./components/NavItem";
 import { useWakeLock } from "./hooks/useWakeLock";
 import { useSabadData } from "./hooks/useSabadData";
@@ -174,13 +175,7 @@ function MainApp() {
   const location = useLocation();
   const openedDirectlyRef = useRef(false);
 
-  // Sync route back to currentScreen in store
-  useEffect(() => {
-    const route = location.pathname.substring(1) || 'home';
-    if (route !== currentScreen) {
-      setCurrentScreen(route as Screen);
-    }
-  }, [location.pathname]);
+
 
   // Scroll to top instantly without jitter when route changes
   useEffect(() => {
@@ -510,6 +505,37 @@ function MainApp() {
   const [captchaAnswer, setCaptchaAnswer] = useState("");
   const [captchaExpected, setCaptchaExpected] = useState(0);
   const [captchaQuestion, setCaptchaQuestion] = useState("");
+
+  const [currentUser, setCurrentUser] = useState<any>(undefined);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+
+  useEffect(() => {
+    if (auth) {
+      const unsubscribe = auth.onAuthStateChanged((user: any) => {
+        setCurrentUser(user || null);
+        if (user && !user.isAnonymous && user.displayName) {
+          setContribAuthor(user.displayName);
+        }
+      });
+      return unsubscribe;
+    } else {
+      setCurrentUser(null);
+    }
+  }, [auth]);
+
+  // Sync route back to currentScreen in store
+  useEffect(() => {
+    const route = location.pathname.substring(1) || 'home';
+    if (route === 'contribute' && (currentUser === null || (currentUser && currentUser.isAnonymous))) {
+      showToast("योगदान भेजने के लिए पहले प्रोफाइल से लॉग-इन करें।");
+      navigate('/', { replace: true });
+      setShowProfileModal(true);
+      return;
+    }
+    if (route !== currentScreen) {
+      setCurrentScreen(route as Screen);
+    }
+  }, [location.pathname, currentUser]);
 
   const generateCaptcha = () => {
     const num1 = Math.floor(Math.random() * 10) + 1;
@@ -1482,6 +1508,11 @@ function MainApp() {
 
   const navigateTo = (screen: Screen, replace = false) => {
     vibrate(10);
+    if (screen === "contribute" && (!currentUser || currentUser.isAnonymous)) {
+      showToast("योगदान भेजने के लिए पहले प्रोफाइल से लॉग-इन करें।");
+      setShowProfileModal(true);
+      return;
+    }
     // Removed window.scrollTo because 'smooth' scrolling combined with AnimatePresence
     // causes a nasty layout "jhatka" or jitter when exiting tall screens like Privacy Policy.
     if (screen === "amavasya") {
@@ -1781,6 +1812,7 @@ function MainApp() {
         type: contribType,
         timestamp: new Date().toISOString(),
         userId: auth?.currentUser?.uid,
+        userPhotoUrl: (auth?.currentUser && !auth.currentUser.isAnonymous && auth.currentUser.photoURL) || "",
       };
       
       await addDoc(collection(db, "pendingPosts"), newPost);
@@ -1936,6 +1968,7 @@ function MainApp() {
         type: post.type || "भजन",
         createdAt: post.createdAt || new Date().toISOString(),
         userId: post.userId || "",
+        userPhotoUrl: post.userPhotoUrl || "",
       });
       
       // Remove from pending
@@ -2086,6 +2119,8 @@ function MainApp() {
           isAdminAuthenticated={isAdminAuthenticated}
           unreadCount={unreadCount}
           onNotificationClick={() => setShowNotifications(true)}
+          currentUser={currentUser}
+          onProfileClick={() => setShowProfileModal(true)}
         />
       )}
 
@@ -2150,7 +2185,7 @@ function MainApp() {
             <Route path="/niyam" element={<NiyamScreen niyamList={niyamList} navigateTo={navigateTo} />} />
             <Route path="/shabad_list" element={<ShabadListScreen isLoading={isLoading} sabads={sabads} handleBack={handleBack} handleSabadClick={handleSabadClick} setIsAudioActive={setIsAudioActive} />} />
             <Route path="/category_list" element={<CategoryListScreen isLoading={isLoading} selectedCategory={selectedCategory} aartis={aartis} bhajans={bhajans} sakhis={sakhis} mantras={mantras} handleBack={handleBack} navigateTo={navigateTo} setSelectedSabad={setSelectedSabad} setAutoPlayAudio={setAutoPlayAudio} setIsAudioActive={setIsAudioActive} />} />
-            <Route path="/community_posts" element={<CommunityPostsScreen isLoading={isLoading} recentApprovedPosts={recentApprovedPosts} myPendingPosts={myPendingPosts} handleBack={handleBack} navigateTo={navigateTo} setSelectedSabad={setSelectedSabad} setSelectedCategory={setSelectedCategory} setAutoPlayAudio={setAutoPlayAudio} />} />
+            <Route path="/community_posts" element={<CommunityPostsScreen isLoading={isLoading} recentApprovedPosts={recentApprovedPosts} myPendingPosts={myPendingPosts} handleBack={handleBack} navigateTo={navigateTo} setSelectedSabad={setSelectedSabad} setSelectedCategory={setSelectedCategory} setAutoPlayAudio={setAutoPlayAudio} onProfileClick={() => setShowProfileModal(true)} />} />
             <Route path="/reading" element={<ReadingScreen currentScreen="reading" selectedSabad={selectedSabad} selectedCategory={selectedCategory} sabads={sabads} aartis={aartis} bhajans={bhajans} sakhis={sakhis} mantras={mantras} readingTheme={readingTheme} setReadingTheme={setReadingTheme} hasSeenSwipeHint={hasSeenSwipeHint} handleBack={handleBack} fontSize={fontSize} setFontSize={setFontSize} isAutoScrolling={isAutoScrolling} toggleAutoScroll={toggleAutoScroll} autoScrollSpeed={autoScrollSpeed} cycleAutoScrollSpeed={cycleAutoScrollSpeed} toggleBookmark={toggleBookmark} bookmarks={bookmarks} handleShare={handleShare} autoPlayAudio={autoPlayAudio} setAutoPlayAudio={setAutoPlayAudio} playingSabad={playingSabad} setPlayingSabad={setPlayingSabad} setIsAudioActive={setIsAudioActive} handleAudioEnded={handleAudioEnded} handleSwipe={handleSwipe} handleAudioSwipe={handleAudioSwipe} showToast={showToast} settings={settings} vibrate={vibrate} slideDir={slideDir} bindGestures={bindGestures} />} />
             <Route path="/audio_reading" element={<ReadingScreen currentScreen="audio_reading" selectedSabad={selectedSabad} selectedCategory={selectedCategory} sabads={sabads} aartis={aartis} bhajans={bhajans} sakhis={sakhis} mantras={mantras} readingTheme={readingTheme} setReadingTheme={setReadingTheme} hasSeenSwipeHint={hasSeenSwipeHint} handleBack={handleBack} fontSize={fontSize} setFontSize={setFontSize} isAutoScrolling={isAutoScrolling} toggleAutoScroll={toggleAutoScroll} autoScrollSpeed={autoScrollSpeed} cycleAutoScrollSpeed={cycleAutoScrollSpeed} toggleBookmark={toggleBookmark} bookmarks={bookmarks} handleShare={handleShare} autoPlayAudio={autoPlayAudio} setAutoPlayAudio={setAutoPlayAudio} playingSabad={playingSabad} setPlayingSabad={setPlayingSabad} setIsAudioActive={setIsAudioActive} handleAudioEnded={handleAudioEnded} handleSwipe={handleSwipe} handleAudioSwipe={handleAudioSwipe} showToast={showToast} settings={settings} vibrate={vibrate} slideDir={slideDir} bindGestures={bindGestures} />} />
             <Route path="/amavasya" element={<motion.div key="amavasya" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="bg-paper min-h-screen"><AmavasyaScreen amavasyaList={amavasyaList} selectedYear={selectedYear} setSelectedYear={setSelectedYear} handleBack={handleBack} /></motion.div>} />
@@ -2187,6 +2222,16 @@ function MainApp() {
         unreadCount={unreadCount}
         markAllRead={markAllRead}
         markRead={markRead}
+      />
+
+      {/* User Profile Panel (Gmail login synchronization) */}
+      <UserProfilePanel
+        showProfile={showProfileModal}
+        setShowProfile={setShowProfileModal}
+        currentUser={currentUser}
+        showToast={showToast}
+        myPendingPosts={myPendingPosts}
+        recentApprovedPosts={recentApprovedPosts}
       />
 
       {/* Fixed Bottom Section (Ad + Nav) */}

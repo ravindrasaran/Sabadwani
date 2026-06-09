@@ -2,6 +2,7 @@ import React from "react";
 import { motion } from "motion/react";
 import { UploadCloud, Upload, AlertCircle } from "lucide-react";
 import PremiumHeader from "./PremiumHeader";
+import { auth } from "../firebase";
 
 interface ContributeScreenProps {
   handleBack: () => void;
@@ -59,6 +60,8 @@ export default function ContributeScreen({
   handleContributeSubmit,
   handleFileSelect,
 }: ContributeScreenProps) {
+  const isGoogleUser = auth?.currentUser && !auth.currentUser.isAnonymous;
+
   return (
     <motion.div
       key="contribute"
@@ -79,17 +82,38 @@ export default function ContributeScreen({
           onSubmit={handleContributeSubmit}
         >
           <div>
-            <label className="block font-bold mb-1 text-ink">
-              आपका नाम (Author)
-            </label>
-            <input
-              value={contribAuthor}
-              onChange={(e) => setContribAuthor(e.target.value)}
-              required
-              type="text"
-              className="w-full p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none transition-colors"
-              placeholder="अपना नाम लिखें..."
-            />
+            <div className="flex justify-between items-center mb-1">
+              <label className="block font-bold text-ink">
+                आपका नाम (Author)
+              </label>
+              {isGoogleUser && (
+                <span className="text-[10px] bg-emerald-50 text-emerald-600 font-bold px-2 py-0.5 rounded-full border border-emerald-100 uppercase tracking-wide flex items-center gap-1 font-sans">
+                  🔑 गूगल सत्यापित सदस्य
+                </span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              {isGoogleUser && auth.currentUser.photoURL && (
+                <img
+                  src={auth.currentUser.photoURL}
+                  alt="Profile"
+                  className="w-12 h-12 rounded-xl object-cover object-top shrink-0 border border-ink/10"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.style.display = "none";
+                  }}
+                />
+              )}
+              <input
+                value={contribAuthor}
+                onChange={(e) => setContribAuthor(e.target.value)}
+                required
+                type="text"
+                className="flex-1 p-3 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none transition-colors"
+                placeholder="अपना नाम लिखें..."
+              />
+            </div>
           </div>
           <div>
             <label className="block font-bold mb-1 text-ink">

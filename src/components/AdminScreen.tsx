@@ -1,5 +1,6 @@
 import { motion } from "motion/react";
-import { ShieldCheck, PlusCircle, CheckCircle, XCircle, Edit3, Pause, Play, Settings, BookOpenText, Upload, AlertCircle, Ban } from "lucide-react";
+import { ShieldCheck, PlusCircle, CheckCircle, XCircle, Edit3, Pause, Play, Settings, BookOpenText, Upload, AlertCircle, Ban, Users, Search, Trash2, Copy, Check, Eye, EyeOff } from "lucide-react";
+import { query, where, getDocs, deleteDoc, doc } from "firebase/firestore";
 import PremiumHeader from "./PremiumHeader";
 import { useState } from "react";
 
@@ -15,6 +16,84 @@ export default function AdminScreen(props: any) {
 
   const [actionError, setActionError] = useState<{ id: string, msg: string } | null>(null);
   const [addContentError, setAddContentError] = useState("");
+  
+  // User Manager States
+  const [userSearchQuery, setUserSearchQuery] = useState("");
+  const [searchedUsers, setSearchedUsers] = useState<any[]>([]);
+  const [searchingUsers, setSearchingUsers] = useState(false);
+  const [copiedMpinId, setCopiedMpinId] = useState<string | null>(null);
+  const [visibleMpinId, setVisibleMpinId] = useState<string | null>(null);
+
+  const handleSearchUsers = async () => {
+    if (!db) {
+      showToast("फायरबेस कनेक्टेड नहीं है।");
+      return;
+    }
+    setSearchingUsers(true);
+    setSearchedUsers([]);
+    try {
+      const usersRef = collection(db, "userProfiles");
+      let snapshot;
+      
+      if (userSearchQuery.trim()) {
+        const queryTerm = userSearchQuery.trim();
+        // Try searching by mobile first
+        const qMobile = query(usersRef, where("mobile", "==", queryTerm));
+        snapshot = await getDocs(qMobile);
+        
+        // If empty, try fetching all and filtering by name clientside
+        if (snapshot.empty) {
+          const allSnap = await getDocs(usersRef);
+          const filtered = allSnap.docs
+            .map(doc => ({ id: doc.id, ...doc.data() as any }))
+            .filter(u => 
+              (u.displayName && u.displayName.toLowerCase().includes(queryTerm.toLowerCase())) ||
+              (u.mobile && u.mobile.includes(queryTerm))
+            );
+          setSearchedUsers(filtered);
+          if (filtered.length === 0) {
+            showToast("कोई पंजीकृत यूज़र नहीं मिला।");
+          }
+          return;
+        }
+      } else {
+        // Load all users
+        snapshot = await getDocs(usersRef);
+      }
+      
+      const results = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setSearchedUsers(results);
+      if (results.length === 0) {
+        showToast("कोई पंजीकृत यूज़र नहीं मिला।");
+      }
+    } catch (e: any) {
+      console.error(e);
+      showToast("यूज़र खोजने में त्रुटि: " + e.message);
+    } finally {
+      setSearchingUsers(false);
+    }
+  };
+
+  const handleDeleteUserProfile = async (userId: string, userMobile: string) => {
+    if (!window.confirm(`क्या आप वाकई इस यूज़र (मोबाइल: +91 ${userMobile}) की प्रोफ़ाइल डिलीट करना चाहते हैं? इससे उनका योगदान डेटा सुरक्षित रहेगा लेकिन प्रोफ़ाइल हट जाएगी जिससे वे दोबारा नया पिन बना सकेंगे।`)) {
+      return;
+    }
+    try {
+      await deleteDoc(doc(db, "userProfiles", userId));
+      setSearchedUsers(prev => prev.filter(u => u.id !== userId));
+      showToast("यूज़र प्रोफ़ाइल सफलतापूर्वक हटा दी गई।");
+    } catch (e: any) {
+      showToast("डिलीट करने में विफल: " + e.message);
+    }
+  };
+
+  const copyToClipboard = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedMpinId(id);
+    showToast("MPIN कॉपी हो गया है!");
+    setTimeout(() => setCopiedMpinId(null), 2000);
+  };
+
   const handleToggleNotice = (n: any) => {
     // Fire and forget for instant UI update
     toggleNoticeStatus(n.id, n.isActive).catch(() => {});
@@ -990,6 +1069,95 @@ export default function AdminScreen(props: any) {
                             <span>{actionError.msg}</span>
                           </div>
                         )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* User Manager Section */}
+              <div className="bg-white/90 p-6 rounded-3xl shadow-sm border border-ink/10">
+                <h2 className="text-xl font-bold mb-4 flex items-center gap-2 border-b border-ink/10 pb-2">
+                  <Users className="w-5 h-5 text-accent-dark" /> यूज़र मैनेजर (User Manager)
+                </h2>
+                <p className="text-xs text-ink-light mb-4">
+                  यहाँ आप पंजीकृत यूज़र्स का MPIN देख सकते हैं और यदि वे भूल गए हैं तो उन्हें बता सकते हैं। आप उनका अकाउंट रिसेट (डिलीट) भी कर सकते हैं।
+                </p>
+
+                <div className="flex gap-2 mb-4">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-3 w-4 h-4 text-ink-light" />
+                    <input
+                      type="text"
+                      placeholder="मोबाइल नंबर या नाम से खोजें..."
+                      value={userSearchQuery}
+                      onChange={(e) => setUserSearchQuery(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleSearchUsers()}
+                      className="w-full text-sm pl-9 pr-3 py-2.5 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none font-sans"
+                    />
+                  </div>
+                  <button
+                    onClick={handleSearchUsers}
+                    disabled={searchingUsers}
+                    className="bg-accent hover:bg-accent-dark text-white font-bold px-5 rounded-xl text-xs flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                  >
+                    {searchingUsers ? "खोज रहे..." : "खोजें"}
+                  </button>
+                </div>
+
+                <div className="space-y-3 max-h-64 overflow-y-auto custom-scrollbar pr-1">
+                  {searchedUsers.length === 0 ? (
+                    <div className="text-center py-6 text-ink-light text-xs border border-dashed border-ink/10 rounded-2xl bg-paper/50">
+                      कोई यूज़र लोड नहीं है। सभी यूज़र देखने के लिए खाली सर्च बॉक्स के साथ 'खोजें' दबाएँ।
+                    </div>
+                  ) : (
+                    searchedUsers.map((user) => (
+                      <div
+                        key={user.id}
+                        className="bg-paper/40 p-3.5 rounded-2xl border border-ink/5 flex flex-col md:flex-row md:items-center justify-between gap-3 text-left"
+                      >
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-extrabold text-sm text-ink">{user.displayName || "भक्त"}</span>
+                            <span className="text-[10px] bg-accent/10 text-accent-dark px-1.5 py-0.5 rounded-full font-bold">पंजीकृत भक्त</span>
+                          </div>
+                          <p className="text-xs text-ink-light font-mono mt-0.5">मो: +91 {user.mobile}</p>
+                        </div>
+
+                        <div className="flex items-center gap-2 justify-between md:justify-end border-t border-ink/5 md:border-none pt-2 md:pt-0">
+                          <div className="bg-white px-2.5 py-1.5 rounded-xl border border-ink/10 flex items-center gap-2 text-xs font-mono">
+                            <span className="text-[10px] text-ink-light uppercase tracking-wider font-sans font-bold">MPIN:</span>
+                            <span className="font-bold text-accent-dark">
+                              {visibleMpinId === user.id ? (user.mpin || "NA") : "****"}
+                            </span>
+                            <button
+                              onClick={() => setVisibleMpinId(visibleMpinId === user.id ? null : user.id)}
+                              className="text-ink-light hover:text-ink cursor-pointer focus:outline-none ml-1 bg-transparent border-none p-0"
+                              title={visibleMpinId === user.id ? "hide" : "show"}
+                            >
+                              {visibleMpinId === user.id ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                            </button>
+                            <button
+                              onClick={() => copyToClipboard(user.mpin || "", user.id)}
+                              className="text-ink-light hover:text-accent-dark cursor-pointer ml-1 bg-transparent border-none p-0"
+                              title="copy"
+                            >
+                              {copiedMpinId === user.id ? (
+                                <Check className="w-3.5 h-3.5 text-emerald-500" />
+                              ) : (
+                                <Copy className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          </div>
+
+                          <button
+                            onClick={() => handleDeleteUserProfile(user.id, user.mobile)}
+                            className="bg-red-50 text-red-600 hover:bg-red-100 p-2 rounded-xl cursor-pointer transition-colors border-none"
+                            title="delete"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     ))
                   )}

@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { motion } from "motion/react";
-import { Info, PlusCircle, ChevronRight, Clock, User, HeartHandshake, Users } from "lucide-react";
+import { Info, PlusCircle, ChevronRight, Clock, User, HeartHandshake, Users, Sparkles, LogIn } from "lucide-react";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import PremiumHeader from "../PremiumHeader";
 import { PostSkeleton } from "../Skeleton";
@@ -16,12 +16,14 @@ export interface CommunityPostsScreenProps {
   setSelectedSabad: (sabad: SabadItem) => void;
   setSelectedCategory: (cat: 'aarti' | 'bhajan' | 'sakhi' | 'mantra' | undefined) => void;
   setAutoPlayAudio: (play: boolean) => void;
+  onProfileClick: () => void;
 }
 
 export default function CommunityPostsScreen(props: CommunityPostsScreenProps) {
   const {
     isLoading, recentApprovedPosts, myPendingPosts,
-    handleBack, navigateTo, setSelectedSabad, setSelectedCategory, setAutoPlayAudio
+    handleBack, navigateTo, setSelectedSabad, setSelectedCategory, setAutoPlayAudio,
+    onProfileClick
   } = props;
 
   const listRef = useRef<HTMLDivElement>(null);
@@ -68,6 +70,31 @@ export default function CommunityPostsScreen(props: CommunityPostsScreenProps) {
           </div>
         ) : (
           <div className="flex flex-col gap-5">
+            {/* Google Sign-In Encouragement Banner */}
+            {(!auth?.currentUser || auth?.currentUser?.isAnonymous) && (
+              <div className="bg-gradient-to-tr from-accent/15 via-white/50 to-accent/5 p-6 rounded-[2rem] border border-accent/20 shadow-sm relative overflow-hidden flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 font-sans">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-accent/5 rounded-full blur-3xl pointer-events-none" />
+                <div className="flex gap-4 items-start relative z-10">
+                  <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center shrink-0 border border-accent/20">
+                    <Sparkles className="w-6 h-6 text-accent-dark" />
+                  </div>
+                  <div>
+                    <h4 className="font-extrabold text-ink leading-tight">सत्यापित सदस्य बनें (Sign In)</h4>
+                    <p className="text-xs text-ink-light mt-1 max-w-sm leading-relaxed">
+                      गूगल से लॉगिन करके सबदवाणी परिवार से जुड़ें। आपकी सामग्री आपके सत्यापित नाम और प्रोफाइल फोटो के साथ प्रकाशित होगी।
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={onProfileClick}
+                  className="bg-gradient-to-r from-accent to-accent-dark text-white font-bold px-5 py-3 rounded-xl hover:shadow-md hover:scale-[1.01] active:scale-[0.98] transition-all text-xs shrink-0 relative z-10 flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>अभी लॉग-इन करें</span>
+                </button>
+              </div>
+            )}
+
             {/* User's own contribution prompt if they haven't sent anything */}
             {!recentApprovedPosts.some(p => p.userId === auth?.currentUser?.uid) && myPendingPosts.length === 0 && (
               <button
@@ -164,9 +191,22 @@ export default function CommunityPostsScreen(props: CommunityPostsScreenProps) {
                           </div>
 
                           <div className="flex items-center gap-2.5 text-ink-light text-sm mb-6">
-                            <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center border border-accent/5">
-                              <User className="w-4 h-4 text-accent-dark" />
-                            </div>
+                            {item.userPhotoUrl ? (
+                              <img
+                                src={item.userPhotoUrl}
+                                alt={item.author}
+                                className="w-8 h-8 rounded-full object-cover object-top border border-accent/20"
+                                referrerPolicy="no-referrer"
+                                onError={(e) => {
+                                  e.currentTarget.onerror = null;
+                                  e.currentTarget.style.display = "none";
+                                }}
+                              />
+                            ) : (
+                              <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center border border-accent/5">
+                                <User className="w-4 h-4 text-accent-dark" />
+                              </div>
+                            )}
                             <div className="flex flex-col">
                               <span className="font-bold text-ink/90 text-xs leading-none mb-0.5">{item.author}</span>
                               <span className="text-[10px] opacity-60">सबदवाणी परिवार</span>
