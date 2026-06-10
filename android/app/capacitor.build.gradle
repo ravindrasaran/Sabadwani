@@ -26,6 +26,7 @@ dependencies {
     implementation project(':capawesome-capacitor-app-update')
     implementation project(':capawesome-capacitor-navigation-bar')
     implementation project(':capgo-capacitor-media-session')
+    implementation project(':codetrix-studio-capacitor-google-auth')
     implementation project(':capacitor-native-settings')
 
 }

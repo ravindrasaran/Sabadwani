@@ -674,7 +674,7 @@ function MainApp() {
       return;
     }
     if (!db) {
-      showToast("Firebase is not configured.");
+      showToast("सर्वर डेटाबेस कनेक्शन स्थापित नहीं है।");
       return;
     }
     
@@ -769,7 +769,7 @@ function MainApp() {
       showToast("बदलाव सफलतापूर्वक सेव किए गए!");
     } catch (error: any) {
       if (error.message?.includes("Missing or insufficient permissions")) {
-        showToast("अपडेट करने की अनुमति नहीं है। कृपया Firebase Console में Firestore Security Rules को अपडेट करें (allow write: if request.auth != null;).");
+        showToast("अपडेट करने की अनुमति नहीं है। केवल अधिकृत एडमिन ही यह प्रक्रिया कर सकते हैं।");
       } else {
         showToast("अपडेट करने में त्रुटि हुई।");
       }
@@ -790,7 +790,7 @@ function MainApp() {
       message: "क्या आप वाकई इसे हटाना चाहते हैं?",
       onConfirm: async () => {
         if (!db) {
-          showToast("Firebase is not configured.");
+          showToast("सर्वर डेटाबेस कनेक्शन स्थापित नहीं है।");
           return;
         }
         try {
@@ -842,7 +842,7 @@ function MainApp() {
           showToast("सफलतापूर्वक हटा दिया गया।");
         } catch (error: any) {
           if (error.message?.includes("Missing or insufficient permissions")) {
-            showToast("हटाने की अनुमति नहीं है। कृपया Firebase Console में Firestore Security Rules को अपडेट करें (allow write: if request.auth != null;).");
+            showToast("हटाने की अनुमति नहीं है। केवल अधिकृत एडमिन ही सामग्री हटा सकते हैं।");
           } else {
             showToast("हटाने में त्रुटि हुई।");
           }
@@ -1778,7 +1778,7 @@ function MainApp() {
       return;
     }
     if (!db) {
-      showToast("Firebase is not configured. Please set the API keys.");
+      showToast("सर्वर सेवा शुरू नहीं हो सकी।");
       setIsSubmitting(false);
       return;
     }
@@ -1825,7 +1825,7 @@ function MainApp() {
       navigateTo("home");
     } catch (error: any) {
       if (error.message?.includes("Missing or insufficient permissions")) {
-        showToast("भेजने की अनुमति नहीं है। कृपया Firebase Console में Firestore Security Rules को अपडेट करें (allow write: if request.auth != null;).");
+        showToast("सामग्री भेजने की अनुमति नहीं है। कृपया लॉगिन करें या पुनः प्रयास करें।");
       } else {
         showToast("सामग्री भेजने में त्रुटि हुई। कृपया पुनः प्रयास करें।");
       }
@@ -1936,7 +1936,7 @@ function MainApp() {
       showToast("Settings saved successfully!");
     } catch (error: any) {
       if (error.message?.includes("Missing or insufficient permissions")) {
-        showToast("सेटिंग्स सेव करने की अनुमति नहीं है। कृपया Firebase Console में Firestore Security Rules को अपडेट करें (allow write: if request.auth != null;).");
+        showToast("सेटिंग्स सेव करने की अनुमति नहीं है। केवल अधिकृत एडमिन ही सेटिंग्स बदल सकते हैं।");
       } else {
         showToast("Failed to save settings.");
       }
@@ -1949,7 +1949,7 @@ function MainApp() {
       return "offline";
     }
     if (!db) {
-      showToast("Firebase is not configured.");
+      showToast("सर्वर सेवा शुरू नहीं हो सकी।");
       return;
     }
     try {
@@ -1983,7 +1983,7 @@ function MainApp() {
       });
     } catch (error: any) {
       if (error.message?.includes("Missing or insufficient permissions")) {
-        showToast("स्वीकृत करने की अनुमति नहीं है। कृपया Firebase Console में Firestore Security Rules को अपडेट करें (allow write: if request.auth != null;).");
+        showToast("स्वीकृत करने की अनुमति नहीं है। कृपया लॉगिन करें या एडमिन अधिकारों की जांच करें।");
       } else {
         showToast("स्वीकृत करने में त्रुटि हुई।");
       }
@@ -2001,7 +2001,7 @@ function MainApp() {
       message: "क्या आप वाकई इस पोस्ट को अस्वीकार (Reject) और डिलीट करना चाहते हैं? इससे जुड़ी सभी फाइलें भी डिलीट हो जाएंगी।",
       onConfirm: async () => {
         if (!db) {
-          showToast("Firebase is not configured.");
+          showToast("सर्वर सेवा शुरू नहीं हो सकी।");
           return;
         }
         try {
@@ -2031,7 +2031,7 @@ function MainApp() {
           showToast("पोस्ट और उससे जुड़ी फाइलें सफलतापूर्वक हटा दी गईं।");
         } catch (error: any) {
           if (error.message?.includes("Missing or insufficient permissions")) {
-            showToast("अस्वीकृत करने की अनुमति नहीं है। कृपया Firebase Console में Firestore Security Rules को अपडेट करें (allow write: if request.auth != null;).");
+            showToast("अस्वीकृत करने की अनुमति नहीं है। कृपया लॉगिन करें या एडमिन अधिकारों की जांच करें।");
           } else {
             showToast("अस्वीकृत करने में त्रुटि हुई।");
           }
@@ -2056,7 +2056,7 @@ function MainApp() {
       message: "क्या आप वाकई इस यूजर को ब्लॉक करना चाहते हैं? भविष्य में वे कोई योगदान नहीं दे पाएंगे और यह पोस्ट डिलीट कर दी जाएगी।",
       onConfirm: async () => {
         if (!db) {
-          showToast("Firebase is not configured.");
+          showToast("सर्वर सेवा शुरू नहीं हो सकी।");
           return;
         }
         try {

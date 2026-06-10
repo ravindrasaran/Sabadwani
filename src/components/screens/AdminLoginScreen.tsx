@@ -84,11 +84,12 @@ export default function AdminLoginScreen({
               } else if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
                 setAdminLoginError("गलत पासवर्ड! कृपया सही पासवर्ड दर्ज करें।");
               } else if (error.code === 'auth/user-not-found') {
-                setAdminLoginError("एडमिन अकाउंट नहीं मिला। कृपया Firebase Console में ravindrasaran@gmail.com अकाउंट बनाएं।");
+                setAdminLoginError("एडमिन अकाउंट नहीं मिला। कृपया सही ईमेल सुनिश्चित करें या मुख्य एडमिन से संपर्क करें।");
               } else if (error.code === 'auth/operation-not-allowed') {
-                setAdminLoginError("Firebase Authentication में 'Email/Password' लॉगिन इनेबल नहीं है। कृपया इसे इनेबल करें।");
+                setAdminLoginError("लॉगिन सेवा अभी उपलब्ध नहीं है। कृपया कुछ समय बाद पुनः प्रयास करें।");
               } else {
-                setAdminLoginError("लॉगिन में त्रुटि हुई: " + error.message);
+                const cleanMsg = (error.message || "त्रुटि").replace(/FirebaseError:/gi, "").replace(/Firebase:/gi, "").replace(/\(auth\/[^\)]+\)/gi, "").trim();
+                setAdminLoginError("लॉगिन में त्रुटि हुई: " + (cleanMsg || "अज्ञात त्रुटि"));
               }
               setAdminPasswordInput("");
             } finally {

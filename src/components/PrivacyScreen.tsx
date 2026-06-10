@@ -33,7 +33,7 @@ export default function PrivacyScreen({ navigateTo }: PrivacyScreenProps) {
             <li><strong>ऐप उपयोग डेटा:</strong> हम आपके द्वारा बुकमार्क की गई सामग्री, और डिवाइस आईडी एकत्र करते हैं। यह डेटा केवल आपके ऐप अनुभव को बेहतर बनाने और ऐप के प्रदर्शन को सुधारने के लिए उपयोग किया जाता है।</li>
             <li><strong>यूज़र द्वारा उत्पन्न सामग्री (User Generated Content - UGC):</strong> आपके द्वारा अपलोड की गई सामग्री (जैसे सामुदायिक पोस्ट, भजन, साखी) हमारे सुरक्षित सर्वर पर स्टोर की जाती है। हम आपत्तिजनक सामग्री के खिलाफ सख्त नीतियां लागू करते हैं।</li>
             <li><strong>ऑफ़लाइन कैशिंग (Offline Caching):</strong> बेहतर अनुभव के लिए, ऐप थीम, सेटिंग्स, ऑडियो फाइल्स और अन्य डेटा को आपके डिवाइस के 'Native Preferences (स्थानीय डिवाइस स्टोरेज)' में सुरक्षित रूप से स्टोर करता है, ताकि आप इंटरनेट के बिना भी ऐप का उपयोग कर सकें।</li>
-            <li><strong>क्रैश लॉग्स और डायग्नोस्टिक्स:</strong> ऐप की स्थिरता सुधारने के लिए 'Firebase Crashlytics' के माध्यम से क्रैश लॉग्स और तकनीकी समस्याएं अनाम (anonymous) रूप में एकत्र की जा सकती हैं।</li>
+            <li><strong>क्रैश लॉग्स और डायग्नोस्टिक्स:</strong> ऐप की स्थिरता सुधारने के लिए 'सुरक्षित क्रैश एनालिटिक्स' के माध्यम से क्रैश लॉग्स और तकनीकी समस्याएं अनाम (anonymous) रूप में एकत्र की जा सकती हैं।</li>
           </ul>
 
           <h3 className="font-bold mt-4 text-accent-dark">1.1 यूज़र जनरेटेड कंटेंट (UGC) और रिपोर्टिंग नियंत्रण</h3>
@@ -51,8 +51,8 @@ export default function PrivacyScreen({ navigateTo }: PrivacyScreenProps) {
           <p className="text-ink/90">यह ऐप निम्नलिखित थर्ड-पार्टी सेवाओं का उपयोग करता है:</p>
           <ul className="list-disc pl-5 space-y-1 text-ink/80">
             <li>Google Play Services</li>
-            <li>Firebase Authentication & App Check</li>
-            <li>Cloud Firestore & Firebase Crashlytics</li>
+            <li>सुरक्षित क्लाउड लॉगिन और प्रमाणीकरण प्रणाली</li>
+            <li>क्लाउड डेटाबेस और क्रैश एनालिटिक्स सेवाएं</li>
           </ul>
 
           <h3 className="font-bold mt-4 text-accent-dark">4. डेटा सुरक्षा और डिलीशन (Data Security & Deletion)</h3>

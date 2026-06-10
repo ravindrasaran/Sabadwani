@@ -8,6 +8,7 @@ import { auth, db, storage } from "../firebase";
 import { 
   GoogleAuthProvider, 
   signInWithPopup, 
+  signInWithCredential,
   signOut,
   EmailAuthProvider,
   linkWithCredential,
@@ -15,6 +16,7 @@ import {
   signInWithEmailAndPassword,
   updateProfile
 } from "firebase/auth";
+import { Capacitor } from "@capacitor/core";
 import { 
   doc, 
   getDoc, 
@@ -55,6 +57,29 @@ const generatePresetDataUrl = (symbol: string, startColor: string, endColor: str
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 };
 
+// Firebase requires a password of at least 6 characters, so we map the 4-digit MPIN into a safe 14-character virtual password
+const getFirebasePasswordFromMpin = (mpin: string): string => {
+  return `${mpin}_sabadwani`;
+};
+
+const cleanErrorMessage = (error: any, fallback: string): string => {
+  if (!error) return fallback;
+  const rawMsg = error.message || "";
+  if (rawMsg.includes("Missing or insufficient permissions") || rawMsg.includes("permission-denied")) {
+    return "यह कार्य करने की अनुमति नहीं है।";
+  }
+  // Sanitize Firebase branding and technical strings
+  const cleaned = rawMsg
+    .replace(/FirebaseError:/gi, "")
+    .replace(/Firebase:/gi, "")
+    .replace(/\(auth\/[^\)]+\)/gi, "")
+    .replace(/auth\/[a-zA-Z0-9-]+/gi, "त्रुटि")
+    .replace(/Firestore/gi, "सर्वर")
+    .trim();
+  
+  return cleaned || fallback;
+};
+
 interface UserProfilePanelProps {
   showProfile: boolean;
   setShowProfile: (show: boolean) => void;
@@ -93,6 +118,9 @@ export default function UserProfilePanel({
   const [uploading, setUploading] = useState(false);
 
   const isRegisteredUser = currentUser && !currentUser.isAnonymous;
+  const isGoogleUser = !!(currentUser && currentUser.email && 
+    !currentUser.email.endsWith("@bishnoi.co.in") && 
+    !currentUser.email.endsWith("@sabadwani.com"));
 
   // Load database Profile Document when currentUser updates
   useEffect(() => {
@@ -118,14 +146,39 @@ export default function UserProfilePanel({
 
   const handleGoogleLogin = async () => {
     if (!auth) {
-      showToast("फायरबेस कॉन्फ़िगर नहीं है।");
+      showToast("सर्वर सेवा शुरू नहीं हुई है।");
       return;
     }
     try {
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: 'select_account' });
-      const userCredential = await signInWithPopup(auth, provider);
-      const user = userCredential.user;
+      let user;
+
+      if (Capacitor.isNativePlatform()) {
+        const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
+        
+        try {
+          await GoogleAuth.initialize({
+            clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID || undefined,
+            scopes: ["profile", "email"],
+            grantOfflineAccess: true,
+          });
+        } catch (initErr) {
+          console.warn("GoogleAuth dynamic initialization warning/bypass:", initErr);
+        }
+
+        const googleUser = await GoogleAuth.signIn();
+        if (!googleUser || !googleUser.authentication?.idToken) {
+          throw new Error("गूगल क्रेडेंशियल (idToken) प्राप्त नहीं हो सका।");
+        }
+
+        const credential = GoogleAuthProvider.credential(googleUser.authentication.idToken);
+        const userCredential = await signInWithCredential(auth, credential);
+        user = userCredential.user;
+      } else {
+        const provider = new GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: 'select_account' });
+        const userCredential = await signInWithPopup(auth, provider);
+        user = userCredential.user;
+      }
 
       if (user) {
         const userRef = doc(db, "userProfiles", user.uid);
@@ -159,7 +212,7 @@ export default function UserProfilePanel({
       } else if (error.code === "auth/operation-not-allowed") {
         showToast("गूगल लॉग-इन अभी सक्रिय नहीं है।");
       } else {
-        showToast("लॉग-इन करने में विफल: " + (error.message || "अज्ञात त्रुटि"));
+        showToast("लॉग-इन करने में विफल: " + cleanErrorMessage(error, "अज्ञात त्रुटि"));
       }
     }
   };
@@ -171,7 +224,7 @@ export default function UserProfilePanel({
       showToast("सफलतापूर्वक लॉग-आउट किया गया।");
       setShowProfile(false);
     } catch (error: any) {
-      showToast("लॉग-आउट करने में विफल: " + error.message);
+      showToast("लॉग-आउट करने में विफल: " + cleanErrorMessage(error, "अज्ञात त्रुटि"));
     }
   };
 
@@ -199,8 +252,9 @@ export default function UserProfilePanel({
         return;
       }
 
-      const virtualEmail = `${registerMobile}@sabadwani.com`;
-      const userCredential = await createUserWithEmailAndPassword(auth, virtualEmail, registerMpin);
+      const virtualEmail = `${registerMobile}@bishnoi.co.in`;
+      const firebasePassword = getFirebasePasswordFromMpin(registerMpin);
+      const userCredential = await createUserWithEmailAndPassword(auth, virtualEmail, firebasePassword);
       const newUser = userCredential.user;
 
       await updateProfile(newUser, { displayName: registerName });
@@ -228,7 +282,7 @@ export default function UserProfilePanel({
       if (error.code === "auth/email-already-in-use") {
         showToast("यह मोबाइल नंबर पहले से पंजीकृत है।");
       } else {
-        showToast("पंजीकरण में विफल: " + (error.message || "अज्ञात त्रुटि"));
+        showToast("पंजीकरण में विफल: " + cleanErrorMessage(error, "अज्ञात त्रुटि"));
       }
     } finally {
       setIsSubmitting(false);
@@ -247,8 +301,19 @@ export default function UserProfilePanel({
 
     setIsSubmitting(true);
     try {
-      const virtualEmail = `${loginMobile}@sabadwani.com`;
-      await signInWithEmailAndPassword(auth, virtualEmail, loginMpin);
+      const primaryEmail = `${loginMobile}@bishnoi.co.in`;
+      const firebasePassword = getFirebasePasswordFromMpin(loginMpin);
+      try {
+        await signInWithEmailAndPassword(auth, primaryEmail, firebasePassword);
+      } catch (loginErr: any) {
+        // Fallback to legacy domain for existing users
+        if (loginErr.code === "auth/user-not-found" || loginErr.code === "auth/invalid-credential") {
+          const legacyEmail = `${loginMobile}@sabadwani.com`;
+          await signInWithEmailAndPassword(auth, legacyEmail, firebasePassword);
+        } else {
+          throw loginErr;
+        }
+      }
       showToast("सफलतापूर्वक लॉग-इन किया गया!");
       setShowProfile(false);
       
@@ -259,7 +324,7 @@ export default function UserProfilePanel({
       if (error.code === "auth/invalid-credential" || error.code === "auth/wrong-password" || error.code === "auth/user-not-found") {
         showToast("गलत मोबाइल नंबर या MPIN। कृपया पुनः प्रयास करें।");
       } else {
-        showToast("लॉग-इन करने में विफल: " + (error.message || "अज्ञात त्रुटि"));
+        showToast("लॉग-इन करने में विफल: " + cleanErrorMessage(error, "अज्ञात त्रुटि"));
       }
     } finally {
       setIsSubmitting(false);
@@ -299,8 +364,9 @@ export default function UserProfilePanel({
         return;
       }
 
-      const virtualEmail = `${linkMobile}@sabadwani.com`;
-      const credential = EmailAuthProvider.credential(virtualEmail, linkMpin);
+      const virtualEmail = `${linkMobile}@bishnoi.co.in`;
+      const firebasePassword = getFirebasePasswordFromMpin(linkMpin);
+      const credential = EmailAuthProvider.credential(virtualEmail, firebasePassword);
       
       try {
         await linkWithCredential(auth.currentUser, credential);
@@ -330,7 +396,7 @@ export default function UserProfilePanel({
       setLinkMpin("");
     } catch (error: any) {
       console.error("Link Mobile/MPIN Error:", error);
-      showToast("त्रुटि: " + (error.message || "पिन सेट करने में विफलता।"));
+      showToast("त्रुटि: " + cleanErrorMessage(error, "पिन सेट करने में विफलता।"));
     } finally {
       setIsSubmitting(false);
     }
@@ -518,7 +584,9 @@ export default function UserProfilePanel({
                     <ShieldCheck className="w-4 h-4 text-emerald-500" />
                   </h4>
                   <p className="text-[11px] text-ink-light mt-1 mb-3.5">
-                    {currentUser.email ? currentUser.email : "मोबाइल पंजीकृत सदस्य"}
+                    {currentUser.email && !(currentUser.email.endsWith("@bishnoi.co.in") || currentUser.email.endsWith("@sabadwani.com"))
+                      ? currentUser.email 
+                      : "मोबाइल पंजीकृत सदस्य"}
                   </p>
 
                   {/* Contribution Stats */}
@@ -546,54 +614,58 @@ export default function UserProfilePanel({
                           <Phone className="w-3.5 h-3.5 text-emerald-600" />
                         </div>
                         <div className="text-left flex-1">
-                          <p className="text-[8px] text-emerald-600 font-extrabold uppercase tracking-wider">लिंक्ड मोबाइल नंबर</p>
+                          <p className="text-[8px] text-emerald-600 font-extrabold uppercase tracking-wider">
+                            {isGoogleUser ? "लिंक्ड मोबाइल नंबर" : "पंजीकृत मोबाइल नंबर"}
+                          </p>
                           <p className="text-xs font-bold text-ink mt-0.5">+91 {profileData.mobile}</p>
                         </div>
                         <span className="text-[8px] bg-emerald-100 text-emerald-700 font-extrabold px-1.5 py-0.5 rounded-full uppercase">सुरक्षित</span>
                       </div>
                     ) : (
-                      /* Binding Flow */
-                      <div className="bg-accent/5 border border-dashed border-accent/30 rounded-2xl p-3 text-left">
-                        <h5 className="font-extrabold text-xs text-ink mb-1 flex items-center gap-1.5">
-                          <Phone className="w-3.5 h-3.5 text-accent-dark" />
-                          <span>मोबाइल और MPIN जोड़ें</span>
-                        </h5>
-                        <p className="text-[10px] text-ink-light mb-2.5 leading-relaxed">
-                          सुरक्षित मोबाइल लॉग-इन के लिए अभी अपना नंबर व 4-अंकीय MPIN सेट करें।
-                        </p>
-                        <div className="flex flex-col gap-2">
-                          <div className="relative">
-                            <Phone className="absolute left-2.5 top-2 w-3.5 h-3.5 text-ink-light" />
-                            <input
-                              type="tel"
-                              maxLength={10}
-                              placeholder="10-अंकों का मोबाइल"
-                              value={linkMobile}
-                              onChange={(e) => setLinkMobile(e.target.value.replace(/\D/g, ""))}
-                              className="w-full text-xs pl-8 pr-2 py-1.5 rounded-lg border border-ink/10 bg-white focus:border-accent outline-none font-sans"
-                            />
+                      /* Binding Flow shown ONLY for Google accounts with no mobile number linked */
+                      isGoogleUser && (
+                        <div className="bg-accent/5 border border-dashed border-accent/30 rounded-2xl p-3 text-left">
+                          <h5 className="font-extrabold text-xs text-ink mb-1 flex items-center gap-1.5">
+                            <Phone className="w-3.5 h-3.5 text-accent-dark" />
+                            <span>मोबाइल और MPIN जोड़ें</span>
+                          </h5>
+                          <p className="text-[10px] text-ink-light mb-2.5 leading-relaxed">
+                            सुरक्षित मोबाइल लॉग-इन के लिए अभी अपना नंबर व 4-अंकीय MPIN सेट करें।
+                          </p>
+                          <div className="flex flex-col gap-2">
+                            <div className="relative">
+                              <Phone className="absolute left-2.5 top-2 w-3.5 h-3.5 text-ink-light" />
+                              <input
+                                type="tel"
+                                maxLength={10}
+                                placeholder="10-अंकों का मोबाइल"
+                                value={linkMobile}
+                                onChange={(e) => setLinkMobile(e.target.value.replace(/\D/g, ""))}
+                                className="w-full text-xs pl-8 pr-2 py-1.5 rounded-lg border border-ink/10 bg-white focus:border-accent outline-none font-sans"
+                              />
+                            </div>
+                            <div className="relative">
+                              <Lock className="absolute left-2.5 top-2 w-3.5 h-3.5 text-ink-light" />
+                              <input
+                                type="password"
+                                maxLength={4}
+                                placeholder="4-अंकों का MPIN पिन"
+                                value={linkMpin}
+                                onChange={(e) => setLinkMpin(e.target.value.replace(/\D/g, ""))}
+                                className="w-full text-xs pl-8 pr-2 py-1.5 rounded-lg border border-ink/10 bg-white focus:border-accent outline-none font-sans"
+                              />
+                            </div>
+                            <button
+                              onClick={handleLinkMobileMpin}
+                              disabled={isSubmitting}
+                              className="w-full bg-accent hover:bg-accent-dark text-white font-bold py-2 rounded-lg text-xs shadow-sm active:scale-95 transition-all flex items-center justify-center gap-1.5 mt-1 cursor-pointer"
+                            >
+                              {isSubmitting ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                              <span>सुरक्षित सेट करें</span>
+                            </button>
                           </div>
-                          <div className="relative">
-                            <Lock className="absolute left-2.5 top-2 w-3.5 h-3.5 text-ink-light" />
-                            <input
-                              type="password"
-                              maxLength={4}
-                              placeholder="4-अंकों का MPIN पिन"
-                              value={linkMpin}
-                              onChange={(e) => setLinkMpin(e.target.value.replace(/\D/g, ""))}
-                              className="w-full text-xs pl-8 pr-2 py-1.5 rounded-lg border border-ink/10 bg-white focus:border-accent outline-none font-sans"
-                            />
-                          </div>
-                          <button
-                            onClick={handleLinkMobileMpin}
-                            disabled={isSubmitting}
-                            className="w-full bg-accent hover:bg-accent-dark text-white font-bold py-2 rounded-lg text-xs shadow-sm active:scale-95 transition-all flex items-center justify-center gap-1.5 mt-1 cursor-pointer"
-                          >
-                            {isSubmitting ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-                            <span>सुरक्षित सेट करें</span>
-                          </button>
                         </div>
-                      </div>
+                      )
                     )}
                   </div>
 

@@ -1,8 +1,8 @@
 import { motion } from "motion/react";
 import { ShieldCheck, PlusCircle, CheckCircle, XCircle, Edit3, Pause, Play, Settings, BookOpenText, Upload, AlertCircle, Ban, Users, Search, Trash2, Copy, Check, Eye, EyeOff } from "lucide-react";
-import { query, where, getDocs, deleteDoc, doc } from "firebase/firestore";
+import { getDocs, deleteDoc, doc } from "firebase/firestore";
 import PremiumHeader from "./PremiumHeader";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export default function AdminScreen(props: any) {
   const {
@@ -19,52 +19,87 @@ export default function AdminScreen(props: any) {
   
   // User Manager States
   const [userSearchQuery, setUserSearchQuery] = useState("");
+  const [allUsers, setAllUsers] = useState<any[]>([]);
   const [searchedUsers, setSearchedUsers] = useState<any[]>([]);
   const [searchingUsers, setSearchingUsers] = useState(false);
   const [copiedMpinId, setCopiedMpinId] = useState<string | null>(null);
   const [visibleMpinId, setVisibleMpinId] = useState<string | null>(null);
 
+  // Load all users on mount to show them immediately
+  useEffect(() => {
+    const loadAllUsers = async () => {
+      if (!db) return;
+      setSearchingUsers(true);
+      try {
+        const usersRef = collection(db, "userProfiles");
+        const snapshot = await getDocs(usersRef);
+        const results = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+        // Sort newest registered users first
+        results.sort((a, b) => {
+          const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return tB - tA;
+        });
+        setAllUsers(results);
+        setSearchedUsers(results);
+      } catch (err: any) {
+        console.error("Error loading users on mount:", err);
+      } finally {
+        setSearchingUsers(false);
+      }
+    };
+    loadAllUsers();
+  }, [db]);
+
+  // Reactive live filtering in memory as they type
+  const filterUsersLocally = (queryText: string, currentAllUsers = allUsers) => {
+    const cleanQuery = queryText.trim().toLowerCase();
+    if (!cleanQuery) {
+      setSearchedUsers(currentAllUsers);
+      return;
+    }
+
+    const digitsOnly = cleanQuery.replace(/\D/g, "");
+    let normalizedMobile = digitsOnly;
+    if (digitsOnly.length > 10) {
+      normalizedMobile = digitsOnly.slice(-10);
+    }
+
+    const filtered = currentAllUsers.filter(u => {
+      const uMobileCleaned = u.mobile ? u.mobile.replace(/\D/g, "") : "";
+      const matchCleanedMobile = normalizedMobile && uMobileCleaned.includes(normalizedMobile);
+      const matchRawMobile = u.mobile && u.mobile.toLowerCase().includes(cleanQuery);
+      const matchName = u.displayName && u.displayName.toLowerCase().includes(cleanQuery);
+      const matchMpin = u.mpin && u.mpin.toLowerCase().includes(cleanQuery);
+      return !!(matchCleanedMobile || matchRawMobile || matchName || matchMpin);
+    });
+
+    setSearchedUsers(filtered);
+  };
+
   const handleSearchUsers = async () => {
     if (!db) {
-      showToast("फायरबेस कनेक्टेड नहीं है।");
+      showToast("सर्वर डेटाबेस से कनेक्शन स्थापित नहीं हो सका है।");
       return;
     }
     setSearchingUsers(true);
-    setSearchedUsers([]);
     try {
       const usersRef = collection(db, "userProfiles");
-      let snapshot;
-      
-      if (userSearchQuery.trim()) {
-        const queryTerm = userSearchQuery.trim();
-        // Try searching by mobile first
-        const qMobile = query(usersRef, where("mobile", "==", queryTerm));
-        snapshot = await getDocs(qMobile);
-        
-        // If empty, try fetching all and filtering by name clientside
-        if (snapshot.empty) {
-          const allSnap = await getDocs(usersRef);
-          const filtered = allSnap.docs
-            .map(doc => ({ id: doc.id, ...doc.data() as any }))
-            .filter(u => 
-              (u.displayName && u.displayName.toLowerCase().includes(queryTerm.toLowerCase())) ||
-              (u.mobile && u.mobile.includes(queryTerm))
-            );
-          setSearchedUsers(filtered);
-          if (filtered.length === 0) {
-            showToast("कोई पंजीकृत यूज़र नहीं मिला।");
-          }
-          return;
-        }
+      const snapshot = await getDocs(usersRef);
+      const results = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+      results.sort((a, b) => {
+        const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return tB - tA;
+      });
+      setAllUsers(results);
+
+      const queryTerm = userSearchQuery.trim();
+      if (queryTerm) {
+        filterUsersLocally(userSearchQuery, results);
       } else {
-        // Load all users
-        snapshot = await getDocs(usersRef);
-      }
-      
-      const results = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setSearchedUsers(results);
-      if (results.length === 0) {
-        showToast("कोई पंजीकृत यूज़र नहीं मिला।");
+        setSearchedUsers(results);
+        showToast("सभी यूज़र्स की लिस्ट नवीनतम डेटा के साथ अपडेट कर दी गई है।");
       }
     } catch (e: any) {
       console.error(e);
@@ -80,6 +115,7 @@ export default function AdminScreen(props: any) {
     }
     try {
       await deleteDoc(doc(db, "userProfiles", userId));
+      setAllUsers(prev => prev.filter(u => u.id !== userId));
       setSearchedUsers(prev => prev.filter(u => u.id !== userId));
       showToast("यूज़र प्रोफ़ाइल सफलतापूर्वक हटा दी गई।");
     } catch (e: any) {
@@ -145,7 +181,7 @@ export default function AdminScreen(props: any) {
                       return;
                     }
                     if (!db) {
-                      setAddContentError("Firebase is not configured.");
+                      setAddContentError("सर्वर डेटाबेस से कनेक्शन स्थापित नहीं हो सका है।");
                       return;
                     }
                     
@@ -241,7 +277,7 @@ export default function AdminScreen(props: any) {
                       setContribPhotoFile(null);
                     } catch (error: any) {
                       if (error.message?.includes("Missing or insufficient permissions")) {
-                        showToast("जोड़ने की अनुमति नहीं है। कृपया Firebase Console में Firestore Security Rules को अपडेट करें (allow write: if request.auth != null;).");
+                        showToast("कंटेंट जोड़ने की अनुमति नहीं है। कृपया अपने एडमिनिस्ट्रेटर होने की पुष्टि करें।");
                       } else {
                         showToast("सामग्री जोड़ने में त्रुटि हुई।");
                       }
@@ -1091,7 +1127,11 @@ export default function AdminScreen(props: any) {
                       type="text"
                       placeholder="मोबाइल नंबर या नाम से खोजें..."
                       value={userSearchQuery}
-                      onChange={(e) => setUserSearchQuery(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setUserSearchQuery(val);
+                        filterUsersLocally(val);
+                      }}
                       onKeyDown={(e) => e.key === "Enter" && handleSearchUsers()}
                       className="w-full text-sm pl-9 pr-3 py-2.5 rounded-xl border border-ink/20 bg-white focus:border-accent outline-none font-sans"
                     />
@@ -1108,7 +1148,7 @@ export default function AdminScreen(props: any) {
                 <div className="space-y-3 max-h-64 overflow-y-auto custom-scrollbar pr-1">
                   {searchedUsers.length === 0 ? (
                     <div className="text-center py-6 text-ink-light text-xs border border-dashed border-ink/10 rounded-2xl bg-paper/50">
-                      कोई यूज़र लोड नहीं है। सभी यूज़र देखने के लिए खाली सर्च बॉक्स के साथ 'खोजें' दबाएँ।
+                      कोई पंजीकृत यूज़र नहीं मिला। डेटाबेस अपडेट करने के लिए 'खोजें' दबाएँ।
                     </div>
                   ) : (
                     searchedUsers.map((user) => (

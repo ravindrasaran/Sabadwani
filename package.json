@@ -33,6 +33,7 @@
     "@capawesome/capacitor-app-update": "^8.0.3",
     "@capawesome/capacitor-navigation-bar": "^8.0.0",
     "@capgo/capacitor-media-session": "^8.0.24",
+    "@codetrix-studio/capacitor-google-auth": "^3.4.0-rc.4",
     "@tailwindcss/vite": "^4.1.14",
     "@tanstack/react-virtual": "^3.13.24",
     "@use-gesture/react": "^10.3.1",
