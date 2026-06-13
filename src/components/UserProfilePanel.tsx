@@ -157,7 +157,7 @@ export default function UserProfilePanel({
         
         try {
           await GoogleAuth.initialize({
-            clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID || undefined,
+            clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID || "269129763640-o5mtq5b1lb7pjn7u61ju4dber0g109u6.apps.googleusercontent.com",
             scopes: ["profile", "email"],
             grantOfflineAccess: true,
           });
@@ -211,6 +211,8 @@ export default function UserProfilePanel({
         showToast("पॉपअप ब्लॉक हो गया है, कृपया ब्राउज़र में पॉपअप अनुमति दें।");
       } else if (error.code === "auth/operation-not-allowed") {
         showToast("गूगल लॉग-इन अभी सक्रिय नहीं है।");
+      } else if (error.code === "auth/unauthorized-domain" || (error.message && error.message.includes("unauthorized-domain"))) {
+        showToast("यह डोमेन (Domain) आपके फ़ायरबेस प्रोजेक्ट में अधिकृत नहीं है। कृपया फ़ायरबेस कंसोल में जाकर इस डोमेन को Authorized Domains में जोड़ें।");
       } else {
         showToast("लॉग-इन करने में विफल: " + cleanErrorMessage(error, "अज्ञात त्रुटि"));
       }
