@@ -107,42 +107,77 @@ export default function UserProfilePanel({
   const [registerMobile, setRegisterMobile] = useState("");
   const [registerMpin, setRegisterMpin] = useState("");
 
-  // Input states for linking Mobile Number
-  const [linkMobile, setLinkMobile] = useState("");
-  const [linkMpin, setLinkMpin] = useState("");
-
   // State flags
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [profileData, setProfileData] = useState<any>(null);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
   const [uploading, setUploading] = useState(false);
 
+  // Premium Onboarding state variables
+  const [onboardPhone, setOnboardPhone] = useState("");
+  const [onboardMpin, setOnboardMpin] = useState("");
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+
   const isRegisteredUser = currentUser && !currentUser.isAnonymous;
   const isGoogleUser = !!(currentUser && currentUser.email && 
     !currentUser.email.endsWith("@bishnoi.co.in") && 
     !currentUser.email.endsWith("@sabadwani.com"));
 
+  const isOnboardingActive = !isLoadingProfile && !!(
+    currentUser && 
+    isGoogleUser && 
+    (!profileData || !profileData.mobile)
+  );
+
+
+
   // Load database Profile Document when currentUser updates
   useEffect(() => {
     if (currentUser) {
+      setIsLoadingProfile(true);
       const fetchProfile = async () => {
         try {
           const userDocRef = doc(db, "userProfiles", currentUser.uid);
           const userDoc = await getDoc(userDocRef);
           if (userDoc.exists()) {
-            setProfileData(userDoc.data());
+            const data = userDoc.data();
+            setProfileData(data);
+            
+            // Auto-trigger onboarding modal for Google auth users with no mobile number
+            const isGoogle = !!(currentUser.email && 
+              !currentUser.email.endsWith("@bishnoi.co.in") && 
+              !currentUser.email.endsWith("@sabadwani.com"));
+
+            if (isGoogle && !data.mobile) {
+              setShowProfile(true);
+              setOnboardPhone("");
+              setOnboardMpin("");
+            }
           } else {
             setProfileData(null);
+            
+            const isGoogle = !!(currentUser.email && 
+              !currentUser.email.endsWith("@bishnoi.co.in") && 
+              !currentUser.email.endsWith("@sabadwani.com"));
+
+            if (isGoogle) {
+              setShowProfile(true);
+              setOnboardPhone("");
+              setOnboardMpin("");
+            }
           }
         } catch (err) {
           console.error("Error fetching user profile doc:", err);
+        } finally {
+          setIsLoadingProfile(false);
         }
       };
       fetchProfile();
     } else {
       setProfileData(null);
+      setIsLoadingProfile(false);
     }
-  }, [currentUser]);
+  }, [currentUser, setShowProfile]);
 
   const handleGoogleLogin = async () => {
     if (!auth) {
@@ -198,13 +233,21 @@ export default function UserProfilePanel({
 
         // Refresh state
         const updatedDoc = await getDoc(userRef);
+        const hasMobile = updatedDoc.exists() && updatedDoc.data()?.mobile;
         if (updatedDoc.exists()) {
           setProfileData(updatedDoc.data());
         }
-      }
 
-      showToast("गूगल से लॉग-इन सफल रहा!");
-      setShowProfile(false);
+        if (hasMobile) {
+          showToast("सफलतापूर्वक लॉग-इन किया गया!");
+          setShowProfile(false);
+        } else {
+          showToast("गूगल लॉग-इन सफल! कृपया सुरक्षा हेतु अंतिम चरण पूरा करें।");
+          setOnboardPhone("");
+          setOnboardMpin("");
+          setShowProfile(true);
+        }
+      }
     } catch (error: any) {
       console.error("Google Login Error:", error);
       if (error.code === "auth/popup-blocked") {
@@ -345,47 +388,47 @@ export default function UserProfilePanel({
     showToast("व्हाट्सएप पर पिन रीसेट (Reset) अनुरोध भेजा जा रहा है...");
   };
 
-  const handleLinkMobileMpin = async () => {
+
+
+  const handleOnboardingSubmit = async () => {
     if (!auth?.currentUser) return;
-    if (linkMobile.length !== 10) {
+    if (onboardPhone.length !== 10) {
       showToast("कृपया वैध 10-अंकों का मोबाइल नंबर दर्ज करें।");
       return;
     }
-    if (linkMpin.length !== 4) {
-      showToast("कृपया सुरक्षित 4-अंकों का MPIN सेट करें।");
+    if (onboardMpin.length !== 4) {
+      showToast("कृपया सुरक्षित 4-अंकीय MPIN चुनें।");
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const q = query(collection(db, "userProfiles"), where("mobile", "==", linkMobile));
+      // Step A: Pre-Check if of this mobile is already associated
+      const q = query(collection(db, "userProfiles"), where("mobile", "==", onboardPhone));
       const snapshot = await getDocs(q);
       if (!snapshot.empty) {
-        showToast("यह मोबाइल नंबर पहले से पंजीकृत है।");
+        showToast("यह मोबाइल नंबर पहले से किसी खाते से जुड़ा है।");
         setIsSubmitting(false);
         return;
       }
 
-      const virtualEmail = `${linkMobile}@bishnoi.co.in`;
-      const firebasePassword = getFirebasePasswordFromMpin(linkMpin);
+      // Step B: Set up virtual credentials
+      const virtualEmail = `${onboardPhone}@bishnoi.co.in`;
+      const firebasePassword = getFirebasePasswordFromMpin(onboardMpin);
       const credential = EmailAuthProvider.credential(virtualEmail, firebasePassword);
       
       try {
         await linkWithCredential(auth.currentUser, credential);
       } catch (linkError: any) {
-        console.warn("Linking skipped or already has credential:", linkError);
-        if (linkError.code === "auth/provider-already-linked" || linkError.code === "auth/email-already-in-use") {
-          showToast("यह मोबाइल नंबर पहले से किसी खाते से जुड़ा है।");
-          setIsSubmitting(false);
-          return;
-        }
+        console.warn("Linking skipped or already linked:", linkError);
       }
 
+      // Step C: Set database profile doc
       const userRef = doc(db, "userProfiles", auth.currentUser.uid);
       const profile = {
         uid: auth.currentUser.uid,
-        mobile: linkMobile,
-        mpin: linkMpin,
+        mobile: onboardPhone,
+        mpin: onboardMpin,
         displayName: auth.currentUser.displayName || "अज्ञात भक्त",
         photoURL: auth.currentUser.photoURL || "",
         createdAt: new Date().toISOString()
@@ -393,12 +436,11 @@ export default function UserProfilePanel({
       await setDoc(userRef, profile);
       
       setProfileData(profile);
-      showToast("सफलतापूर्वक मोबाइल नंबर और MPIN जोड़ा गया!");
-      setLinkMobile("");
-      setLinkMpin("");
+      showToast("सुरक्षित लॉगिन सेट-अप पूर्ण हुआ!");
+      setShowProfile(false);
     } catch (error: any) {
-      console.error("Link Mobile/MPIN Error:", error);
-      showToast("त्रुटि: " + cleanErrorMessage(error, "पिन सेट करने में विफलता।"));
+      console.error("Onboarding Submit Error:", error);
+      showToast("त्रुटि: " + cleanErrorMessage(error, "पिन सुरक्षित करने में विफलता।"));
     } finally {
       setIsSubmitting(false);
     }
@@ -463,7 +505,13 @@ export default function UserProfilePanel({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={() => setShowProfile(false)}
+            onClick={() => {
+              if (isOnboardingActive) {
+                showToast("लॉगिन पूर्ण करने के लिए मोबाइल नंबर और MPIN सेट करें, या लॉग-आउट करें।");
+              } else {
+                setShowProfile(false);
+              }
+            }}
             className="absolute inset-0 bg-black/45 backdrop-blur-[2px]"
           />
 
@@ -476,23 +524,32 @@ export default function UserProfilePanel({
             className="relative w-full max-w-[360px] bg-white rounded-[2rem] shadow-2xl border border-ink/10 overflow-hidden font-sans z-10 flex flex-col"
           >
             {/* Header */}
-            <div className="p-4 border-b border-ink/5 relative flex justify-center items-center bg-paper/30">
+            <div className={`${isOnboardingActive ? 'p-3' : 'p-4'} border-b border-ink/5 relative flex justify-center items-center bg-paper/30`}>
               <h3 className="font-extrabold text-ink flex items-center justify-center gap-2 text-center select-none leading-none">
                 <img src="/logo.png" alt="Logo" className="w-5 h-5 rounded-full object-cover shadow-sm shrink-0 relative -top-[1px]" onError={(e) => { e.currentTarget.src = "/logo.png" }} />
-                <span className="relative top-[1px]">{showAvatarPicker ? "प्रोफ़ाइल चित्र बदलें" : "प्रोफ़ाइल"}</span>
-              </h3>
-              <button
-                onClick={() => {
-                  if (showAvatarPicker) {
-                    setShowAvatarPicker(false);
-                  } else {
-                    setShowProfile(false);
+                <span className="relative top-[1px]">
+                  {isOnboardingActive 
+                    ? "सुरक्षित लॉगिन सेट-अप" 
+                    : showAvatarPicker 
+                      ? "प्रोफ़ाइल चित्र बदलें" 
+                      : "प्रोफ़ाइल"
                   }
-                }}
-                className="absolute right-4 p-1.5 rounded-full hover:bg-ink/5 text-ink-light hover:text-ink transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+                </span>
+              </h3>
+              {!isOnboardingActive && (
+                <button
+                  onClick={() => {
+                    if (showAvatarPicker) {
+                      setShowAvatarPicker(false);
+                    } else {
+                      setShowProfile(false);
+                    }
+                  }}
+                  className="absolute right-4 p-1.5 rounded-full hover:bg-ink/5 text-ink-light hover:text-ink transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              )}
             </div>
 
           {/* Profile Picture & Preset Avatar Picker Panel */}
@@ -557,15 +614,115 @@ export default function UserProfilePanel({
             </div>
           ) : (
             /* Main authentication, User Details, or linking UI */
-            <div className="p-5 max-h-[85vh] overflow-y-auto custom-scrollbar">
-              {isRegisteredUser ? (
+            <div className={`${isOnboardingActive ? 'p-3.5 sm:p-4' : 'p-4 sm:p-5'} max-h-[85vh] overflow-y-auto custom-scrollbar focus:outline-none`}>
+              {isOnboardingActive ? (
+                /* LUXURIOUS AND CLEAN COMPACT ONBOARDING FORM MATCHING THE PROFILE VIEW */
+                <div className="flex flex-col text-center select-none w-full">
+                  {/* User Profile avatar matching design exactly but slightly more compact */}
+                  <div className="relative mb-1.5 group">
+                    <img
+                      src={currentUser.photoURL || "/logo.png"}
+                      alt={currentUser.displayName || "User"}
+                      className="w-14 h-14 rounded-full border-4 border-white shadow-md object-cover object-top mx-auto transition-all"
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = "/logo.png";
+                      }}
+                    />
+                  </div>
+
+                  <h4 className="font-extrabold text-base text-ink flex items-center gap-1.5 justify-center leading-none">
+                    <span>{currentUser.displayName || "भक्त"}</span>
+                    <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                  </h4>
+                  
+                  <div className="text-[11px] text-ink-light mt-1 mb-2.5 font-bold space-y-0.5 leading-none">
+                    {currentUser.email && !(currentUser.email.endsWith("@bishnoi.co.in") || currentUser.email.endsWith("@sabadwani.com")) && (
+                      <div className="opacity-80">{currentUser.email}</div>
+                    )}
+                  </div>
+
+                  {/* Input Card Container - Designed exactly like profile card layouts */}
+                  <div className="w-full bg-accent/5 rounded-2xl p-2.5 border border-accent/10 mb-3.5 text-left">
+                    <div className="space-y-2.5">
+                      {/* Mobile Box */}
+                      <div className="flex flex-col">
+                        <label className="text-[10px] text-accent-dark font-extrabold uppercase tracking-widest mb-1 ml-0.5">
+                          पंजीकरण मोबाइल नंबर
+                        </label>
+                        <div className="relative flex items-center">
+                          <span className="absolute left-3.5 text-xs font-black text-ink-light select-none">
+                            🇮🇳 +91
+                          </span>
+                          <input
+                            type="tel"
+                            pattern="[0-9]*"
+                            inputMode="numeric"
+                            maxLength={10}
+                            placeholder="xxxxxxxxxx"
+                            value={onboardPhone}
+                            onChange={(e) => setOnboardPhone(e.target.value.replace(/\D/g, ""))}
+                            className="w-full bg-white border border-accent/20 focus:border-accent hover:border-accent/40 text-ink text-sm font-bold font-mono tracking-wider pl-15 pr-3 py-2 rounded-xl outline-none transition-all focus:ring-4 focus:ring-accent/10"
+                          />
+                        </div>
+                      </div>
+
+                      {/* MPIN Box */}
+                      <div className="flex flex-col">
+                        <label className="text-[10px] text-accent-dark font-extrabold uppercase tracking-widest mb-1 ml-0.5">
+                          सुरक्षित 4-अंकीय MPIN बनाएँ
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="password"
+                            pattern="[0-9]*"
+                            inputMode="numeric"
+                            maxLength={4}
+                            placeholder="••••"
+                            value={onboardMpin}
+                            onChange={(e) => setOnboardMpin(e.target.value.replace(/\D/g, ""))}
+                            className="w-full bg-white border border-accent/20 focus:border-accent hover:border-accent/40 text-ink text-base font-extrabold tracking-widest px-4 py-2 rounded-xl outline-none transition-all text-center focus:ring-4 focus:ring-accent/10 font-mono"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Submit & Exit Buttons - consistent with profile view margins */}
+                  <div className="w-full space-y-2">
+                    <button
+                      disabled={isSubmitting}
+                      onClick={handleOnboardingSubmit}
+                      className="relative overflow-hidden w-full py-2.5 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all outline-none bg-gradient-to-r from-accent to-accent-dark text-white shadow hover:shadow-md active:scale-95 cursor-pointer"
+                    >
+                      <Ripple color="rgba(255, 255, 255, 0.2)" />
+                      {isSubmitting ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                      )}
+                      <span>सुरक्षित लॉगिन पूर्ण करें</span>
+                    </button>
+
+                    <button
+                      onClick={handleLogout}
+                      className="relative overflow-hidden w-full bg-red-50 text-red-600 hover:bg-red-100 font-bold py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all active:scale-95 text-xs cursor-pointer"
+                    >
+                      <Ripple color="rgba(239, 68, 68, 0.1)" />
+                      <LogOut className="w-4 h-4" />
+                      <span>लॉग-आउट करें (Sign Out)</span>
+                    </button>
+                  </div>
+                </div>
+              ) : isRegisteredUser ? (
                 <div className="flex flex-col items-center text-center">
                   {/* User Profile avatar */}
                   <div className="relative mb-2.5 group">
                     <img
                       src={currentUser.photoURL || "/logo.png"}
                       alt={currentUser.displayName || "User"}
-                      className="w-18 h-18 rounded-full border-4 border-white shadow-md object-cover object-top transition-all group-hover:brightness-90"
+                      className="w-18 h-18 rounded-full border-4 border-white shadow-md object-cover object-top transition-all"
                       referrerPolicy="no-referrer"
                       onError={(e) => {
                         e.currentTarget.onerror = null;
@@ -585,14 +742,18 @@ export default function UserProfilePanel({
                     <span>{currentUser.displayName || "भक्त"}</span>
                     <ShieldCheck className="w-4 h-4 text-emerald-500" />
                   </h4>
-                  <p className="text-[11px] text-ink-light mt-1 mb-3.5">
-                    {currentUser.email && !(currentUser.email.endsWith("@bishnoi.co.in") || currentUser.email.endsWith("@sabadwani.com"))
-                      ? currentUser.email 
-                      : "मोबाइल पंजीकृत सदस्य"}
-                  </p>
+                  
+                  <div className="text-[11px] text-ink-light mt-1.5 mb-3.5 font-bold space-y-0.5 leading-none">
+                    {currentUser.email && !(currentUser.email.endsWith("@bishnoi.co.in") || currentUser.email.endsWith("@sabadwani.com")) && (
+                      <div className="opacity-80">{currentUser.email}</div>
+                    )}
+                    {profileData?.mobile && (
+                      <div className="font-mono text-xs text-ink/80 font-black pt-1">+91 {profileData.mobile}</div>
+                    )}
+                  </div>
 
                   {/* Contribution Stats */}
-                  <div className="w-full bg-accent/5 rounded-2xl p-3 border border-accent/10 mb-3.5 flex items-center justify-around">
+                  <div className="w-full bg-accent/5 rounded-2xl p-3 border border-accent/10 mb-5 flex items-center justify-around">
                     <div className="flex items-center gap-2">
                       <ListMusic className="w-6 h-6 text-accent-dark shrink-0" />
                       <div className="text-left">
@@ -606,69 +767,6 @@ export default function UserProfilePanel({
                       <p className="text-xs font-black text-emerald-600 mt-1">{recentApprovedPosts.filter(p => p.userId === currentUser.uid).length} पोस्ट</p>
                       <p className="text-[8px] text-amber-600 font-bold leading-none mt-0.5">लंबित: {myPendingPosts.length}</p>
                     </div>
-                  </div>
-
-                  {/* Mobile Link/Status Panel */}
-                  <div className="w-full mb-4">
-                    {profileData?.mobile ? (
-                      <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-2.5 px-3 flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
-                          <Phone className="w-3.5 h-3.5 text-emerald-600" />
-                        </div>
-                        <div className="text-left flex-1">
-                          <p className="text-[8px] text-emerald-600 font-extrabold uppercase tracking-wider">
-                            {isGoogleUser ? "लिंक्ड मोबाइल नंबर" : "पंजीकृत मोबाइल नंबर"}
-                          </p>
-                          <p className="text-xs font-bold text-ink mt-0.5">+91 {profileData.mobile}</p>
-                        </div>
-                        <span className="text-[8px] bg-emerald-100 text-emerald-700 font-extrabold px-1.5 py-0.5 rounded-full uppercase">सुरक्षित</span>
-                      </div>
-                    ) : (
-                      /* Binding Flow shown ONLY for Google accounts with no mobile number linked */
-                      isGoogleUser && (
-                        <div className="bg-accent/5 border border-dashed border-accent/30 rounded-2xl p-3 text-left">
-                          <h5 className="font-extrabold text-xs text-ink mb-1 flex items-center gap-1.5">
-                            <Phone className="w-3.5 h-3.5 text-accent-dark" />
-                            <span>मोबाइल और MPIN जोड़ें</span>
-                          </h5>
-                          <p className="text-[10px] text-ink-light mb-2.5 leading-relaxed">
-                            सुरक्षित मोबाइल लॉग-इन के लिए अभी अपना नंबर व 4-अंकीय MPIN सेट करें।
-                          </p>
-                          <div className="flex flex-col gap-2">
-                            <div className="relative">
-                              <Phone className="absolute left-2.5 top-2 w-3.5 h-3.5 text-ink-light" />
-                              <input
-                                type="tel"
-                                maxLength={10}
-                                placeholder="10-अंकों का मोबाइल"
-                                value={linkMobile}
-                                onChange={(e) => setLinkMobile(e.target.value.replace(/\D/g, ""))}
-                                className="w-full text-xs pl-8 pr-2 py-1.5 rounded-lg border border-ink/10 bg-white focus:border-accent outline-none font-sans"
-                              />
-                            </div>
-                            <div className="relative">
-                              <Lock className="absolute left-2.5 top-2 w-3.5 h-3.5 text-ink-light" />
-                              <input
-                                type="password"
-                                maxLength={4}
-                                placeholder="4-अंकों का MPIN पिन"
-                                value={linkMpin}
-                                onChange={(e) => setLinkMpin(e.target.value.replace(/\D/g, ""))}
-                                className="w-full text-xs pl-8 pr-2 py-1.5 rounded-lg border border-ink/10 bg-white focus:border-accent outline-none font-sans"
-                              />
-                            </div>
-                            <button
-                              onClick={handleLinkMobileMpin}
-                              disabled={isSubmitting}
-                              className="w-full bg-accent hover:bg-accent-dark text-white font-bold py-2 rounded-lg text-xs shadow-sm active:scale-95 transition-all flex items-center justify-center gap-1.5 mt-1 cursor-pointer"
-                            >
-                              {isSubmitting ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-                              <span>सुरक्षित सेट करें</span>
-                            </button>
-                          </div>
-                        </div>
-                      )
-                    )}
                   </div>
 
                   {/* Logout Button */}
