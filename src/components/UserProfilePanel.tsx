@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   X, LogOut, ShieldCheck, ListMusic, LogIn, Phone, Lock, 
-  User, Camera, Image, Check, ChevronLeft, RefreshCw 
+  User, Camera, Image, Check, ChevronLeft, RefreshCw, Mail
 } from "lucide-react";
 import { auth, db, storage } from "../firebase";
 import { 
@@ -289,9 +289,18 @@ export default function UserProfilePanel({
 
     setIsSubmitting(true);
     try {
-      const q = query(collection(db, "userProfiles"), where("mobile", "==", registerMobile));
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
+      let isDuplicate = false;
+      try {
+        const q = query(collection(db, "userProfiles"), where("mobile", "==", registerMobile));
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          isDuplicate = true;
+        }
+      } catch (queryErr) {
+        console.warn("UserProfiles query pre-check bypassed due to Firestore rule constraints (will rely on Auth uniqueness):", queryErr);
+      }
+
+      if (isDuplicate) {
         showToast("यह मोबाइल नंबर पहले से पंजीकृत है।");
         setIsSubmitting(false);
         return;
@@ -404,9 +413,18 @@ export default function UserProfilePanel({
     setIsSubmitting(true);
     try {
       // Step A: Pre-Check if of this mobile is already associated
-      const q = query(collection(db, "userProfiles"), where("mobile", "==", onboardPhone));
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
+      let isDuplicate = false;
+      try {
+        const q = query(collection(db, "userProfiles"), where("mobile", "==", onboardPhone));
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          isDuplicate = true;
+        }
+      } catch (queryErr) {
+        console.warn("UserProfiles onboarding query check bypassed due to Firestore rule constraints (will rely on Auth uniqueness):", queryErr);
+      }
+
+      if (isDuplicate) {
         showToast("यह मोबाइल नंबर पहले से किसी खाते से जुड़ा है।");
         setIsSubmitting(false);
         return;
@@ -420,7 +438,12 @@ export default function UserProfilePanel({
       try {
         await linkWithCredential(auth.currentUser, credential);
       } catch (linkError: any) {
-        console.warn("Linking skipped or already linked:", linkError);
+        console.warn("Linking error details:", linkError);
+        if (linkError.code === "auth/credential-already-in-use" || linkError.code === "auth/email-already-in-use") {
+          showToast("यह मोबाइल नंबर पहले से किसी खाते से जुड़ा है।");
+          setIsSubmitting(false);
+          return;
+        }
       }
 
       // Step C: Set database profile doc
@@ -743,12 +766,19 @@ export default function UserProfilePanel({
                     <ShieldCheck className="w-4 h-4 text-emerald-500" />
                   </h4>
                   
-                  <div className="text-[11px] text-ink-light mt-1.5 mb-3.5 font-bold space-y-0.5 leading-none">
+                  {/* Styled Gmail & Mobile Badges */}
+                  <div className="flex flex-col gap-1.5 items-center mt-2.5 mb-4.5 w-full max-w-[260px]">
                     {currentUser.email && !(currentUser.email.endsWith("@bishnoi.co.in") || currentUser.email.endsWith("@sabadwani.com")) && (
-                      <div className="opacity-80">{currentUser.email}</div>
+                      <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-accent/5 border border-accent/10 text-ink/85 text-[11px] font-semibold leading-none w-full justify-center shadow-2xs">
+                        <Mail className="w-3.5 h-3.5 text-accent-dark shrink-0" />
+                        <span className="truncate select-all leading-none">{currentUser.email}</span>
+                      </div>
                     )}
                     {profileData?.mobile && (
-                      <div className="font-mono text-xs text-ink/80 font-black pt-1">+91 {profileData.mobile}</div>
+                      <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-accent/5 border border-accent/10 text-ink/85 text-[11px] font-bold leading-none w-full justify-center shadow-2xs">
+                        <Phone className="w-3.5 h-3.5 text-accent-dark shrink-0" />
+                        <span className="font-mono tracking-wide select-all leading-none">+91 {profileData.mobile}</span>
+                      </div>
                     )}
                   </div>
 

@@ -104,8 +104,11 @@ export default function ReadingScreen(props: ReadingScreenProps) {
     if (isAutoScrolling) {
       const speedMap = { 1: 30, 2: 20, 3: 10 }; // milliseconds per pixel
       autoScrollIntervalRef.current = setInterval(() => {
-        if (scrollRef.current) {
-          scrollRef.current.scrollTop += 1;
+        const el = scrollRef.current;
+        // If the inner div has an active scroll height greater than viewport height, scroll it.
+        // Otherwise, scroll the main window body.
+        if (el && el.scrollHeight > el.clientHeight + 10) {
+          el.scrollTop += 1;
         } else {
           window.scrollBy(0, 1);
         }
@@ -355,7 +358,7 @@ export default function ReadingScreen(props: ReadingScreenProps) {
         className="px-5 pt-2 pb-2 flex-1 flex flex-col items-center w-full touch-pan-y overflow-y-auto overflow-x-hidden hide-scrollbar"
         style={{
           WebkitOverflowScrolling: "touch",
-          scrollBehavior: "smooth",
+          scrollBehavior: isAutoScrolling ? "auto" : "smooth",
           touchAction: "pan-y"
         }}
       >
