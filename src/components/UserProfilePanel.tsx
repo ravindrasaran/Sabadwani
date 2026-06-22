@@ -24,7 +24,8 @@ import {
   collection, 
   query, 
   where, 
-  getDocs 
+  getDocs,
+  limit
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { Ripple } from "./Ripple";
@@ -60,6 +61,27 @@ const generatePresetDataUrl = (symbol: string, startColor: string, endColor: str
 // Firebase requires a password of at least 6 characters, so we map the 4-digit MPIN into a safe 14-character virtual password
 const getFirebasePasswordFromMpin = (mpin: string): string => {
   return `${mpin}_sabadwani`;
+};
+
+const formatMobileNumber = (mobile: string): string => {
+  if (!mobile) return "";
+  const cleaned = mobile.trim();
+  if (cleaned.startsWith("+")) {
+    return cleaned;
+  }
+  // Standard 10 digits gets mapped to +91 as requested
+  if (cleaned.length === 10 && /^\d+$/.test(cleaned)) {
+    return `+91 ${cleaned}`;
+  }
+  // 12 digit starting with 91 gets +91
+  if (cleaned.startsWith("91") && cleaned.length === 12 && /^\d+$/.test(cleaned)) {
+    return `+91 ${cleaned.slice(2)}`;
+  }
+  // If numeric, prepend + so it acts as standard international dialing format
+  if (/^\d+$/.test(cleaned)) {
+    return `+${cleaned}`;
+  }
+  return cleaned;
 };
 
 const cleanErrorMessage = (error: any, fallback: string): string => {
@@ -291,7 +313,7 @@ export default function UserProfilePanel({
     try {
       let isDuplicate = false;
       try {
-        const q = query(collection(db, "userProfiles"), where("mobile", "==", registerMobile));
+        const q = query(collection(db, "userProfiles"), where("mobile", "==", registerMobile), limit(1));
         const snapshot = await getDocs(q);
         if (!snapshot.empty) {
           isDuplicate = true;
@@ -415,7 +437,7 @@ export default function UserProfilePanel({
       // Step A: Pre-Check if of this mobile is already associated
       let isDuplicate = false;
       try {
-        const q = query(collection(db, "userProfiles"), where("mobile", "==", onboardPhone));
+        const q = query(collection(db, "userProfiles"), where("mobile", "==", onboardPhone), limit(1));
         const snapshot = await getDocs(q);
         if (!snapshot.empty) {
           isDuplicate = true;
@@ -767,17 +789,19 @@ export default function UserProfilePanel({
                   </h4>
                   
                   {/* Styled Gmail & Mobile Badges */}
-                  <div className="flex flex-col gap-1.5 items-center mt-2.5 mb-4.5 w-full max-w-[260px]">
+                  <div className="flex flex-col gap-1 items-center mt-1.5 mb-4 text-[12px] text-ink-light leading-snug w-full select-all">
                     {currentUser.email && !(currentUser.email.endsWith("@bishnoi.co.in") || currentUser.email.endsWith("@sabadwani.com")) && (
-                      <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-accent/5 border border-accent/10 text-ink/85 text-[11px] font-semibold leading-none w-full justify-center shadow-2xs">
-                        <Mail className="w-3.5 h-3.5 text-accent-dark shrink-0" />
-                        <span className="truncate select-all leading-none">{currentUser.email}</span>
+                      <div className="flex items-center gap-1.5 justify-center opacity-90 max-w-[250px] w-full text-center">
+                        <Mail className="w-3.5 h-3.5 text-accent shrink-0 opacity-75" />
+                        <span className="truncate leading-none">{currentUser.email}</span>
                       </div>
                     )}
                     {profileData?.mobile && (
-                      <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-accent/5 border border-accent/10 text-ink/85 text-[11px] font-bold leading-none w-full justify-center shadow-2xs">
-                        <Phone className="w-3.5 h-3.5 text-accent-dark shrink-0" />
-                        <span className="font-mono tracking-wide select-all leading-none">+91 {profileData.mobile}</span>
+                      <div className="flex items-center gap-1.5 justify-center opacity-95 max-w-[250px] w-full text-center">
+                        <Phone className="w-3.5 h-3.5 text-accent shrink-0 opacity-75" />
+                        <span className="font-mono tracking-wide font-semibold text-[11px] leading-none">
+                          {formatMobileNumber(profileData.mobile)}
+                        </span>
                       </div>
                     )}
                   </div>
