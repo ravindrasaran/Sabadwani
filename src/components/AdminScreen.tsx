@@ -1,6 +1,6 @@
 import { motion } from "motion/react";
-import { ShieldCheck, PlusCircle, CheckCircle, XCircle, Edit3, Pause, Play, Settings, BookOpenText, Upload, AlertCircle, Ban, Users, Search, Trash2, Copy, Check, Eye, EyeOff } from "lucide-react";
-import { getDocs, deleteDoc, doc } from "firebase/firestore";
+import { ShieldCheck, PlusCircle, CheckCircle, XCircle, Edit3, Pause, Play, Settings, BookOpenText, Upload, AlertCircle, Ban, Users, Search, Trash2, Copy, Check, Eye, EyeOff, Send } from "lucide-react";
+import { getDocs, deleteDoc, doc, query, where, limit } from "firebase/firestore";
 import PremiumHeader from "./PremiumHeader";
 import { useState, useEffect } from "react";
 
@@ -25,33 +25,12 @@ export default function AdminScreen(props: any) {
   const [copiedMpinId, setCopiedMpinId] = useState<string | null>(null);
   const [visibleMpinId, setVisibleMpinId] = useState<string | null>(null);
 
-  // Load all users on mount to show them immediately
+  // Start with an empty list. No users loaded automatically on mount for security, bandwidth, and speed (supports 1L+ users)
   useEffect(() => {
-    const loadAllUsers = async () => {
-      if (!db) return;
-      setSearchingUsers(true);
-      try {
-        const usersRef = collection(db, "userProfiles");
-        const snapshot = await getDocs(usersRef);
-        const results = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
-        // Sort newest registered users first
-        results.sort((a, b) => {
-          const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-          const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-          return tB - tA;
-        });
-        setAllUsers(results);
-        setSearchedUsers(results);
-      } catch (err: any) {
-        console.error("Error loading users on mount:", err);
-      } finally {
-        setSearchingUsers(false);
-      }
-    };
-    loadAllUsers();
+    setSearchedUsers([]);
   }, [db]);
 
-  // Reactive live filtering in memory as they type
+  // Reactive live filtering of the already searched results
   const filterUsersLocally = (queryText: string, currentAllUsers = allUsers) => {
     const cleanQuery = queryText.trim().toLowerCase();
     if (!cleanQuery) {
@@ -71,7 +50,8 @@ export default function AdminScreen(props: any) {
       const matchRawMobile = u.mobile && u.mobile.toLowerCase().includes(cleanQuery);
       const matchName = u.displayName && u.displayName.toLowerCase().includes(cleanQuery);
       const matchMpin = u.mpin && u.mpin.toLowerCase().includes(cleanQuery);
-      return !!(matchCleanedMobile || matchRawMobile || matchName || matchMpin);
+      const matchEmail = u.email && u.email.toLowerCase().includes(cleanQuery);
+      return !!(matchCleanedMobile || matchRawMobile || matchName || matchMpin || matchEmail);
     });
 
     setSearchedUsers(filtered);
@@ -82,24 +62,85 @@ export default function AdminScreen(props: any) {
       showToast("सर्वर डेटाबेस से कनेक्शन स्थापित नहीं हो सका है।");
       return;
     }
+    const queryTerm = userSearchQuery.trim();
+    if (!queryTerm) {
+      showToast("कृपया खोजने के लिए नाम या मोबाइल नंबर दर्ज करें।");
+      return;
+    }
+
     setSearchingUsers(true);
     try {
       const usersRef = collection(db, "userProfiles");
-      const snapshot = await getDocs(usersRef);
-      const results = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
-      results.sort((a, b) => {
+      let results: any[] = [];
+      const digitsOnly = queryTerm.replace(/\D/g, "");
+
+      // 1. Search by mobile if they typed numbers
+      if (digitsOnly.length >= 4) {
+        const qMobile = query(usersRef, where("mobile", "==", digitsOnly), limit(50));
+        const snapMobile = await getDocs(qMobile);
+        snapMobile.docs.forEach(doc => {
+          results.push({ id: doc.id, ...doc.data() as any });
+        });
+
+        // Try exact queryTerm as well if original differed from digitsOnly
+        if (results.length === 0 && queryTerm !== digitsOnly) {
+          const qMobileRaw = query(usersRef, where("mobile", "==", queryTerm), limit(50));
+          const snapMobileRaw = await getDocs(qMobileRaw);
+          snapMobileRaw.docs.forEach(doc => {
+            results.push({ id: doc.id, ...doc.data() as any });
+          });
+        }
+      }
+
+      // 2. Search by displayName Prefix (Firestore prefix search using string ranges)
+      if (results.length === 0) {
+        const qName = query(
+          usersRef,
+          where("displayName", ">=", queryTerm),
+          where("displayName", "<=", queryTerm + "\uf8ff"),
+          limit(50)
+        );
+        const snapName = await getDocs(qName);
+        snapName.docs.forEach(doc => {
+          results.push({ id: doc.id, ...doc.data() as any });
+        });
+      }
+
+      // 3. Search by email if queryTerm looks like an email
+      if (results.length === 0 && queryTerm.includes("@")) {
+        const qEmail = query(usersRef, where("email", "==", queryTerm.toLowerCase()), limit(50));
+        const snapEmail = await getDocs(qEmail);
+        snapEmail.docs.forEach(doc => {
+          results.push({ id: doc.id, ...doc.data() as any });
+        });
+      }
+
+      // De-duplicate results
+      const uniqueMap: { [key: string]: any } = {};
+      results.forEach(u => {
+        if (u.id) uniqueMap[u.id] = u;
+      });
+      let finalResults = Object.values(uniqueMap);
+
+      // Filter out deleted users
+      finalResults = finalResults.filter(
+        u => !u.isDeleted && (!u.mobile || !u.mobile.startsWith("deleted_"))
+      );
+
+      // Sort newest first
+      finalResults.sort((a, b) => {
         const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
         const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
         return tB - tA;
       });
-      setAllUsers(results);
 
-      const queryTerm = userSearchQuery.trim();
-      if (queryTerm) {
-        filterUsersLocally(userSearchQuery, results);
+      setAllUsers(finalResults);
+      setSearchedUsers(finalResults);
+
+      if (finalResults.length === 0) {
+        showToast("कोई पंजीकृत यूज़र नहीं मिला। कृपया सही मोबाइल नंबर या नाम दर्ज करें।");
       } else {
-        setSearchedUsers(results);
-        showToast("सभी यूज़र्स की लिस्ट नवीनतम डेटा के साथ अपडेट कर दी गई है।");
+        showToast(`${finalResults.length} भक्त मिले।`);
       }
     } catch (e: any) {
       console.error(e);
@@ -128,6 +169,28 @@ export default function AdminScreen(props: any) {
     setCopiedMpinId(id);
     showToast("MPIN कॉपी हो गया है!");
     setTimeout(() => setCopiedMpinId(null), 2000);
+  };
+
+  const handleSendMpinOnWhatsApp = (user: any) => {
+    if (!user.mobile) {
+      showToast("यूज़र का मोबाइल नंबर नहीं मिला।");
+      return;
+    }
+    const mpin = user.mpin || "NA";
+    const name = user.displayName || "भक्त";
+    const cleanMobile = user.mobile.replace(/\D/g, "");
+    const formattedMobile = cleanMobile.length === 10 ? `91${cleanMobile}` : cleanMobile;
+    
+    const message = `निवण प्रणाम ${name} जी,
+सबदवाणी ऐप में आपका सुरक्षित लॉगिन विवरण निम्नानुसार है:
+📱 पंजीकृत मोबाइल: +91 ${cleanMobile}
+🔑 सुरक्षित MPIN: ${mpin}
+कृपया अपने MPIN को सुरक्षित एवं गोपनीय रखें। यह आपके खाते की सुरक्षा के लिए अत्यंत महत्वपूर्ण है।
+- सबदवाणी एडमिन`;
+    
+    const encodedMsg = encodeURIComponent(message);
+    window.open(`https://wa.me/${formattedMobile}?text=${encodedMsg}`, "_blank");
+    showToast("व्हाट्सएप मैसेज तैयार किया जा रहा है...");
   };
 
   const handleToggleNotice = (n: any) => {
@@ -1148,7 +1211,7 @@ export default function AdminScreen(props: any) {
                 <div className="space-y-3 max-h-64 overflow-y-auto custom-scrollbar pr-1">
                   {searchedUsers.length === 0 ? (
                     <div className="text-center py-6 text-ink-light text-xs border border-dashed border-ink/10 rounded-2xl bg-paper/50">
-                      कोई पंजीकृत यूज़र नहीं मिला। डेटाबेस अपडेट करने के लिए 'खोजें' दबाएँ।
+                      {userSearchQuery.trim() ? "कोई पंजीकृत यूज़र नहीं मिला। कृपया सही मोबाइल नंबर या नाम दर्ज करें।" : "यूज़र खोजने के लिए ऊपर मोबाइल नंबर या नाम लिखकर 'खोजें' बटन दबाएँ।"}
                     </div>
                   ) : (
                     searchedUsers.map((user) => (
@@ -1162,6 +1225,9 @@ export default function AdminScreen(props: any) {
                             <span className="text-[10px] bg-accent/10 text-accent-dark px-1.5 py-0.5 rounded-full font-bold">पंजीकृत भक्त</span>
                           </div>
                           <p className="text-xs text-ink-light font-mono mt-0.5">मो: +91 {user.mobile}</p>
+                          {user.email && (
+                            <p className="text-[11px] text-accent font-semibold mt-0.5">ईमेल: {user.email}</p>
+                          )}
                         </div>
 
                         <div className="flex items-center gap-2 justify-between md:justify-end border-t border-ink/5 md:border-none pt-2 md:pt-0">
@@ -1189,6 +1255,15 @@ export default function AdminScreen(props: any) {
                               )}
                             </button>
                           </div>
+
+                          <button
+                            onClick={() => handleSendMpinOnWhatsApp(user)}
+                            className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-2.5 py-1.5 rounded-xl cursor-pointer transition-colors border-none flex items-center gap-1.5 text-xs font-bold"
+                            title="WhatsApp पर पिन भेजें"
+                          >
+                            <Send className="w-3.5 h-3.5 animate-pulse" />
+                            <span>पिन भेजें</span>
+                          </button>
 
                           <button
                             onClick={() => handleDeleteUserProfile(user.id, user.mobile)}

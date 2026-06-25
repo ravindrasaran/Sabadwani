@@ -63,27 +63,6 @@ const getFirebasePasswordFromMpin = (mpin: string): string => {
   return `${mpin}_sabadwani`;
 };
 
-const formatMobileNumber = (mobile: string): string => {
-  if (!mobile) return "";
-  const cleaned = mobile.trim();
-  if (cleaned.startsWith("+")) {
-    return cleaned;
-  }
-  // Standard 10 digits gets mapped to +91 as requested
-  if (cleaned.length === 10 && /^\d+$/.test(cleaned)) {
-    return `+91 ${cleaned}`;
-  }
-  // 12 digit starting with 91 gets +91
-  if (cleaned.startsWith("91") && cleaned.length === 12 && /^\d+$/.test(cleaned)) {
-    return `+91 ${cleaned.slice(2)}`;
-  }
-  // If numeric, prepend + so it acts as standard international dialing format
-  if (/^\d+$/.test(cleaned)) {
-    return `+${cleaned}`;
-  }
-  return cleaned;
-};
-
 const cleanErrorMessage = (error: any, fallback: string): string => {
   if (!error) return fallback;
   const rawMsg = error.message || "";
@@ -247,6 +226,10 @@ export default function UserProfilePanel({
           photoURL: user.photoURL || "",
         };
 
+        if (user.email) {
+          profilePayload.email = user.email;
+        }
+
         if (!userDoc.exists()) {
           profilePayload.createdAt = new Date().toISOString();
         }
@@ -377,15 +360,38 @@ export default function UserProfilePanel({
 
     setIsSubmitting(true);
     try {
-      const primaryEmail = `${loginMobile}@bishnoi.co.in`;
       const firebasePassword = getFirebasePasswordFromMpin(loginMpin);
+      let emailToLogin = `${loginMobile}@bishnoi.co.in`;
+
+      // Check Firestore if there is a profile for this mobile that saved the original email
       try {
-        await signInWithEmailAndPassword(auth, primaryEmail, firebasePassword);
+        const q = query(collection(db, "userProfiles"), where("mobile", "==", loginMobile), limit(1));
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          const docData = snapshot.docs[0].data();
+          if (docData.email) {
+            emailToLogin = docData.email;
+          }
+        }
+      } catch (err) {
+        console.warn("Could not retrieve profile email for routing, falling back to virtual email:", err);
+      }
+
+      try {
+        await signInWithEmailAndPassword(auth, emailToLogin, firebasePassword);
       } catch (loginErr: any) {
-        // Fallback to legacy domain for existing users
+        // Fallback to virtual domain or legacy domain for existing users
         if (loginErr.code === "auth/user-not-found" || loginErr.code === "auth/invalid-credential") {
-          const legacyEmail = `${loginMobile}@sabadwani.com`;
-          await signInWithEmailAndPassword(auth, legacyEmail, firebasePassword);
+          try {
+            if (emailToLogin !== `${loginMobile}@bishnoi.co.in`) {
+              await signInWithEmailAndPassword(auth, `${loginMobile}@bishnoi.co.in`, firebasePassword);
+            } else {
+              throw loginErr;
+            }
+          } catch (innerErr: any) {
+            const legacyEmail = `${loginMobile}@sabadwani.com`;
+            await signInWithEmailAndPassword(auth, legacyEmail, firebasePassword);
+          }
         } else {
           throw loginErr;
         }
@@ -452,10 +458,16 @@ export default function UserProfilePanel({
         return;
       }
 
-      // Step B: Set up virtual credentials
-      const virtualEmail = `${onboardPhone}@bishnoi.co.in`;
+      // Capture original Google/social email before linking alters the currentUser email object
+      const originalEmail = auth.currentUser.email && 
+        !(auth.currentUser.email.endsWith("@bishnoi.co.in") || auth.currentUser.email.endsWith("@sabadwani.com"))
+        ? auth.currentUser.email
+        : null;
+
+      // Step B: Set up credentials (use original email if available so virtual email is avoided in Auth list)
+      const emailToLink = originalEmail || `${onboardPhone}@bishnoi.co.in`;
       const firebasePassword = getFirebasePasswordFromMpin(onboardMpin);
-      const credential = EmailAuthProvider.credential(virtualEmail, firebasePassword);
+      const credential = EmailAuthProvider.credential(emailToLink, firebasePassword);
       
       try {
         await linkWithCredential(auth.currentUser, credential);
@@ -470,7 +482,7 @@ export default function UserProfilePanel({
 
       // Step C: Set database profile doc
       const userRef = doc(db, "userProfiles", auth.currentUser.uid);
-      const profile = {
+      const profile: any = {
         uid: auth.currentUser.uid,
         mobile: onboardPhone,
         mpin: onboardMpin,
@@ -478,6 +490,12 @@ export default function UserProfilePanel({
         photoURL: auth.currentUser.photoURL || "",
         createdAt: new Date().toISOString()
       };
+
+      if (originalEmail) {
+        profile.email = originalEmail;
+      } else if (auth.currentUser.email && !(auth.currentUser.email.endsWith("@bishnoi.co.in") || auth.currentUser.email.endsWith("@sabadwani.com"))) {
+        profile.email = auth.currentUser.email;
+      }
       await setDoc(userRef, profile);
       
       setProfileData(profile);
@@ -783,25 +801,18 @@ export default function UserProfilePanel({
                     </button>
                   </div>
 
-                  <h4 className="font-extrabold text-base text-ink flex items-center gap-1.5 justify-center leading-none">
-                    <span>{currentUser.displayName || "भक्त"}</span>
-                    <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                  </h4>
-                  
-                  {/* Styled Gmail & Mobile Badges */}
-                  <div className="flex flex-col gap-1 items-center mt-1.5 mb-4 text-[12px] text-ink-light leading-snug w-full select-all">
-                    {currentUser.email && !(currentUser.email.endsWith("@bishnoi.co.in") || currentUser.email.endsWith("@sabadwani.com")) && (
-                      <div className="flex items-center gap-1.5 justify-center opacity-90 max-w-[250px] w-full text-center">
-                        <Mail className="w-3.5 h-3.5 text-accent shrink-0 opacity-75" />
-                        <span className="truncate leading-none">{currentUser.email}</span>
-                      </div>
-                    )}
-                    {profileData?.mobile && (
-                      <div className="flex items-center gap-1.5 justify-center opacity-95 max-w-[250px] w-full text-center">
-                        <Phone className="w-3.5 h-3.5 text-accent shrink-0 opacity-75" />
-                        <span className="font-mono tracking-wide font-semibold text-[11px] leading-none">
-                          {formatMobileNumber(profileData.mobile)}
-                        </span>
+                  {/* User name & email block with consistent spacing */}
+                  <div className="flex flex-col items-center gap-2 mt-1 mb-5 w-full">
+                    <h4 className="font-extrabold text-base text-ink flex items-center gap-1.5 justify-center leading-none">
+                      <span>{currentUser.displayName || "भक्त"}</span>
+                      <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                    </h4>
+                    
+                    {/* Styled Gmail Info (Simple and Clean) */}
+                    {((profileData?.email) || (currentUser.email && !(currentUser.email.endsWith("@bishnoi.co.in") || currentUser.email.endsWith("@sabadwani.com")))) && (
+                      <div className="flex items-center gap-1.5 justify-center text-[12px] font-medium text-ink-light opacity-85 w-full select-all">
+                        <Mail className="w-3.5 h-3.5 text-accent shrink-0" />
+                        <span className="truncate leading-none">{profileData?.email || currentUser.email}</span>
                       </div>
                     )}
                   </div>

@@ -516,10 +516,28 @@ function MainApp() {
         if (user && !user.isAnonymous && user.displayName) {
           setContribAuthor(user.displayName);
         }
+        
+        // Auto-detect admin emails
+        if (user && user.email) {
+          const email = user.email.toLowerCase();
+          if (
+            email === "ravindrasaran@gmail.com" || 
+            email === "vishnoimilan@gmail.com" ||
+            email === "7877773277@bishnoi.co.in" ||
+            email === "7877773277@sabadwani.com"
+          ) {
+            setIsAdminAuthenticated(true);
+          } else {
+            setIsAdminAuthenticated(false);
+          }
+        } else {
+          setIsAdminAuthenticated(false);
+        }
       });
       return unsubscribe;
     } else {
       setCurrentUser(null);
+      setIsAdminAuthenticated(false);
     }
   }, [auth]);
 
